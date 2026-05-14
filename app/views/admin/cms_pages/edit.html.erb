@@ -1,0 +1,69 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">CMS page</p>
+    <h1><%= @page.slug %></h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "View public", localized_slug_path(@page.slug, locale: "en"), class: "btn-secondary" %>
+    <%= link_to "Back to pages", admin_cms_pages_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<%= form_with model: [ :admin, @page ], class: "admin-form admin-form--wide" do |form| %>
+  <section class="admin-card-panel">
+    <h2>Page settings</h2>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= form.label :template %>
+        <%= form.text_field :template %>
+      </div>
+      <div class="field">
+        <%= form.label :sort_order %>
+        <%= form.number_field :sort_order %>
+      </div>
+      <label class="checkbox-field">
+        <%= form.check_box :show_in_nav %>
+        <span>Show in navigation</span>
+      </label>
+      <label class="checkbox-field">
+        <%= form.check_box :show_in_footer %>
+        <span>Show in footer</span>
+      </label>
+    </div>
+  </section>
+
+  <% CmsPage::LOCALES.each do |locale| %>
+    <% translation = @translations.fetch(locale) %>
+    <section class="admin-card-panel">
+      <div class="admin-panel-heading">
+        <h2><%= locale.upcase %> content</h2>
+        <%= link_to "Publish #{locale.upcase}",
+                    publish_admin_cms_page_path(@page, locale: locale),
+                    class: "btn-secondary",
+                    data: { turbo_method: :post, turbo_confirm: "Publish #{locale.upcase} draft now?" } %>
+      </div>
+      <div class="admin-form-grid">
+        <div class="field">
+          <%= label_tag "translations_#{locale}_title", "Title" %>
+          <%= text_field_tag "translations[#{locale}][title]", translation.title, required: true %>
+        </div>
+        <div class="field">
+          <%= label_tag "translations_#{locale}_seo_title", "SEO title" %>
+          <%= text_field_tag "translations[#{locale}][seo_title]", translation.seo_title %>
+        </div>
+      </div>
+      <div class="field">
+        <%= label_tag "translations_#{locale}_seo_description", "SEO description" %>
+        <%= text_area_tag "translations[#{locale}][seo_description]", translation.seo_description, rows: 3 %>
+      </div>
+      <div class="field">
+        <%= label_tag "translations_#{locale}_draft_json", "Draft JSON" %>
+        <%= text_area_tag "translations[#{locale}][draft_json]", JSON.pretty_generate(translation.draft_content), rows: 22, class: "code-textarea" %>
+      </div>
+    </section>
+  <% end %>
+
+  <div class="admin-submit-row">
+    <button type="submit" class="btn-primary">Save draft content</button>
+  </div>
+<% end %>

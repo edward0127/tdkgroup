@@ -1,0 +1,34 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">CMS</p>
+    <h1>Pages</h1>
+  </div>
+  <%= link_to "Back to dashboard", admin_root_path, class: "btn-secondary" %>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Template</th>
+        <th>Navigation</th>
+        <th>Footer</th>
+        <th>Published</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @pages.each do |page| %>
+        <tr>
+          <td><%= page.slug %></td>
+          <td><%= page.template %></td>
+          <td><%= page.show_in_nav? ? "Yes" : "No" %></td>
+          <td><%= page.show_in_footer? ? "Yes" : "No" %></td>
+          <td><%= page.translations.map { |t| "#{t.locale}: #{t.published_at.present? ? 'yes' : 'no'}" }.join(", ") %></td>
+          <td><%= link_to "Edit", edit_admin_cms_page_path(page), class: "text-link" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

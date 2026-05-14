@@ -1,0 +1,47 @@
+<% hero = @content.fetch("hero", {}) %>
+<% sections = Array(@content["sections"]) %>
+
+<section class="hero-section">
+  <div class="hero-section__content">
+    <p class="eyebrow"><%= hero["eyebrow"] %></p>
+    <h1><%= hero["title"].presence || @translation.title %></h1>
+    <p class="hero-lead"><%= hero["lead"] %></p>
+    <% if hero["primary_label"].present? || hero["secondary_label"].present? %>
+      <div class="hero-actions">
+        <% if hero["primary_label"].present? %>
+          <%= link_to hero["primary_label"], localized_slug_path(hero["primary_slug"]), class: "btn-primary" %>
+        <% end %>
+        <% if hero["secondary_label"].present? %>
+          <%= link_to hero["secondary_label"], localized_slug_path(hero["secondary_slug"]), class: "btn-secondary" %>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <aside class="hero-visual" aria-label="TDK Group professional services">
+    <div class="hero-visual__card">
+      <span>CPA</span>
+      <strong>Taxation</strong>
+      <strong>Advisory</strong>
+      <strong>Migration accounting</strong>
+    </div>
+    <% if hero["stats"].present? %>
+      <div class="hero-stats">
+        <% Array(hero["stats"]).each do |stat| %>
+          <div>
+            <strong><%= stat["value"] %></strong>
+            <span><%= stat["label"] %></span>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </aside>
+</section>
+
+<% sections.each do |block| %>
+  <%= render "pages/content_block", block: block %>
+<% end %>
+
+<% if @page.slug == "contact-us" %>
+  <%= render "pages/contact_form", contact_form: @contact_form %>
+<% end %>

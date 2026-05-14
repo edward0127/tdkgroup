@@ -1,14 +1,66 @@
 Rails.application.routes.draw do
-  # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
+  root "pages#show", defaults: { slug: "home" }
 
-  # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
-  # Can be used by load balancers and uptime monitors to verify that the app is live.
+  post "language", to: "language_preferences#create", as: :language_preference
+
+  get "home", to: redirect("/")
+  get "zh", to: "pages#show", defaults: { locale: "zh", slug: "home" }, as: :zh_root
+  get "zh/home-2", to: redirect("/zh")
+
+  get "about-us", to: "pages#show", defaults: { slug: "about-us" }
+  get "our-services", to: "pages#show", defaults: { slug: "our-services" }
+  get "our-services/tax-services", to: "pages#show", defaults: { slug: "our-services/tax-services" }
+  get "our-services/business-services", to: "pages#show", defaults: { slug: "our-services/business-services" }
+  get "our-services/management-consulting", to: "pages#show", defaults: { slug: "our-services/management-consulting" }
+  get "our-services/immigration-related-accounting-services", to: "pages#show", defaults: { slug: "our-services/immigration-related-accounting-services" }
+  get "our-team", to: "pages#show", defaults: { slug: "our-team" }
+  get "careers", to: "pages#show", defaults: { slug: "careers" }
+  get "contact-us", to: "pages#show", defaults: { slug: "contact-us" }
+  post "contact-us", to: "contact_messages#create"
+
+  get "zh/about-us", to: "pages#show", defaults: { locale: "zh", slug: "about-us" }
+  get "zh/our-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services" }
+  get "zh/our-services/tax-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services/tax-services" }
+  get "zh/our-services/business-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services/business-services" }
+  get "zh/our-services/management-consulting", to: "pages#show", defaults: { locale: "zh", slug: "our-services/management-consulting" }
+  get "zh/our-services/immigration-related-accounting-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services/immigration-related-accounting-services" }
+  get "zh/our-team", to: "pages#show", defaults: { locale: "zh", slug: "our-team" }
+  get "zh/careers", to: "pages#show", defaults: { locale: "zh", slug: "careers" }
+  get "zh/contact-us", to: "pages#show", defaults: { locale: "zh", slug: "contact-us" }
+  post "zh/contact-us", to: "contact_messages#create", defaults: { locale: "zh" }
+
+  get "zh/公司简介", to: redirect("/zh/about-us")
+  get "zh/联系我们-2", to: redirect("/zh/contact-us")
+  get "zh/我们的服务", to: redirect("/zh/our-services")
+  get "zh/我们的服务/税务服务", to: redirect("/zh/our-services/tax-services")
+  get "zh/我们的服务/商业会计服务", to: redirect("/zh/our-services/business-services")
+  get "zh/我们的服务/管理咨询与财务服务", to: redirect("/zh/our-services/management-consulting")
+  get "zh/我们的服务/移民相关会计服务", to: redirect("/zh/our-services/immigration-related-accounting-services")
+  get "zh/职业机会", to: redirect("/zh/careers")
+  get "zh/我们的团队", to: redirect("/zh/our-team")
+
+  get "services-2/audit-service", to: redirect("/our-services")
+  get "services-2/immigration-related-accounting-service", to: redirect("/our-services/immigration-related-accounting-services")
+  get "audit-services", to: redirect("/our-services")
+  get "immigration-related-accounting-services", to: redirect("/our-services/immigration-related-accounting-services")
+  get "our-services/management-consulting-and-financial-services", to: redirect("/our-services/management-consulting")
+  get "author/tdkgroup", to: redirect("/")
+  get "zh/author/tdkgroup", to: redirect("/zh")
+
+  namespace :admin do
+    root "dashboard#show"
+    get "login", to: "sessions#new", as: :login
+    post "login", to: "sessions#create"
+    delete "logout", to: "sessions#destroy", as: :logout
+
+    resources :cms_pages, only: [ :index, :edit, :update ] do
+      post :publish, on: :member
+    end
+    resources :cms_assets, only: [ :index, :create, :destroy ]
+  end
+
   get "up" => "rails/health#show", as: :rails_health_check
 
-  # Render dynamic PWA files from app/views/pwa/* (remember to link manifest in application.html.erb)
   # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
-
-  # Defines the root path route ("/")
-  # root "posts#index"
 end

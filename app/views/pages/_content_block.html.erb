@@ -1,0 +1,90 @@
+<% kind = block["kind"].to_s %>
+
+<% case kind %>
+<% when "intro" %>
+  <section class="content-section">
+    <div class="section-heading">
+      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
+      <h2><%= block["title"] %></h2>
+    </div>
+    <div class="prose-panel">
+      <% block_paragraphs(block).each do |paragraph| %>
+        <p><%= paragraph %></p>
+      <% end %>
+    </div>
+  </section>
+<% when "cards" %>
+  <section class="content-section content-section--tinted">
+    <div class="section-heading">
+      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
+      <h2><%= block["title"] %></h2>
+    </div>
+    <div class="service-grid">
+      <% Array(block["items"]).each do |item| %>
+        <article class="service-card">
+          <span class="service-card__marker"></span>
+          <h3><%= item["title"] %></h3>
+          <p><%= item["body"] %></p>
+          <% if item["slug"].present? %>
+            <%= link_to current_locale == "zh" ? "了解更多" : "Learn more", localized_slug_path(item["slug"]), class: "text-link" %>
+          <% end %>
+        </article>
+      <% end %>
+    </div>
+  </section>
+<% when "split" %>
+  <section class="split-section">
+    <div>
+      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
+      <h2><%= block["title"] %></h2>
+      <% block_paragraphs(block).each do |paragraph| %>
+        <p><%= paragraph %></p>
+      <% end %>
+    </div>
+    <ul class="check-list">
+      <% Array(block["bullets"]).each do |bullet| %>
+        <li><%= bullet %></li>
+      <% end %>
+    </ul>
+  </section>
+<% when "profile" %>
+  <section class="content-section">
+    <article class="profile-card">
+      <div class="profile-card__avatar">TH</div>
+      <div>
+        <h2><%= block["title"] %></h2>
+        <p class="profile-card__subtitle"><%= block["subtitle"] %></p>
+        <% block_paragraphs(block).each do |paragraph| %>
+          <p><%= paragraph %></p>
+        <% end %>
+        <% if block["contact"].present? %>
+          <p><%= mail_to block["contact"] %></p>
+        <% end %>
+      </div>
+    </article>
+  </section>
+<% when "contact" %>
+  <section class="content-section">
+    <div class="contact-details">
+      <h2><%= block["title"] %></h2>
+      <dl>
+        <% Array(block["details"]).each do |detail| %>
+          <div>
+            <dt><%= detail["label"] %></dt>
+            <dd><%= contact_value_link(detail["value"]) %></dd>
+          </div>
+        <% end %>
+      </dl>
+    </div>
+  </section>
+<% when "cta" %>
+  <section class="cta-band">
+    <div>
+      <h2><%= block["title"] %></h2>
+      <p><%= block["body"] %></p>
+    </div>
+    <% if block["slug"].present? %>
+      <%= link_to block["label"], localized_slug_path(block["slug"]), class: "btn-primary btn-primary--light" %>
+    <% end %>
+  </section>
+<% end %>

@@ -1,0 +1,25 @@
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <section class="site-footer__brand">
+      <div class="brand-lockup brand-lockup--footer">
+        <span class="brand-mark">TDK</span>
+        <span>
+          <strong>TDK Group Pty Ltd</strong>
+          <small>Accounting, taxation and advisory services</small>
+        </span>
+      </div>
+      <p>1/550 Whitehorse Rd, Surrey Hills, VIC 3127</p>
+      <p><a href="tel:0398904988">03 9890 4988</a> · <a href="mailto:info@tdkgroup.com.au">info@tdkgroup.com.au</a></p>
+      <%= render "shared/language_selector" %>
+    </section>
+
+    <nav class="site-footer__links" aria-label="Footer">
+      <% footer_pages.each do |page| %>
+        <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
+      <% end %>
+    </nav>
+  </div>
+  <div class="site-footer__base">
+    <span>© <%= Time.current.year %> TDK Group Pty Ltd</span>
+  </div>
+</footer>

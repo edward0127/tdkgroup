@@ -1,0 +1,72 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">CMS</p>
+    <h1>Assets</h1>
+    <p>Local uploads are stored through Active Storage. S3 can be enabled later with env vars.</p>
+  </div>
+  <%= link_to "Back to dashboard", admin_root_path, class: "btn-secondary" %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Upload asset</h2>
+  <% if @asset.errors.any? %>
+    <div class="form-errors">
+      <ul>
+        <% @asset.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= form_with model: [ :admin, @asset ], url: admin_cms_assets_path, class: "admin-form", multipart: true do |form| %>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= form.label :key %>
+        <%= form.text_field :key, required: true, placeholder: "hero-office" %>
+      </div>
+      <div class="field">
+        <%= form.label :file %>
+        <%= form.file_field :file, accept: "image/*", required: true %>
+      </div>
+      <div class="field">
+        <%= form.label :alt_text_en, "Alt text English" %>
+        <%= form.text_field :alt_text_en %>
+      </div>
+      <div class="field">
+        <%= form.label :alt_text_zh, "Alt text Chinese" %>
+        <%= form.text_field :alt_text_zh %>
+      </div>
+    </div>
+    <button type="submit" class="btn-primary">Upload</button>
+  <% end %>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>File</th>
+        <th>Alt text</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @assets.each do |asset| %>
+        <tr>
+          <td><%= asset.key %></td>
+          <td>
+            <% if asset.file.attached? %>
+              <%= image_tag asset.file, class: "admin-thumb", alt: asset.alt_text("en") %>
+            <% else %>
+              No file
+            <% end %>
+          </td>
+          <td><%= asset.alt_text_en %><br><%= asset.alt_text_zh %></td>
+          <td><%= button_to "Delete", admin_cms_asset_path(asset), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this asset?" } } %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

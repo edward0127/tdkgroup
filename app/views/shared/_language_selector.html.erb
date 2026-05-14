@@ -1,0 +1,14 @@
+<div class="language-selector" aria-label="<%= tdk_t("nav.language") %>">
+  <% language_options.each do |label, locale| %>
+    <% if locale == current_locale %>
+      <span class="language-selector__current"><%= label %></span>
+    <% else %>
+      <%= button_to label,
+                    language_preference_path,
+                    method: :post,
+                    params: { locale: locale, slug: @page&.slug || "home" },
+                    class: "language-selector__button",
+                    form: { class: "language-selector__form" } %>
+    <% end %>
+  <% end %>
+</div>

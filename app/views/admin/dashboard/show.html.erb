@@ -1,0 +1,22 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1>CMS dashboard</h1>
+    <p>Manage published page content, draft JSON and local assets.</p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Manage pages", admin_cms_pages_path, class: "btn-primary" %>
+    <%= link_to "Manage assets", admin_cms_assets_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-grid">
+  <article class="admin-card">
+    <span><%= @pages.count %></span>
+    <strong>CMS pages</strong>
+  </article>
+  <article class="admin-card">
+    <span><%= @assets.count %></span>
+    <strong>CMS assets</strong>
+  </article>
+</section>

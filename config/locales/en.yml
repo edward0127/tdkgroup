@@ -1,31 +1,35 @@
-# Files in the config/locales directory are used for internationalization and
-# are automatically loaded by Rails. If you want to use locales other than
-# English, add the necessary files in this directory.
-#
-# To use the locales, use `I18n.t`:
-#
-#     I18n.t "hello"
-#
-# In views, this is aliased to just `t`:
-#
-#     <%= t("hello") %>
-#
-# To use a different locale, set it with `I18n.locale`:
-#
-#     I18n.locale = :es
-#
-# This would use the information in config/locales/es.yml.
-#
-# To learn more about the API, please read the Rails Internationalization guide
-# at https://guides.rubyonrails.org/i18n.html.
-#
-# Be aware that YAML interprets the following case-insensitive strings as
-# booleans: `true`, `false`, `on`, `off`, `yes`, `no`. Therefore, these strings
-# must be quoted to be interpreted as strings. For example:
-#
-#     en:
-#       "yes": yup
-#       enabled: "ON"
-
 en:
-  hello: "Hello world"
+  nav:
+    home: "Home"
+    language: "Language"
+    admin: "Admin"
+  contact:
+    thanks: "Thanks for your message."
+    success: "Thanks. We will get back to you soon."
+    failure: "Your message could not be sent right now. Please call or email TDK Group directly."
+    form_title: "Send an enquiry"
+    name: "Name"
+    email: "Email"
+    subject: "Subject"
+    message: "Message"
+    submit: "Send message"
+  admin:
+    title: "TDK Admin"
+
+zh:
+  nav:
+    home: "首页"
+    language: "语言"
+    admin: "后台"
+  contact:
+    thanks: "感谢您的留言。"
+    success: "感谢您的咨询，我们会尽快回复。"
+    failure: "您的留言暂时无法发送。请直接致电或发送邮件联系 TDK Group。"
+    form_title: "提交咨询"
+    name: "姓名"
+    email: "电子邮件"
+    subject: "主题"
+    message: "信息"
+    submit: "发送信息"
+  admin:
+    title: "TDK 后台"

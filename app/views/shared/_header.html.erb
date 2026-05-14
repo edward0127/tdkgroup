@@ -1,0 +1,32 @@
+<header class="site-header">
+  <div class="site-header__inner">
+    <%= link_to localized_slug_path("home"), class: "brand-lockup" do %>
+      <span class="brand-mark">TDK</span>
+      <span>
+        <strong>TDK Group Pty Ltd</strong>
+        <small>黄金会计师事务所</small>
+      </span>
+    <% end %>
+
+    <details class="mobile-menu">
+      <summary>Menu</summary>
+      <nav class="mobile-menu__panel">
+        <% nav_pages.each do |page| %>
+          <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
+        <% end %>
+        <%= render "shared/language_selector" %>
+      </nav>
+    </details>
+
+    <nav class="site-nav">
+      <% nav_pages.each do |page| %>
+        <%= link_to page_nav_label(page), link_for_cms_slug(page.slug), class: ("is-active" if @page&.slug == page.slug) %>
+      <% end %>
+    </nav>
+
+    <div class="site-header__actions">
+      <%= render "shared/language_selector" %>
+      <%= link_to current_locale == "zh" ? "咨询" : "Enquire", localized_slug_path("contact-us"), class: "header-cta" %>
+    </div>
+  </div>
+</header>

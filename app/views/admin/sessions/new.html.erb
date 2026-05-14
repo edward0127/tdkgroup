@@ -1,0 +1,19 @@
+<section class="admin-login-card">
+  <p class="eyebrow">TDK Group</p>
+  <h1>Admin login</h1>
+  <p>Use the configured admin username and password to manage CMS content.</p>
+
+  <%= form_with url: admin_login_path, method: :post, class: "admin-form" do %>
+    <div class="field">
+      <%= label_tag :username, "Username" %>
+      <%= text_field_tag :username, params[:username], required: true, autocomplete: "username" %>
+    </div>
+    <div class="field">
+      <%= label_tag :password, "Password" %>
+      <%= password_field_tag :password, nil, required: true, autocomplete: "current-password" %>
+    </div>
+    <button type="submit" class="btn-primary">Sign in</button>
+  <% end %>
+
+  <%= link_to "Back to public site", root_path, class: "text-link" %>
+</section>

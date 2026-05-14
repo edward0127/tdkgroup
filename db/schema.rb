@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_14_024839) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_14_090200) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -39,6 +39,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_024839) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "cms_assets", force: :cascade do |t|
+    t.string "alt_text_en"
+    t.string "alt_text_zh"
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_cms_assets_on_key", unique: true
+  end
+
+  create_table "cms_page_translations", force: :cascade do |t|
+    t.integer "cms_page_id", null: false
+    t.datetime "created_at", null: false
+    t.json "draft_json", default: {}, null: false
+    t.string "locale", null: false
+    t.datetime "published_at"
+    t.json "published_json", default: {}, null: false
+    t.text "seo_description"
+    t.string "seo_title"
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["cms_page_id", "locale"], name: "index_cms_page_translations_on_cms_page_id_and_locale", unique: true
+    t.index ["cms_page_id"], name: "index_cms_page_translations_on_cms_page_id"
+  end
+
+  create_table "cms_pages", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "show_in_footer", default: true, null: false
+    t.boolean "show_in_nav", default: true, null: false
+    t.string "slug", null: false
+    t.integer "sort_order", default: 0, null: false
+    t.string "template", default: "standard", null: false
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_cms_pages_on_slug", unique: true
+    t.index ["sort_order"], name: "index_cms_pages_on_sort_order"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "cms_page_translations", "cms_pages"
 end
