@@ -101,6 +101,12 @@ The Compose service is `web`, the container is `tdkgroup_site`, and the app is
 bound to `127.0.0.1:3014` on the host. The Dockerfile exposes port `80`, so
 Compose maps `127.0.0.1:3014:80`.
 
+The current Ubuntu 20.04 production host uses an older Docker/seccomp stack
+where Ruby/Rails can fail during boot with `ThreadError: can't create Thread:
+Operation not permitted`. The production Compose service therefore sets
+`security_opt: seccomp=unconfined` so Rails can create threads reliably on that
+host.
+
 DNS and reverse proxy are separate deployment steps. Create DNS for
 `tdkgroup.tudouke.com` pointing to the server IP, then configure the existing
 server reverse proxy to route `tdkgroup.tudouke.com` to

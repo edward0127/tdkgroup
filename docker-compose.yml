@@ -3,6 +3,8 @@ services:
     image: ghcr.io/edward0127/tdkgroup:latest
     container_name: tdkgroup_site
     restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined
     ports:
       - "127.0.0.1:3014:80"
     env_file:
