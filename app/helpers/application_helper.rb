@@ -33,7 +33,26 @@ module ApplicationHelper
   end
 
   def page_nav_label(page, locale: current_locale)
-    page.translation_for(locale)&.title || page.slug.titleize
+    nav_labels = {
+      "en" => {
+        "home" => "Home",
+        "about-us" => "About",
+        "our-services" => "Services",
+        "our-team" => "Our Team",
+        "careers" => "Careers",
+        "contact-us" => "Contact"
+      },
+      "zh" => {
+        "home" => "首页",
+        "about-us" => "关于我们",
+        "our-services" => "服务",
+        "our-team" => "团队",
+        "careers" => "职业机会",
+        "contact-us" => "联系我们"
+      }
+    }
+
+    nav_labels.fetch(locale.to_s, nav_labels.fetch("en")).fetch(page.slug, page.translation_for(locale)&.title || page.slug.titleize)
   end
 
   def language_options
@@ -64,9 +83,16 @@ module ApplicationHelper
 
   def cms_asset_image_tag(key, locale: current_locale, **options)
     asset = CmsAsset.find_by(key: key)
-    return nil unless asset&.file&.attached?
+    fallback = options.delete(:fallback)
+    source = if asset&.file&.attached?
+      cms_asset_source(asset)
+    elsif fallback.present?
+      fallback
+    end
+    return nil if source.blank?
 
-    image_tag(cms_asset_source(asset), { alt: asset.alt_text(locale) }.merge(options))
+    alt_text = asset&.alt_text(locale).presence || options.delete(:alt).to_s
+    image_tag(source, { alt: alt_text }.merge(options))
   end
 
   def admin_page?
@@ -102,5 +128,54 @@ module ApplicationHelper
     else
       asset.file
     end
+  end
+
+  def tdk_logo_tag(**options)
+    image_tag("tdk/tdk-logo.jpg", { alt: "TDK Group Pty Ltd" }.merge(options))
+  end
+
+  def page_template_class
+    "page-template-#{@page&.template.presence || 'standard'}"
+  end
+
+  def hero_asset_key
+    {
+      "home" => "hero-handshake",
+      "about-us" => "office-documents",
+      "our-services" => "business-advisory",
+      "our-services/tax-services" => "business-service",
+      "our-services/business-services" => "tax-service",
+      "our-services/management-consulting" => "consulting-service",
+      "our-services/immigration-related-accounting-services" => "client-meeting",
+      "our-team" => "business-advisory",
+      "careers" => "office-documents",
+      "contact-us" => "office-documents"
+    }.fetch(@page&.slug, "business-advisory")
+  end
+
+  def hero_asset_fallback
+    "tdk/#{hero_asset_key.tr('_', '-')}.jpg"
+  end
+
+  def service_asset_key(item)
+    slug = item["slug"].presence || @page&.slug
+    {
+      "our-services/tax-services" => "business-service",
+      "our-services/business-services" => "tax-service",
+      "our-services/management-consulting" => "consulting-service",
+      "our-services/immigration-related-accounting-services" => "client-meeting"
+    }.fetch(slug, "business-advisory")
+  end
+
+  def service_asset_fallback(key)
+    "tdk/#{key.tr('_', '-')}.jpg"
+  end
+
+  def google_maps_embed_url
+    "https://www.google.com/maps?q=1%2F550%20Whitehorse%20Rd%2C%20Surrey%20Hills%20VIC%203127%2C%20Australia&output=embed"
+  end
+
+  def google_maps_open_url
+    "https://www.google.com/maps/search/?api=1&query=1%2F550%20Whitehorse%20Rd%2C%20Surrey%20Hills%20VIC%203127%2C%20Australia"
   end
 end

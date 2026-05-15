@@ -1,19 +1,20 @@
 <header class="site-header">
   <div class="site-header__inner">
     <%= link_to localized_slug_path("home"), class: "brand-lockup" do %>
-      <span class="brand-mark">TDK</span>
+      <span class="brand-logo"><%= tdk_logo_tag(class: "brand-logo__image") %></span>
       <span>
         <strong>TDK Group Pty Ltd</strong>
-        <small>黄金会计师事务所</small>
+        <small><%= current_locale == "zh" ? "黄金会计师事务所" : "Accounting, Taxation & Advisory" %></small>
       </span>
     <% end %>
 
     <details class="mobile-menu">
-      <summary>Menu</summary>
+      <summary aria-label="Open navigation"><span></span><span></span><span></span></summary>
       <nav class="mobile-menu__panel">
         <% nav_pages.each do |page| %>
           <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
         <% end %>
+        <%= link_to current_locale == "zh" ? "电话 03 9890 4988" : "Call 03 9890 4988", "tel:0398904988" %>
         <%= render "shared/language_selector" %>
       </nav>
     </details>
@@ -25,8 +26,9 @@
     </nav>
 
     <div class="site-header__actions">
+      <%= link_to "03 9890 4988", "tel:0398904988", class: "header-phone" %>
       <%= render "shared/language_selector" %>
-      <%= link_to current_locale == "zh" ? "咨询" : "Enquire", localized_slug_path("contact-us"), class: "header-cta" %>
+      <%= link_to current_locale == "zh" ? "预约咨询" : "Book a consult", localized_slug_path("contact-us"), class: "header-cta" %>
     </div>
   </div>
 </header>

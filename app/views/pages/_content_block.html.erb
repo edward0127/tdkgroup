@@ -2,15 +2,22 @@
 
 <% case kind %>
 <% when "intro" %>
-  <section class="content-section">
-    <div class="section-heading">
-      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
-      <h2><%= block["title"] %></h2>
-    </div>
-    <div class="prose-panel">
-      <% block_paragraphs(block).each do |paragraph| %>
-        <p><%= paragraph %></p>
-      <% end %>
+  <section class="content-section content-section--intro">
+    <div class="intro-layout">
+      <div>
+        <div class="section-heading">
+          <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
+          <h2><%= block["title"] %></h2>
+        </div>
+        <div class="prose-panel">
+          <% block_paragraphs(block).each do |paragraph| %>
+            <p><%= paragraph %></p>
+          <% end %>
+        </div>
+      </div>
+      <figure class="section-image-card">
+        <%= cms_asset_image_tag(hero_asset_key, fallback: hero_asset_fallback, class: "section-image-card__image") %>
+      </figure>
     </div>
   </section>
 <% when "cards" %>
@@ -22,11 +29,14 @@
     <div class="service-grid">
       <% Array(block["items"]).each do |item| %>
         <article class="service-card">
-          <span class="service-card__marker"></span>
+          <div class="service-card__media">
+            <% asset_key = service_asset_key(item) %>
+            <%= cms_asset_image_tag(asset_key, fallback: service_asset_fallback(asset_key), class: "service-card__image") %>
+          </div>
           <h3><%= item["title"] %></h3>
           <p><%= item["body"] %></p>
           <% if item["slug"].present? %>
-            <%= link_to current_locale == "zh" ? "了解更多" : "Learn more", localized_slug_path(item["slug"]), class: "text-link" %>
+            <%= link_to current_locale == "zh" ? "了解更多" : "Learn more", localized_slug_path(item["slug"]), class: "text-link service-card__link" %>
           <% end %>
         </article>
       <% end %>
@@ -34,7 +44,7 @@
   </section>
 <% when "split" %>
   <section class="split-section">
-    <div>
+    <div class="split-section__copy">
       <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
       <h2><%= block["title"] %></h2>
       <% block_paragraphs(block).each do |paragraph| %>
@@ -46,11 +56,18 @@
         <li><%= bullet %></li>
       <% end %>
     </ul>
+    <div class="split-section__visual">
+      <span>CPA</span>
+      <strong><%= current_locale == "zh" ? "可靠的专业判断" : "Reliable professional judgement" %></strong>
+      <p><%= current_locale == "zh" ? "我们以清晰沟通、合规意识和长期客户关系为基础提供服务。" : "Advice is grounded in clear communication, compliance discipline and long-term client relationships." %></p>
+    </div>
   </section>
 <% when "profile" %>
   <section class="content-section">
     <article class="profile-card">
-      <div class="profile-card__avatar">TH</div>
+      <div class="profile-card__avatar">
+        <%= cms_asset_image_tag("business-advisory", fallback: "tdk/business-advisory.jpg", class: "profile-card__image") %>
+      </div>
       <div>
         <h2><%= block["title"] %></h2>
         <p class="profile-card__subtitle"><%= block["subtitle"] %></p>
@@ -66,15 +83,23 @@
 <% when "contact" %>
   <section class="content-section">
     <div class="contact-details">
-      <h2><%= block["title"] %></h2>
-      <dl>
-        <% Array(block["details"]).each do |detail| %>
-          <div>
-            <dt><%= detail["label"] %></dt>
-            <dd><%= contact_value_link(detail["value"]) %></dd>
-          </div>
-        <% end %>
-      </dl>
+      <div class="section-heading">
+        <p class="eyebrow">TDK Group</p>
+        <h2><%= block["title"] %></h2>
+      </div>
+      <div class="contact-details__grid">
+        <dl>
+          <% Array(block["details"]).each do |detail| %>
+            <div>
+              <dt><%= detail["label"] %></dt>
+              <dd><%= contact_value_link(detail["value"]) %></dd>
+            </div>
+          <% end %>
+        </dl>
+        <figure class="contact-details__image">
+          <%= cms_asset_image_tag("office-documents", fallback: "tdk/office-documents.jpg", class: "contact-details__photo") %>
+        </figure>
+      </div>
     </div>
   </section>
 <% when "cta" %>

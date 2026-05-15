@@ -10,10 +10,23 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "h1", /Expert taxation/
+    assert_select "nav.site-nav a:first-child", text: "Home"
+    assert_select "nav.site-nav", text: /TDK Group Pty Ltd/, count: 0
+    assert_select "img.brand-logo__image[src*='/assets/tdk/tdk-logo']"
+    assert_no_match "/rails/active_storage", css_select("img.brand-logo__image").first["src"]
     assert_select "meta[name='description']"
     assert_select "link[rel='canonical'][href='#{root_url}']"
     assert_select "link[rel='alternate'][hreflang='zh-CN'][href='#{zh_root_url}']"
     assert_select "form[action='#{language_preference_path}']"
+  end
+
+  test "Chinese homepage renders short navigation labels and local logo" do
+    get zh_root_url
+
+    assert_response :success
+    assert_select "nav.site-nav a:first-child", text: "首页"
+    assert_select "img.brand-logo__image[src*='/assets/tdk/tdk-logo']"
+    assert_no_match "tdkgroup.com.au/wp-content/uploads", response.body
   end
 
   test "key English public pages render" do
@@ -32,6 +45,32 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
 
       assert_response :success, "#{path} should render"
       assert_select "main"
+    end
+  end
+
+  test "contact page renders local assets and embedded map" do
+    get "/contact-us"
+
+    assert_response :success
+    assert_select "img.brand-logo__image[src*='/assets/tdk/tdk-logo']"
+    assert_select "iframe[title='TDK Group office map']"
+    assert_select "a[href*='google.com/maps/search']"
+    assert_no_match "tdkgroup.com.au/wp-content/uploads", response.body
+  end
+
+  test "public pages do not hotlink old WordPress uploads" do
+    [
+      "/",
+      "/about-us",
+      "/our-services",
+      "/contact-us",
+      "/zh",
+      "/zh/contact-us"
+    ].each do |path|
+      get path
+
+      assert_response :success
+      assert_no_match "tdkgroup.com.au/wp-content/uploads", response.body
     end
   end
 

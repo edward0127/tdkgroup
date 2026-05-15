@@ -14,7 +14,10 @@
   </head>
   <body class="admin-body">
     <header class="admin-topbar">
-      <%= link_to "TDK Admin", admin_root_path, class: "admin-brand" %>
+      <%= link_to admin_root_path, class: "admin-brand" do %>
+        <%= image_tag "tdk/tdk-logo.jpg", alt: "TDK Group Pty Ltd", class: "admin-brand__logo" %>
+        <span>TDK Admin</span>
+      <% end %>
       <nav class="admin-nav">
         <%= link_to "Pages", admin_cms_pages_path %>
         <%= link_to "Assets", admin_cms_assets_path %>

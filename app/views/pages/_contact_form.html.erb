@@ -1,43 +1,54 @@
 <section class="contact-form-section">
-  <div class="section-heading">
-    <p class="eyebrow">TDK Group</p>
-    <h2><%= tdk_t("contact.form_title") %></h2>
+  <div class="contact-form-layout">
+    <aside class="contact-prompt">
+      <p class="eyebrow">TDK Group</p>
+      <h2><%= tdk_t("contact.form_title") %></h2>
+      <p>
+        <%= current_locale == "zh" ? "请简要说明您的需求，团队会尽快回复。" : "Share a short note about your needs and the team will respond promptly." %>
+      </p>
+      <div class="contact-prompt__quick">
+        <a href="tel:0398904988">03 9890 4988</a>
+        <a href="mailto:info@tdkgroup.com.au">info@tdkgroup.com.au</a>
+      </div>
+    </aside>
+
+    <div>
+      <% if contact_form.errors.any? %>
+        <div class="form-errors">
+          <ul>
+            <% contact_form.errors.full_messages.each do |message| %>
+              <li><%= message %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <%= form_with model: contact_form,
+                    url: localized_slug_path("contact-us"),
+                    method: :post,
+                    class: "contact-form" do |form| %>
+        <div class="field">
+          <%= form.label :name, tdk_t("contact.name") %>
+          <%= form.text_field :name, required: true, autocomplete: "name" %>
+        </div>
+        <div class="field">
+          <%= form.label :email, tdk_t("contact.email") %>
+          <%= form.email_field :email, required: true, autocomplete: "email" %>
+        </div>
+        <div class="field">
+          <%= form.label :subject, tdk_t("contact.subject") %>
+          <%= form.text_field :subject, required: true %>
+        </div>
+        <div class="field">
+          <%= form.label :message, tdk_t("contact.message") %>
+          <%= form.text_area :message, required: true, rows: 7 %>
+        </div>
+        <div class="hp-field" aria-hidden="true">
+          <%= form.label :website, "Website" %>
+          <%= form.text_field :website, tabindex: -1, autocomplete: "off" %>
+        </div>
+        <button type="submit" class="btn-primary"><%= tdk_t("contact.submit") %></button>
+      <% end %>
+    </div>
   </div>
-
-  <% if contact_form.errors.any? %>
-    <div class="form-errors">
-      <ul>
-        <% contact_form.errors.full_messages.each do |message| %>
-          <li><%= message %></li>
-        <% end %>
-      </ul>
-    </div>
-  <% end %>
-
-  <%= form_with model: contact_form,
-                url: localized_slug_path("contact-us"),
-                method: :post,
-                class: "contact-form" do |form| %>
-    <div class="field">
-      <%= form.label :name, tdk_t("contact.name") %>
-      <%= form.text_field :name, required: true, autocomplete: "name" %>
-    </div>
-    <div class="field">
-      <%= form.label :email, tdk_t("contact.email") %>
-      <%= form.email_field :email, required: true, autocomplete: "email" %>
-    </div>
-    <div class="field">
-      <%= form.label :subject, tdk_t("contact.subject") %>
-      <%= form.text_field :subject, required: true %>
-    </div>
-    <div class="field">
-      <%= form.label :message, tdk_t("contact.message") %>
-      <%= form.text_area :message, required: true, rows: 7 %>
-    </div>
-    <div class="hp-field" aria-hidden="true">
-      <%= form.label :website, "Website" %>
-      <%= form.text_field :website, tabindex: -1, autocomplete: "off" %>
-    </div>
-    <button type="submit" class="btn-primary"><%= tdk_t("contact.submit") %></button>
-  <% end %>
 </section>

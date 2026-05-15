@@ -38,7 +38,7 @@
     <script type="application/ld+json"><%= raw website_json_ld %></script>
   </head>
 
-  <body class="site-body">
+  <body class="site-body <%= page_template_class unless admin_page? %>">
     <%= render "shared/header" %>
     <%= render "shared/flash" %>
 

@@ -22,7 +22,7 @@ class CmsPage < ApplicationRecord
   end
 
   def self.ensure_seeded!
-    return if exists?
+    return if exists? && CmsSeeder.required_assets_attached?
 
     CmsSeeder.seed!
   end

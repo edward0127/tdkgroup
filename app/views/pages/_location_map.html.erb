@@ -1,0 +1,20 @@
+<section class="location-section">
+  <div class="section-heading">
+    <p class="eyebrow"><%= current_locale == "zh" ? "办公地点" : "Location" %></p>
+    <h2><%= current_locale == "zh" ? "欢迎前往 Surrey Hills 办公室咨询" : "Visit the Surrey Hills office" %></h2>
+    <p><%= current_locale == "zh" ? "办公室位于 Whitehorse Road，建议预约后到访。" : "The office is located on Whitehorse Road. Appointments are recommended." %></p>
+  </div>
+
+  <div class="map-card">
+    <iframe
+      title="TDK Group office map"
+      src="<%= google_maps_embed_url %>"
+      loading="lazy"
+      referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <div class="map-card__details">
+      <strong>TDK Group Pty Ltd</strong>
+      <span>1/550 Whitehorse Rd, Surrey Hills, VIC 3127</span>
+      <%= link_to current_locale == "zh" ? "在 Google Maps 中打开" : "Open in Google Maps", google_maps_open_url, target: "_blank", rel: "noopener", class: "text-link" %>
+    </div>
+  </div>
+</section>

@@ -11,6 +11,14 @@ class AdminAuthenticationTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_login_path
   end
 
+  test "admin login renders static local logo" do
+    get admin_login_path
+
+    assert_response :success
+    assert_select "img.admin-login-logo[src*='/assets/tdk/tdk-logo']"
+    assert_no_match "/rails/active_storage", css_select("img.admin-login-logo").first["src"]
+  end
+
   test "admin can login and logout" do
     with_modified_env("ADMIN_USERNAME" => "phase1", "ADMIN_PASSWORD" => "secret-password") do
       get admin_login_path

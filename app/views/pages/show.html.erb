@@ -1,7 +1,7 @@
 <% hero = @content.fetch("hero", {}) %>
 <% sections = Array(@content["sections"]) %>
 
-<section class="hero-section">
+<section class="hero-section <%= page_template_class %>">
   <div class="hero-section__content">
     <p class="eyebrow"><%= hero["eyebrow"] %></p>
     <h1><%= hero["title"].presence || @translation.title %></h1>
@@ -16,14 +16,20 @@
         <% end %>
       </div>
     <% end %>
+    <div class="hero-proof">
+      <span><%= current_locale == "zh" ? "CPA 执业支持" : "CPA practice" %></span>
+      <span><%= current_locale == "zh" ? "注册税务代理" : "Registered tax agent" %></span>
+      <span><%= current_locale == "zh" ? "中英双语服务" : "English and Chinese support" %></span>
+    </div>
   </div>
 
-  <aside class="hero-visual" aria-label="TDK Group professional services">
-    <div class="hero-visual__card">
-      <span>CPA</span>
-      <strong>Taxation</strong>
-      <strong>Advisory</strong>
-      <strong>Migration accounting</strong>
+  <aside class="hero-media" aria-label="TDK Group professional services">
+    <div class="hero-media__image-wrap">
+      <%= cms_asset_image_tag(hero_asset_key, fallback: hero_asset_fallback, class: "hero-media__image") %>
+      <div class="hero-media__overlay">
+        <span><%= current_locale == "zh" ? "专业服务" : "Professional services" %></span>
+        <strong><%= current_locale == "zh" ? "税务 · 会计 · 咨询" : "Tax · Accounting · Advisory" %></strong>
+      </div>
     </div>
     <% if hero["stats"].present? %>
       <div class="hero-stats">
@@ -35,6 +41,11 @@
         <% end %>
       </div>
     <% end %>
+    <div class="credential-card">
+      <span>CPA</span>
+      <strong><%= current_locale == "zh" ? "专业标准与客户保密" : "Professional standards and confidentiality" %></strong>
+      <p><%= current_locale == "zh" ? "面向个人、企业和投资者的务实会计与税务支持。" : "Practical accounting and tax support for individuals, businesses and investors." %></p>
+    </div>
   </aside>
 </section>
 
@@ -43,5 +54,6 @@
 <% end %>
 
 <% if @page.slug == "contact-us" %>
+  <%= render "pages/location_map" %>
   <%= render "pages/contact_form", contact_form: @contact_form %>
 <% end %>

@@ -2,24 +2,36 @@
   <div class="site-footer__inner">
     <section class="site-footer__brand">
       <div class="brand-lockup brand-lockup--footer">
-        <span class="brand-mark">TDK</span>
+        <span class="brand-logo brand-logo--footer"><%= tdk_logo_tag(class: "brand-logo__image") %></span>
         <span>
           <strong>TDK Group Pty Ltd</strong>
-          <small>Accounting, taxation and advisory services</small>
+          <small><%= current_locale == "zh" ? "会计、税务与商业咨询服务" : "Accounting, taxation and advisory services" %></small>
         </span>
       </div>
-      <p>1/550 Whitehorse Rd, Surrey Hills, VIC 3127</p>
-      <p><a href="tel:0398904988">03 9890 4988</a> · <a href="mailto:info@tdkgroup.com.au">info@tdkgroup.com.au</a></p>
+      <p class="footer-description">
+        <%= current_locale == "zh" ? "为个人、企业与投资者提供清晰、务实、双语的会计和税务支持。" : "Clear, practical accounting, taxation and advisory support for individuals, businesses and investors." %>
+      </p>
       <%= render "shared/language_selector" %>
     </section>
 
-    <nav class="site-footer__links" aria-label="Footer">
-      <% footer_pages.each do |page| %>
-        <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
-      <% end %>
-    </nav>
+    <section class="site-footer__panel">
+      <h2><%= current_locale == "zh" ? "联系信息" : "Contact" %></h2>
+      <p>1/550 Whitehorse Rd<br>Surrey Hills, VIC 3127</p>
+      <p><a href="tel:0398904988">03 9890 4988</a><br><a href="mailto:info@tdkgroup.com.au">info@tdkgroup.com.au</a></p>
+      <%= link_to current_locale == "zh" ? "查看地图" : "View map", google_maps_open_url, class: "footer-map-link", target: "_blank", rel: "noopener" %>
+    </section>
+
+    <section class="site-footer__panel">
+      <h2><%= current_locale == "zh" ? "网站导航" : "Pages" %></h2>
+      <nav class="site-footer__links" aria-label="Footer">
+        <% footer_pages.each do |page| %>
+          <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
+        <% end %>
+      </nav>
+    </section>
   </div>
   <div class="site-footer__base">
     <span>© <%= Time.current.year %> TDK Group Pty Ltd</span>
+    <span><%= current_locale == "zh" ? "CPA 专业会计与咨询服务" : "CPA practice and professional advisory services" %></span>
   </div>
 </footer>
