@@ -38,9 +38,10 @@
     <script type="application/ld+json"><%= raw website_json_ld %></script>
   </head>
 
-  <body class="site-body <%= page_template_class unless admin_page? %>">
+  <body class="<%= body_classes %>">
     <%= render "shared/header" %>
     <%= render "shared/flash" %>
+    <%= render "admin/cms_pages/preview_banner" if cms_previewing? %>
 
     <main>
       <%= yield %>

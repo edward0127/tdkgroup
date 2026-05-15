@@ -95,8 +95,95 @@ module ApplicationHelper
     image_tag(source, { alt: alt_text }.merge(options))
   end
 
+  def cms_inline_editing?
+    @cms_inline_editing == true
+  end
+
+  def cms_previewing?
+    @cms_preview == true
+  end
+
+  def cms_public_shell?
+    @cms_public_shell == true
+  end
+
   def admin_page?
     controller_path.start_with?("admin/")
+  end
+
+  def body_classes
+    classes = [ "site-body" ]
+    classes << page_template_class if !admin_page? || cms_public_shell?
+    classes << "cms-inline-body" if cms_inline_editing?
+    classes << "cms-preview-body" if cms_previewing?
+    classes.compact.join(" ")
+  end
+
+  def cms_edit_field(path, value, label:, multiline: false, rows: 2)
+    return value unless cms_inline_editing?
+
+    field_id = "cms_field_#{path.to_s.parameterize(separator: "_")}"
+    control = if multiline
+      text_area_tag("fields[#{path}]", value.to_s, id: field_id, rows: rows, class: "cms-editable__control cms-editable__control--textarea")
+    else
+      text_field_tag("fields[#{path}]", value.to_s, id: field_id, class: "cms-editable__control")
+    end
+
+    content_tag(
+      :span,
+      safe_join([
+        label_tag(field_id, label, class: "cms-editable__label"),
+        control
+      ]),
+      class: "cms-editable"
+    )
+  end
+
+  def cms_edit_image_picker(path, current_key, label:)
+    return nil unless cms_inline_editing?
+
+    assets = @cms_assets || CmsAsset.with_attached_file.order(:key)
+    current_asset = assets.detect { |asset| asset.key == current_key.to_s } || CmsAsset.find_by(key: current_key)
+    options = assets.map { |asset| [ asset.key, asset.key ] }
+    options.unshift([ current_key, current_key ]) if current_key.present? && options.none? { |_, key| key == current_key }
+
+    path_key = path.to_s.parameterize(separator: "_")
+    select_id = "cms_image_#{path_key}_selected"
+    file_id = "cms_image_#{path_key}_file"
+    key_id = "cms_image_#{path_key}_key"
+    alt_en_id = "cms_image_#{path_key}_alt_en"
+    alt_zh_id = "cms_image_#{path_key}_alt_zh"
+
+    content_tag(:div, class: "cms-image-picker") do
+      safe_join([
+        content_tag(:strong, label),
+        content_tag(:span, "Current key: #{current_key}", class: "cms-image-picker__current"),
+        content_tag(:div, class: "cms-image-picker__grid") do
+          safe_join([
+            content_tag(:label, safe_join([
+              content_tag(:span, "Choose existing asset"),
+              select_tag("image_fields[#{path}][selected_key]", options_for_select(options, current_key), id: select_id)
+            ])),
+            content_tag(:label, safe_join([
+              content_tag(:span, "Upload replacement"),
+              file_field_tag("image_fields[#{path}][file]", id: file_id, accept: CmsAsset::SUPPORTED_CONTENT_TYPES.join(","))
+            ])),
+            content_tag(:label, safe_join([
+              content_tag(:span, "New asset key"),
+              text_field_tag("image_fields[#{path}][new_key]", nil, id: key_id, placeholder: "Optional, generated if blank")
+            ])),
+            content_tag(:label, safe_join([
+              content_tag(:span, "Alt text EN"),
+              text_field_tag("image_fields[#{path}][alt_text_en]", current_asset&.alt_text_en, id: alt_en_id)
+            ])),
+            content_tag(:label, safe_join([
+              content_tag(:span, "Alt text ZH"),
+              text_field_tag("image_fields[#{path}][alt_text_zh]", current_asset&.alt_text_zh, id: alt_zh_id)
+            ]))
+          ])
+        end
+      ])
+    end
   end
 
   def website_json_ld

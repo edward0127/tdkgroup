@@ -12,8 +12,14 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", /Expert taxation/
     assert_select "nav.site-nav a:first-child", text: "Home"
     assert_select "nav.site-nav", text: /TDK Group Pty Ltd/, count: 0
-    assert_select "img.brand-logo__image[src*='/assets/tdk/tdk-logo']"
-    assert_no_match "/rails/active_storage", css_select("img.brand-logo__image").first["src"]
+    logos = css_select("img.brand-logo__image")
+    assert_equal 2, logos.size
+    logos.each do |logo|
+      assert_includes logo["src"], "/assets/tdk/tdk-logo"
+      refute_includes logo["src"], "/rails/active_storage"
+    end
+    assert_select ".cms-editor-toolbar", count: 0
+    assert_select ".cms-image-picker", count: 0
     assert_select "meta[name='description']"
     assert_select "link[rel='canonical'][href='#{root_url}']"
     assert_select "link[rel='alternate'][hreflang='zh-CN'][href='#{zh_root_url}']"

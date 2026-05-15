@@ -1,18 +1,28 @@
 <% hero = @content.fetch("hero", {}) %>
 <% sections = Array(@content["sections"]) %>
+<% hero_image_key = hero["image_key"].presence || hero_asset_key %>
 
 <section class="hero-section <%= page_template_class %>">
   <div class="hero-section__content">
-    <p class="eyebrow"><%= hero["eyebrow"] %></p>
-    <h1><%= hero["title"].presence || @translation.title %></h1>
-    <p class="hero-lead"><%= hero["lead"] %></p>
+    <p class="eyebrow"><%= cms_edit_field("hero.eyebrow", hero["eyebrow"], label: "Hero eyebrow") %></p>
+    <h1><%= cms_edit_field("hero.title", hero["title"].presence || @translation.title, label: "Hero title", multiline: true, rows: 2) %></h1>
+    <p class="hero-lead"><%= cms_edit_field("hero.lead", hero["lead"], label: "Hero lead", multiline: true, rows: 3) %></p>
     <% if hero["primary_label"].present? || hero["secondary_label"].present? %>
       <div class="hero-actions">
-        <% if hero["primary_label"].present? %>
-          <%= link_to hero["primary_label"], localized_slug_path(hero["primary_slug"]), class: "btn-primary" %>
-        <% end %>
-        <% if hero["secondary_label"].present? %>
-          <%= link_to hero["secondary_label"], localized_slug_path(hero["secondary_slug"]), class: "btn-secondary" %>
+        <% if cms_inline_editing? %>
+          <% if hero["primary_label"].present? %>
+            <%= cms_edit_field("hero.primary_label", hero["primary_label"], label: "Primary CTA label") %>
+          <% end %>
+          <% if hero["secondary_label"].present? %>
+            <%= cms_edit_field("hero.secondary_label", hero["secondary_label"], label: "Secondary CTA label") %>
+          <% end %>
+        <% else %>
+          <% if hero["primary_label"].present? %>
+            <%= link_to hero["primary_label"], localized_slug_path(hero["primary_slug"]), class: "btn-primary" %>
+          <% end %>
+          <% if hero["secondary_label"].present? %>
+            <%= link_to hero["secondary_label"], localized_slug_path(hero["secondary_slug"]), class: "btn-secondary" %>
+          <% end %>
         <% end %>
       </div>
     <% end %>
@@ -25,18 +35,19 @@
 
   <aside class="hero-media" aria-label="TDK Group professional services">
     <div class="hero-media__image-wrap">
-      <%= cms_asset_image_tag(hero_asset_key, fallback: hero_asset_fallback, class: "hero-media__image") %>
+      <%= cms_asset_image_tag(hero_image_key, fallback: hero_asset_fallback, class: "hero-media__image") %>
       <div class="hero-media__overlay">
         <span><%= current_locale == "zh" ? "专业服务" : "Professional services" %></span>
         <strong><%= current_locale == "zh" ? "税务 · 会计 · 咨询" : "Tax · Accounting · Advisory" %></strong>
       </div>
     </div>
+    <%= cms_edit_image_picker("hero.image_key", hero_image_key, label: "Hero image") %>
     <% if hero["stats"].present? %>
       <div class="hero-stats">
-        <% Array(hero["stats"]).each do |stat| %>
+        <% Array(hero["stats"]).each_with_index do |stat, index| %>
           <div>
-            <strong><%= stat["value"] %></strong>
-            <span><%= stat["label"] %></span>
+            <strong><%= cms_edit_field("hero.stats.#{index}.value", stat["value"], label: "Stat value") %></strong>
+            <span><%= cms_edit_field("hero.stats.#{index}.label", stat["label"], label: "Stat label") %></span>
           </div>
         <% end %>
       </div>
@@ -49,11 +60,11 @@
   </aside>
 </section>
 
-<% sections.each do |block| %>
-  <%= render "pages/content_block", block: block %>
+<% sections.each_with_index do |block, section_index| %>
+  <%= render "pages/content_block", block: block, section_index: section_index %>
 <% end %>
 
 <% if @page.slug == "contact-us" %>
   <%= render "pages/location_map" %>
-  <%= render "pages/contact_form", contact_form: @contact_form %>
+  <%= render "pages/contact_form", contact_form: @contact_form unless cms_inline_editing? %>
 <% end %>

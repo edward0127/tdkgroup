@@ -1,0 +1,23 @@
+<%= form_with url: inline_update_admin_cms_page_path(@page, locale: @edit_locale),
+              method: :patch,
+              multipart: true,
+              class: "cms-inline-form" do %>
+  <section class="cms-editor-toolbar" aria-label="CMS editor controls">
+    <div>
+      <strong>Inline CMS edit</strong>
+      <span><%= @page.slug %> / <%= @edit_locale.upcase %> draft</span>
+    </div>
+    <div class="cms-editor-toolbar__actions">
+      <button type="submit" class="btn-primary">Save draft</button>
+      <button type="submit" name="after_save" value="preview" class="btn-secondary">Save and preview</button>
+      <%= link_to "Preview draft", preview_admin_cms_page_path(@page, locale: @edit_locale), class: "btn-secondary" %>
+      <%= link_to "Publish",
+                  publish_admin_cms_page_path(@page, locale: @edit_locale, return_to: "inline_edit"),
+                  class: "btn-secondary",
+                  data: { turbo_method: :post, turbo_confirm: "Publish #{@edit_locale.upcase} draft now?" } %>
+      <%= link_to "Back to admin", edit_admin_cms_page_path(@page), class: "btn-secondary" %>
+    </div>
+  </section>
+
+  <%= render template: "pages/show" %>
+<% end %>

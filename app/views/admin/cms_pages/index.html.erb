@@ -26,7 +26,11 @@
           <td><%= page.show_in_nav? ? "Yes" : "No" %></td>
           <td><%= page.show_in_footer? ? "Yes" : "No" %></td>
           <td><%= page.translations.map { |t| "#{t.locale}: #{t.published_at.present? ? 'yes' : 'no'}" }.join(", ") %></td>
-          <td><%= link_to "Edit", edit_admin_cms_page_path(page), class: "text-link" %></td>
+          <td>
+            <%= link_to "Inline EN", inline_edit_admin_cms_page_path(page, locale: "en"), class: "text-link" %><br>
+            <%= link_to "Inline ZH", inline_edit_admin_cms_page_path(page, locale: "zh"), class: "text-link" %><br>
+            <%= link_to "JSON edit", edit_admin_cms_page_path(page), class: "text-link" %>
+          </td>
         </tr>
       <% end %>
     </tbody>

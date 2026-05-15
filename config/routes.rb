@@ -54,6 +54,9 @@ Rails.application.routes.draw do
     delete "logout", to: "sessions#destroy", as: :logout
 
     resources :cms_pages, only: [ :index, :edit, :update ] do
+      get :inline_edit, on: :member
+      patch :inline_update, on: :member
+      get :preview, on: :member
       post :publish, on: :member
     end
     resources :cms_assets, only: [ :index, :create, :destroy ]

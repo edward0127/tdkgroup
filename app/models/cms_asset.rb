@@ -1,5 +1,6 @@
 class CmsAsset < ApplicationRecord
   MAX_FILE_SIZE = 8.megabytes
+  SUPPORTED_CONTENT_TYPES = %w[image/jpeg image/png image/webp image/gif].freeze
 
   has_one_attached :file
 
@@ -15,8 +16,8 @@ class CmsAsset < ApplicationRecord
   def file_is_supported_image
     return unless file.attached?
 
-    unless file.blob.content_type.to_s.start_with?("image/")
-      errors.add(:file, "must be an image")
+    unless SUPPORTED_CONTENT_TYPES.include?(file.blob.content_type.to_s)
+      errors.add(:file, "must be a JPEG, PNG, WebP or GIF image")
     end
 
     if file.blob.byte_size > MAX_FILE_SIZE

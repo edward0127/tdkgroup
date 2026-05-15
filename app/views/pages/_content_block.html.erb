@@ -1,40 +1,49 @@
 <% kind = block["kind"].to_s %>
+<% section_index ||= 0 %>
 
 <% case kind %>
 <% when "intro" %>
+  <% intro_image_key = block["image_key"].presence || hero_asset_key %>
   <section class="content-section content-section--intro">
     <div class="intro-layout">
       <div>
         <div class="section-heading">
-          <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
-          <h2><%= block["title"] %></h2>
+          <% if block["eyebrow"].present? %>
+            <p class="eyebrow"><%= cms_edit_field("sections.#{section_index}.eyebrow", block["eyebrow"], label: "Section eyebrow") %></p>
+          <% end %>
+          <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Section heading", multiline: true, rows: 2) %></h2>
         </div>
         <div class="prose-panel">
-          <% block_paragraphs(block).each do |paragraph| %>
-            <p><%= paragraph %></p>
+          <% block_paragraphs(block).each_with_index do |paragraph, paragraph_index| %>
+            <% body_path = block["body"].is_a?(Array) ? "sections.#{section_index}.body.#{paragraph_index}" : "sections.#{section_index}.body" %>
+            <p><%= cms_edit_field(body_path, paragraph, label: "Paragraph", multiline: true, rows: 4) %></p>
           <% end %>
         </div>
       </div>
       <figure class="section-image-card">
-        <%= cms_asset_image_tag(hero_asset_key, fallback: hero_asset_fallback, class: "section-image-card__image") %>
+        <%= cms_asset_image_tag(intro_image_key, fallback: hero_asset_fallback, class: "section-image-card__image") %>
       </figure>
+      <%= cms_edit_image_picker("sections.#{section_index}.image_key", intro_image_key, label: "Section image") %>
     </div>
   </section>
 <% when "cards" %>
   <section class="content-section content-section--tinted">
     <div class="section-heading">
-      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
-      <h2><%= block["title"] %></h2>
+      <% if block["eyebrow"].present? %>
+        <p class="eyebrow"><%= cms_edit_field("sections.#{section_index}.eyebrow", block["eyebrow"], label: "Section eyebrow") %></p>
+      <% end %>
+      <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Section heading", multiline: true, rows: 2) %></h2>
     </div>
     <div class="service-grid">
-      <% Array(block["items"]).each do |item| %>
+      <% Array(block["items"]).each_with_index do |item, item_index| %>
         <article class="service-card">
           <div class="service-card__media">
-            <% asset_key = service_asset_key(item) %>
+            <% asset_key = item["image_key"].presence || service_asset_key(item) %>
             <%= cms_asset_image_tag(asset_key, fallback: service_asset_fallback(asset_key), class: "service-card__image") %>
           </div>
-          <h3><%= item["title"] %></h3>
-          <p><%= item["body"] %></p>
+          <%= cms_edit_image_picker("sections.#{section_index}.items.#{item_index}.image_key", asset_key, label: "Card image") %>
+          <h3><%= cms_edit_field("sections.#{section_index}.items.#{item_index}.title", item["title"], label: "Card title", multiline: true, rows: 2) %></h3>
+          <p><%= cms_edit_field("sections.#{section_index}.items.#{item_index}.body", item["body"], label: "Card body", multiline: true, rows: 4) %></p>
           <% if item["slug"].present? %>
             <%= link_to current_locale == "zh" ? "了解更多" : "Learn more", localized_slug_path(item["slug"]), class: "text-link service-card__link" %>
           <% end %>
@@ -45,15 +54,18 @@
 <% when "split" %>
   <section class="split-section">
     <div class="split-section__copy">
-      <% if block["eyebrow"].present? %><p class="eyebrow"><%= block["eyebrow"] %></p><% end %>
-      <h2><%= block["title"] %></h2>
-      <% block_paragraphs(block).each do |paragraph| %>
-        <p><%= paragraph %></p>
+      <% if block["eyebrow"].present? %>
+        <p class="eyebrow"><%= cms_edit_field("sections.#{section_index}.eyebrow", block["eyebrow"], label: "Section eyebrow") %></p>
+      <% end %>
+      <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Section heading", multiline: true, rows: 2) %></h2>
+      <% block_paragraphs(block).each_with_index do |paragraph, paragraph_index| %>
+        <% body_path = block["body"].is_a?(Array) ? "sections.#{section_index}.body.#{paragraph_index}" : "sections.#{section_index}.body" %>
+        <p><%= cms_edit_field(body_path, paragraph, label: "Paragraph", multiline: true, rows: 4) %></p>
       <% end %>
     </div>
     <ul class="check-list">
-      <% Array(block["bullets"]).each do |bullet| %>
-        <li><%= bullet %></li>
+      <% Array(block["bullets"]).each_with_index do |bullet, bullet_index| %>
+        <li><%= cms_edit_field("sections.#{section_index}.bullets.#{bullet_index}", bullet, label: "Bullet") %></li>
       <% end %>
     </ul>
     <div class="split-section__visual">
@@ -63,53 +75,78 @@
     </div>
   </section>
 <% when "profile" %>
+  <% profile_image_key = block["image_key"].presence || "business-advisory" %>
   <section class="content-section">
     <article class="profile-card">
-      <div class="profile-card__avatar">
-        <%= cms_asset_image_tag("business-advisory", fallback: "tdk/business-advisory.jpg", class: "profile-card__image") %>
+      <div>
+        <div class="profile-card__avatar">
+          <%= cms_asset_image_tag(profile_image_key, fallback: "tdk/business-advisory.jpg", class: "profile-card__image") %>
+        </div>
+        <%= cms_edit_image_picker("sections.#{section_index}.image_key", profile_image_key, label: "Profile image") %>
       </div>
       <div>
-        <h2><%= block["title"] %></h2>
-        <p class="profile-card__subtitle"><%= block["subtitle"] %></p>
-        <% block_paragraphs(block).each do |paragraph| %>
-          <p><%= paragraph %></p>
+        <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Profile name") %></h2>
+        <p class="profile-card__subtitle"><%= cms_edit_field("sections.#{section_index}.subtitle", block["subtitle"], label: "Profile subtitle", multiline: true, rows: 2) %></p>
+        <% block_paragraphs(block).each_with_index do |paragraph, paragraph_index| %>
+          <% body_path = block["body"].is_a?(Array) ? "sections.#{section_index}.body.#{paragraph_index}" : "sections.#{section_index}.body" %>
+          <p><%= cms_edit_field(body_path, paragraph, label: "Profile paragraph", multiline: true, rows: 4) %></p>
         <% end %>
         <% if block["contact"].present? %>
-          <p><%= mail_to block["contact"] %></p>
+          <p>
+            <% if cms_inline_editing? %>
+              <%= cms_edit_field("sections.#{section_index}.contact", block["contact"], label: "Profile contact") %>
+            <% else %>
+              <%= mail_to block["contact"] %>
+            <% end %>
+          </p>
         <% end %>
       </div>
     </article>
   </section>
 <% when "contact" %>
+  <% contact_image_key = block["image_key"].presence || "office-documents" %>
   <section class="content-section">
     <div class="contact-details">
       <div class="section-heading">
         <p class="eyebrow">TDK Group</p>
-        <h2><%= block["title"] %></h2>
+        <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Contact heading") %></h2>
       </div>
       <div class="contact-details__grid">
         <dl>
-          <% Array(block["details"]).each do |detail| %>
+          <% Array(block["details"]).each_with_index do |detail, detail_index| %>
             <div>
-              <dt><%= detail["label"] %></dt>
-              <dd><%= contact_value_link(detail["value"]) %></dd>
+              <dt><%= cms_edit_field("sections.#{section_index}.details.#{detail_index}.label", detail["label"], label: "Contact label") %></dt>
+              <dd>
+                <% if cms_inline_editing? %>
+                  <%= cms_edit_field("sections.#{section_index}.details.#{detail_index}.value", detail["value"], label: "Contact value") %>
+                <% else %>
+                  <%= contact_value_link(detail["value"]) %>
+                <% end %>
+              </dd>
             </div>
           <% end %>
         </dl>
-        <figure class="contact-details__image">
-          <%= cms_asset_image_tag("office-documents", fallback: "tdk/office-documents.jpg", class: "contact-details__photo") %>
-        </figure>
+        <div>
+          <figure class="contact-details__image">
+            <%= cms_asset_image_tag(contact_image_key, fallback: "tdk/office-documents.jpg", class: "contact-details__photo") %>
+          </figure>
+          <%= cms_edit_image_picker("sections.#{section_index}.image_key", contact_image_key, label: "Contact image") %>
+        </div>
       </div>
     </div>
   </section>
 <% when "cta" %>
   <section class="cta-band">
     <div>
-      <h2><%= block["title"] %></h2>
-      <p><%= block["body"] %></p>
+      <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "CTA heading", multiline: true, rows: 2) %></h2>
+      <p><%= cms_edit_field("sections.#{section_index}.body", block["body"], label: "CTA body", multiline: true, rows: 3) %></p>
     </div>
     <% if block["slug"].present? %>
-      <%= link_to block["label"], localized_slug_path(block["slug"]), class: "btn-primary btn-primary--light" %>
+      <% if cms_inline_editing? %>
+        <%= cms_edit_field("sections.#{section_index}.label", block["label"], label: "CTA label") %>
+      <% else %>
+        <%= link_to block["label"], localized_slug_path(block["slug"]), class: "btn-primary btn-primary--light" %>
+      <% end %>
     <% end %>
   </section>
 <% end %>

@@ -1,0 +1,16 @@
+<section class="cms-preview-banner" aria-label="Draft preview controls">
+  <div>
+    <strong>Draft preview</strong>
+    <span><%= @page.slug %> / <%= @preview_locale.to_s.upcase %></span>
+  </div>
+  <div class="cms-preview-banner__actions">
+    <%= link_to "Back to inline edit", inline_edit_admin_cms_page_path(@page, locale: @preview_locale), class: "btn-secondary" %>
+    <%= button_to "Publish draft",
+                  publish_admin_cms_page_path(@page),
+                  method: :post,
+                  params: { locale: @preview_locale, return_to: "preview" },
+                  class: "btn-primary",
+                  form: { data: { turbo_confirm: "Publish #{@preview_locale.to_s.upcase} draft now?" } } %>
+    <%= link_to "Back to admin", edit_admin_cms_page_path(@page), class: "btn-secondary" %>
+  </div>
+</section>
