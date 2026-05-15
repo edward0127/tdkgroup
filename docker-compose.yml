@@ -1,0 +1,16 @@
+services:
+  web:
+    image: ghcr.io/edward0127/tdkgroup:latest
+    container_name: tdkgroup_site
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3014:80"
+    env_file:
+      - .env.prod
+    volumes:
+      - tdkgroup_data:/data
+      - tdkgroup_storage:/rails/storage
+
+volumes:
+  tdkgroup_data:
+  tdkgroup_storage:

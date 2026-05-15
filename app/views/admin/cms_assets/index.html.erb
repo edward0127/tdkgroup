@@ -27,7 +27,7 @@
       </div>
       <div class="field">
         <%= form.label :file %>
-        <%= form.file_field :file, accept: "image/*", required: true %>
+        <%= form.file_field :file, accept: CmsAsset::SUPPORTED_CONTENT_TYPES.join(","), required: true %>
       </div>
       <div class="field">
         <%= form.label :alt_text_en, "Alt text English" %>
@@ -49,6 +49,7 @@
         <th>Key</th>
         <th>File</th>
         <th>Alt text</th>
+        <th>Status</th>
         <th></th>
       </tr>
     </thead>
@@ -64,7 +65,14 @@
             <% end %>
           </td>
           <td><%= asset.alt_text_en %><br><%= asset.alt_text_zh %></td>
-          <td><%= button_to "Delete", admin_cms_asset_path(asset), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this asset?" } } %></td>
+          <td><%= @in_use_asset_keys.include?(asset.key) ? "In use" : "Unused" %></td>
+          <td>
+            <% if @in_use_asset_keys.include?(asset.key) %>
+              <span class="admin-muted">Protected</span>
+            <% else %>
+              <%= button_to "Delete", admin_cms_asset_path(asset), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this asset?" } } %>
+            <% end %>
+          </td>
         </tr>
       <% end %>
     </tbody>

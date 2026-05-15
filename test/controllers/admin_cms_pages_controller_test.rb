@@ -16,6 +16,15 @@ class AdminCmsPagesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_login_path
   end
 
+  test "non admin cannot access draft preview" do
+    reset!
+    page = CmsPage.find_by!(slug: "about-us")
+
+    get preview_admin_cms_page_path(page, locale: "en")
+
+    assert_redirected_to admin_login_path
+  end
+
   test "admin can access inline edit mode" do
     page = CmsPage.find_by!(slug: "about-us")
 
@@ -26,6 +35,17 @@ class AdminCmsPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "textarea[name='fields[hero.title]']"
     assert_select ".cms-image-picker"
     assert_select "meta[name='robots'][content='noindex,nofollow']"
+  end
+
+  test "draft preview is noindexed" do
+    page = CmsPage.find_by!(slug: "about-us")
+
+    get preview_admin_cms_page_path(page, locale: "en")
+
+    assert_response :success
+    assert_select ".cms-preview-banner", /Draft preview/
+    assert_select "meta[name='robots'][content='noindex,nofollow']"
+    assert_select "link[rel='canonical']", count: 0
   end
 
   test "inline draft save previews and publishes without overwriting Chinese content" do

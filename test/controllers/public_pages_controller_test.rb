@@ -26,6 +26,35 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "form[action='#{language_preference_path}']"
   end
 
+  test "all public pages render required seo metadata" do
+    public_paths.each do |path|
+      get path
+
+      assert_response :success, "#{path} should render"
+      assert css_select("title").first.text.present?, "#{path} should have a title"
+      assert css_select("meta[name='description'][content]").first["content"].present?, "#{path} should have a meta description"
+      assert_select "meta[property='og:title'][content]"
+      assert_select "meta[property='og:description'][content]"
+      assert_select "link[rel='canonical'][href]"
+      assert_select "link[rel='alternate'][hreflang='en-AU'][href]"
+      assert_select "link[rel='alternate'][hreflang='zh-CN'][href]"
+    end
+  end
+
+  test "language selector posts to equivalent page" do
+    get "/about-us"
+
+    assert_response :success
+    assert css_select("form.language-selector__form input[name='slug'][value='about-us']").any?
+    assert css_select("form.language-selector__form input[name='locale'][value='zh']").any?
+
+    get "/zh/contact-us"
+
+    assert_response :success
+    assert css_select("form.language-selector__form input[name='slug'][value='contact-us']").any?
+    assert css_select("form.language-selector__form input[name='locale'][value='en']").any?
+  end
+
   test "Chinese homepage renders short navigation labels and local logo" do
     get zh_root_url
 
@@ -65,14 +94,7 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "public pages do not hotlink old WordPress uploads" do
-    [
-      "/",
-      "/about-us",
-      "/our-services",
-      "/contact-us",
-      "/zh",
-      "/zh/contact-us"
-    ].each do |path|
+    public_paths.each do |path|
       get path
 
       assert_response :success
@@ -129,5 +151,32 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
 
     get "/author/tdkgroup"
     assert_redirected_to "/"
+  end
+
+  private
+
+  def public_paths
+    [
+      "/",
+      "/about-us",
+      "/our-services",
+      "/our-services/tax-services",
+      "/our-services/business-services",
+      "/our-services/management-consulting",
+      "/our-services/immigration-related-accounting-services",
+      "/our-team",
+      "/careers",
+      "/contact-us",
+      "/zh",
+      "/zh/about-us",
+      "/zh/our-services",
+      "/zh/our-services/tax-services",
+      "/zh/our-services/business-services",
+      "/zh/our-services/management-consulting",
+      "/zh/our-services/immigration-related-accounting-services",
+      "/zh/our-team",
+      "/zh/careers",
+      "/zh/contact-us"
+    ]
   end
 end

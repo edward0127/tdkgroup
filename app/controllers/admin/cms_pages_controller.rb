@@ -72,6 +72,8 @@ module Admin
       translations = locale.present? ? [ @page.translations.find_by!(locale: locale) ] : @page.translations
       translations.each(&:publish!)
       redirect_to publish_return_path(locale), notice: "Published content updated."
+    rescue ActiveRecord::RecordInvalid => e
+      redirect_to edit_admin_cms_page_path(@page), alert: "Draft could not be published: #{e.record.errors.full_messages.to_sentence}"
     end
 
     private

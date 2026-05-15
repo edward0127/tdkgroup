@@ -50,4 +50,30 @@ class CmsAssetTest < ActiveSupport::TestCase
     assert asset.file.attached?
     assert CmsSeeder.required_assets_attached?
   end
+
+  test "uploaded images are limited to supported content types" do
+    asset = CmsAsset.new(key: "phase-3-invalid-type", alt_text_en: "Invalid file")
+    asset.file.attach(
+      io: StringIO.new("not an image"),
+      filename: "file.txt",
+      content_type: "text/plain",
+      identify: false
+    )
+
+    assert_not asset.valid?
+    assert_includes asset.errors[:file], "must be a JPEG, PNG, WebP or GIF image"
+  end
+
+  test "uploaded images are limited to eight megabytes" do
+    asset = CmsAsset.new(key: "phase-3-too-large", alt_text_en: "Large image")
+    asset.file.attach(
+      io: StringIO.new("x" * (CmsAsset::MAX_FILE_SIZE + 1)),
+      filename: "large.png",
+      content_type: "image/png",
+      identify: false
+    )
+
+    assert_not asset.valid?
+    assert_includes asset.errors[:file], "must be smaller than 8 MB"
+  end
 end

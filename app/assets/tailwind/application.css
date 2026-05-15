@@ -1289,6 +1289,11 @@ img {
   border-radius: 8px;
 }
 
+.admin-muted {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .text-danger {
   border: 0;
   color: var(--danger);

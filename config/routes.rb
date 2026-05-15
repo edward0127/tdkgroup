@@ -2,6 +2,7 @@ Rails.application.routes.draw do
   root "pages#show", defaults: { slug: "home" }
 
   post "language", to: "language_preferences#create", as: :language_preference
+  get "sitemap.xml", to: "sitemaps#show", defaults: { format: :xml }
 
   get "home", to: redirect("/")
   get "zh", to: "pages#show", defaults: { locale: "zh", slug: "home" }, as: :zh_root

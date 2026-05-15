@@ -49,6 +49,36 @@ class ContactMessagesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "TDK website enquiry - Tax planning", email.subject
   end
 
+  test "contact delivery failure is handled with friendly message" do
+    failing_delivery = Class.new do
+      def deliver_now
+        raise StandardError, "smtp unavailable"
+      end
+    end.new
+
+    original_enquiry = ContactMailer.method(:enquiry)
+    ContactMailer.define_singleton_method(:enquiry) { |*args, **kwargs| failing_delivery }
+
+    begin
+      assert_no_difference "ActionMailer::Base.deliveries.size" do
+        post "/contact-us", params: {
+          contact_message_form: {
+            name: "Client Name",
+            email: "client@example.com",
+            subject: "Tax planning",
+            message: "Please contact me about tax planning.",
+            website: ""
+          }
+        }
+      end
+    ensure
+      ContactMailer.define_singleton_method(:enquiry) { |*args, **kwargs| original_enquiry.call(*args, **kwargs) }
+    end
+
+    assert_response :unprocessable_entity
+    assert_select ".form-errors", /Your message could not be sent right now/
+  end
+
   test "honeypot submission is accepted silently without sending email" do
     assert_no_difference "ActionMailer::Base.deliveries.size" do
       post "/contact-us", params: {
