@@ -60,7 +60,9 @@ Rails.application.routes.draw do
       get :preview, on: :member
       post :publish, on: :member
     end
-    resources :cms_assets, only: [ :index, :create, :destroy ]
+    resources :cms_assets, only: [ :index, :create, :edit, :update, :destroy ] do
+      post "versions/:version_id/restore", to: "cms_assets#restore", as: :restore_version, on: :member
+    end
   end
 
   get "up" => "rails/health#show", as: :rails_health_check

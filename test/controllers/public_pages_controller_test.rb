@@ -20,6 +20,9 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     end
     assert_select ".cms-editor-toolbar", count: 0
     assert_select ".cms-image-picker", count: 0
+    assert_select "a[href^='/admin']", count: 0
+    assert_select "form[action^='/admin']", count: 0
+    assert_no_match "Edit / Replace", response.body
     assert_select "meta[name='description']"
     assert_select "link[rel='canonical'][href='#{root_url}']"
     assert_select "link[rel='alternate'][hreflang='zh-CN'][href='#{zh_root_url}']"

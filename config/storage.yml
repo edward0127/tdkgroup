@@ -12,7 +12,6 @@ amazon:
   secret_access_key: <%= ENV["AWS_SECRET_ACCESS_KEY"] %>
   region: <%= ENV.fetch("AWS_REGION", "us-east-1") %>
   bucket: <%= ENV["AWS_S3_BUCKET"] %>
-  public: <%= ENV["PUBLIC_UPLOAD_ASSET_HOST"].present? %>
   upload:
     cache_control: <%= ENV.fetch("PUBLIC_UPLOAD_CACHE_CONTROL", "public, max-age=31536000") %>
 

@@ -9,6 +9,7 @@ module Admin
     def create
       if AdminAuthentication.valid_credentials?(params[:username], params[:password])
         session[:admin_authenticated] = true
+        session[:admin_username] = params[:username].to_s
         redirect_to(session.delete(:admin_return_to).presence || admin_root_path, notice: "Signed in.")
       else
         flash.now[:alert] = "Username or password is incorrect."

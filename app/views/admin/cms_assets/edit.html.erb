@@ -1,0 +1,136 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">CMS asset</p>
+    <h1>Edit / Replace</h1>
+    <p>Replacing this image updates every page that uses the <strong><%= @asset.key %></strong> asset key.</p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Back to assets", admin_cms_assets_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<% if @asset.errors.any? %>
+  <div class="form-errors">
+    <ul>
+      <% @asset.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <div>
+      <h2>Current asset</h2>
+      <p class="admin-muted">Key: <%= @asset.key %></p>
+    </div>
+    <span class="admin-muted"><%= @asset.in_use? ? "In use / protected from deletion" : "Unused" %></span>
+  </div>
+
+  <div class="admin-asset-current">
+    <div>
+      <% if @asset.file.attached? %>
+        <%= image_tag @asset.file, class: "admin-asset-preview", alt: @asset.alt_text("en") %>
+      <% else %>
+        <p>No file is currently attached.</p>
+      <% end %>
+    </div>
+    <dl class="admin-asset-details">
+      <div>
+        <dt>Alt text English</dt>
+        <dd><%= @asset.alt_text_en.presence || "None" %></dd>
+      </div>
+      <div>
+        <dt>Alt text Chinese</dt>
+        <dd><%= @asset.alt_text_zh.presence || "None" %></dd>
+      </div>
+      <% if @asset.file.attached? %>
+        <div>
+          <dt>Current file</dt>
+          <dd><%= @asset.file.filename %> - <%= number_to_human_size(@asset.file.byte_size) %></dd>
+        </div>
+      <% end %>
+    </dl>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Replace file or update alt text</h2>
+  <p class="admin-muted">Accepted formats: JPEG, PNG, WebP, GIF. Maximum file size: 8 MB.</p>
+
+  <%= form_with model: [ :admin, @asset ], class: "admin-form", multipart: true do |form| %>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= form.label :key %>
+        <%= text_field_tag :asset_key, @asset.key, disabled: true %>
+      </div>
+      <div class="field">
+        <%= form.label :file, "Replacement file" %>
+        <%= form.file_field :file, accept: CmsAsset::SUPPORTED_CONTENT_TYPES.join(",") %>
+      </div>
+      <div class="field">
+        <%= form.label :alt_text_en, "Alt text English" %>
+        <%= form.text_field :alt_text_en %>
+      </div>
+      <div class="field">
+        <%= form.label :alt_text_zh, "Alt text Chinese" %>
+        <%= form.text_field :alt_text_zh %>
+      </div>
+    </div>
+    <button type="submit" class="btn-primary">Save asset</button>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <div>
+      <h2>Previous versions</h2>
+      <p class="admin-muted">Restore a previous file when a replacement was incorrect.</p>
+    </div>
+  </div>
+
+  <% if @versions.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Preview</th>
+            <th>Created</th>
+            <th>Alt text</th>
+            <th>Admin</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @versions.each do |version| %>
+            <tr>
+              <td>
+                <% if version.file.attached? %>
+                  <%= image_tag version.file, class: "admin-thumb", alt: version.alt_text("en") %>
+                <% else %>
+                  No file
+                <% end %>
+              </td>
+              <td><%= l(version.created_at, format: :short) %></td>
+              <td><%= version.alt_text_en %><br><%= version.alt_text_zh %></td>
+              <td><%= version.admin_identifier.presence || "Not recorded" %></td>
+              <td>
+                <%= form_with url: restore_version_admin_cms_asset_path(@asset, version), method: :post, class: "admin-restore-form" do %>
+                  <%= hidden_field_tag :restore_alt_text, "0", id: nil %>
+                  <label class="checkbox-field">
+                    <%= check_box_tag :restore_alt_text, "1", true, id: "restore_alt_text_#{version.id}" %>
+                    <span>Restore alt text</span>
+                  </label>
+                  <button type="submit" class="btn-secondary" data-turbo-confirm="Restore this previous version?">Restore</button>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No previous versions yet.</p>
+  <% end %>
+</section>

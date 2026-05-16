@@ -67,6 +67,7 @@
           <td><%= asset.alt_text_en %><br><%= asset.alt_text_zh %></td>
           <td><%= @in_use_asset_keys.include?(asset.key) ? "In use" : "Unused" %></td>
           <td>
+            <%= link_to "Edit / Replace", edit_admin_cms_asset_path(asset), class: "text-link" %><br>
             <% if @in_use_asset_keys.include?(asset.key) %>
               <span class="admin-muted">Protected</span>
             <% else %>

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_14_090200) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_16_093000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -37,6 +37,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_090200) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "cms_asset_versions", force: :cascade do |t|
+    t.string "admin_identifier"
+    t.string "alt_text_en"
+    t.string "alt_text_zh"
+    t.integer "cms_asset_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["cms_asset_id"], name: "index_cms_asset_versions_on_cms_asset_id"
   end
 
   create_table "cms_assets", force: :cascade do |t|
@@ -77,5 +87,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_090200) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "cms_asset_versions", "cms_assets"
   add_foreign_key "cms_page_translations", "cms_pages"
 end

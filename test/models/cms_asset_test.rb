@@ -1,5 +1,7 @@
 require "test_helper"
+require "erb"
 require "stringio"
+require "yaml"
 
 class CmsAssetTest < ActiveSupport::TestCase
   test "test storage is local and does not require AWS credentials" do
@@ -75,5 +77,47 @@ class CmsAssetTest < ActiveSupport::TestCase
 
     assert_not asset.valid?
     assert_includes asset.errors[:file], "must be smaller than 8 MB"
+  end
+
+  test "amazon storage config keeps bucket private and omits acl settings" do
+    with_modified_env(
+      "AWS_ACCESS_KEY_ID" => "placeholder-access-key",
+      "AWS_SECRET_ACCESS_KEY" => "placeholder-secret-key",
+      "AWS_REGION" => "ap-southeast-2",
+      "AWS_S3_BUCKET" => "tdk-assets-test",
+      "PUBLIC_UPLOAD_ASSET_HOST" => "https://assets.example.test",
+      "PUBLIC_UPLOAD_CACHE_CONTROL" => "public, max-age=60"
+    ) do
+      amazon = rendered_storage_config.fetch("amazon")
+
+      assert_equal "S3", amazon.fetch("service")
+      assert_equal "tdk-assets-test", amazon.fetch("bucket")
+      assert_equal "public, max-age=60", amazon.fetch("upload").fetch("cache_control")
+      assert_no_acl_settings amazon
+      assert_not amazon.key?("public")
+    end
+  end
+
+  private
+
+  def rendered_storage_config
+    YAML.safe_load(
+      ERB.new(Rails.root.join("config/storage.yml").read).result,
+      aliases: true
+    )
+  end
+
+  def assert_no_acl_settings(value)
+    case value
+    when Hash
+      value.each do |key, nested_value|
+        assert_not_equal "acl", key.to_s
+        assert_no_acl_settings nested_value
+      end
+    when Array
+      value.each { |nested_value| assert_no_acl_settings nested_value }
+    else
+      assert_not_equal "public-read", value.to_s
+    end
   end
 end

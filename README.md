@@ -42,8 +42,8 @@ Important production variables:
   SMTP is not configured, local boot and page rendering still work.
 - `ACTIVE_STORAGE_SERVICE`: defaults to `local`; can be set to `amazon` when
   S3 credentials and bucket env vars are configured.
-- `PUBLIC_UPLOAD_ASSET_HOST`: optional public host used only for S3-backed CMS
-  uploads.
+- `PUBLIC_UPLOAD_ASSET_HOST`: optional CloudFront asset host used for S3-backed
+  CMS asset delivery.
 
 ## Production Storage Notes
 
@@ -57,6 +57,16 @@ Production SQLite paths are env-driven and default to persistent `/data` paths:
 Active Storage `local` uses Rails `storage/`. For production with local storage,
 mount that directory persistently. S3 can be enabled later by setting
 `ACTIVE_STORAGE_SERVICE=amazon` plus the AWS env vars in `.env.example`.
+
+For S3-backed CMS assets, keep the S3 bucket private:
+
+- Keep S3 Block Public Access ON.
+- S3 Object Ownership can stay Bucket owner enforced, with ACLs disabled.
+- Do not grant public bucket reads and do not use `public-read` ACLs.
+- CloudFront OAC handles public read delivery from the private bucket.
+- `PUBLIC_UPLOAD_ASSET_HOST` should point at the CloudFront host used for
+  public asset URLs.
+- The Rails IAM user should have upload/delete permissions through IAM policy.
 
 ## Docker Compose Deployment
 
