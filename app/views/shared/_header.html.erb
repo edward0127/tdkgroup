@@ -8,16 +8,19 @@
       </span>
     <% end %>
 
-    <details class="mobile-menu">
-      <summary aria-label="Open navigation"><span></span><span></span><span></span></summary>
-      <nav class="mobile-menu__panel">
-        <% nav_pages.each do |page| %>
-          <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
-        <% end %>
-        <%= link_to current_locale == "zh" ? "电话 03 9890 4988" : "Call 03 9890 4988", "tel:0398904988" %>
-        <%= render "shared/language_selector" %>
-      </nav>
-    </details>
+    <div class="mobile-header__actions">
+      <%= render "shared/mobile_language_switcher" %>
+
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation"><span></span><span></span><span></span></summary>
+        <nav class="mobile-menu__panel">
+          <% nav_pages.each do |page| %>
+            <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
+          <% end %>
+          <%= link_to current_locale == "zh" ? "电话 03 9890 4988" : "Call 03 9890 4988", "tel:0398904988" %>
+        </nav>
+      </details>
+    </div>
 
     <nav class="site-nav">
       <% nav_pages.each do |page| %>

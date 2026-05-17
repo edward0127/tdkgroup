@@ -50,12 +50,20 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert css_select("form.language-selector__form input[name='slug'][value='about-us']").any?
     assert css_select("form.language-selector__form input[name='locale'][value='zh']").any?
+    assert_select ".site-header__actions .language-selector"
+    assert_select ".mobile-header__actions form.mobile-language-switcher__form input[name='locale'][value='zh']", count: 1
+    assert_select ".mobile-header__actions .mobile-language-switcher__button", text: "\u4e2d\u6587"
+    assert_select ".mobile-menu__panel .language-selector", count: 0
 
     get "/zh/contact-us"
 
     assert_response :success
     assert css_select("form.language-selector__form input[name='slug'][value='contact-us']").any?
     assert css_select("form.language-selector__form input[name='locale'][value='en']").any?
+    assert_select ".site-header__actions .language-selector"
+    assert_select ".mobile-header__actions form.mobile-language-switcher__form input[name='locale'][value='en']", count: 1
+    assert_select ".mobile-header__actions .mobile-language-switcher__button", text: "EN"
+    assert_select ".mobile-menu__panel .language-selector", count: 0
   end
 
   test "Chinese homepage renders short navigation labels and local logo" do

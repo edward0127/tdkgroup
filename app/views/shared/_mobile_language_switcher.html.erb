@@ -1,0 +1,9 @@
+<% alternate_locale = current_locale == "zh" ? "en" : "zh" %>
+<% alternate_label = alternate_locale == "zh" ? "\u4e2d\u6587" : "EN" %>
+
+<%= button_to alternate_label,
+              language_preference_path,
+              method: :post,
+              params: { locale: alternate_locale, slug: @page&.slug || "home" },
+              class: "mobile-language-switcher__button",
+              form: { class: "mobile-language-switcher__form", "aria-label": tdk_t("nav.language") } %>
