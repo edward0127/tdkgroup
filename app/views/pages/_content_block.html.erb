@@ -2,6 +2,34 @@
 <% section_index ||= 0 %>
 
 <% case kind %>
+<% when "prose" %>
+  <section class="content-section content-section--prose">
+    <% if block["title"].present? || block["eyebrow"].present? %>
+      <div class="section-heading">
+        <% if block["eyebrow"].present? %>
+          <p class="eyebrow"><%= cms_edit_field("sections.#{section_index}.eyebrow", block["eyebrow"], label: "Section eyebrow") %></p>
+        <% end %>
+        <% if block["title"].present? %>
+          <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Section heading", multiline: true, rows: 2) %></h2>
+        <% end %>
+      </div>
+    <% end %>
+    <div class="prose-panel prose-panel--wide">
+      <% if block["body"].present? %>
+        <% block_paragraphs(block).each_with_index do |paragraph, paragraph_index| %>
+          <% body_path = block["body"].is_a?(Array) ? "sections.#{section_index}.body.#{paragraph_index}" : "sections.#{section_index}.body" %>
+          <p><%= cms_edit_field(body_path, paragraph, label: "Paragraph", multiline: true, rows: 4) %></p>
+        <% end %>
+      <% end %>
+      <% if Array(block["bullets"]).present? %>
+        <ul class="prose-list">
+          <% Array(block["bullets"]).each_with_index do |bullet, bullet_index| %>
+            <li><%= cms_edit_field("sections.#{section_index}.bullets.#{bullet_index}", bullet, label: "Bullet") %></li>
+          <% end %>
+        </ul>
+      <% end %>
+    </div>
+  </section>
 <% when "intro" %>
   <% intro_image_key = block["image_key"].presence || hero_asset_key %>
   <section class="content-section content-section--intro">
@@ -33,6 +61,12 @@
         <p class="eyebrow"><%= cms_edit_field("sections.#{section_index}.eyebrow", block["eyebrow"], label: "Section eyebrow") %></p>
       <% end %>
       <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "Section heading", multiline: true, rows: 2) %></h2>
+      <% if block["body"].present? %>
+        <% block_paragraphs(block).each_with_index do |paragraph, paragraph_index| %>
+          <% body_path = block["body"].is_a?(Array) ? "sections.#{section_index}.body.#{paragraph_index}" : "sections.#{section_index}.body" %>
+          <p><%= cms_edit_field(body_path, paragraph, label: "Paragraph", multiline: true, rows: 4) %></p>
+        <% end %>
+      <% end %>
     </div>
     <div class="service-grid">
       <% Array(block["items"]).each_with_index do |item, item_index| %>
@@ -43,7 +77,9 @@
           </div>
           <%= cms_edit_image_picker("sections.#{section_index}.items.#{item_index}.image_key", asset_key, label: "Card image") %>
           <h3><%= cms_edit_field("sections.#{section_index}.items.#{item_index}.title", item["title"], label: "Card title", multiline: true, rows: 2) %></h3>
-          <p><%= cms_edit_field("sections.#{section_index}.items.#{item_index}.body", item["body"], label: "Card body", multiline: true, rows: 4) %></p>
+          <% if item["body"].present? || cms_inline_editing? %>
+            <p><%= cms_edit_field("sections.#{section_index}.items.#{item_index}.body", item["body"], label: "Card body", multiline: true, rows: 4) %></p>
+          <% end %>
           <% if item["slug"].present? %>
             <%= link_to current_locale == "zh" ? "了解更多" : "Learn more", localized_slug_path(item["slug"]), class: "text-link service-card__link" %>
           <% end %>
@@ -139,7 +175,9 @@
   <section class="cta-band">
     <div>
       <h2><%= cms_edit_field("sections.#{section_index}.title", block["title"], label: "CTA heading", multiline: true, rows: 2) %></h2>
-      <p><%= cms_edit_field("sections.#{section_index}.body", block["body"], label: "CTA body", multiline: true, rows: 3) %></p>
+      <% if block["body"].present? && block["body"] != block["title"] %>
+        <p><%= cms_edit_field("sections.#{section_index}.body", block["body"], label: "CTA body", multiline: true, rows: 3) %></p>
+      <% end %>
     </div>
     <% if block["slug"].present? %>
       <% if cms_inline_editing? %>

@@ -1,6 +1,7 @@
 ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
+require "stringio"
 
 module ActiveSupport
   class TestCase
@@ -12,6 +13,7 @@ module ActiveSupport
 
     def seed_cms!
       CmsSeeder.seed!
+      TdkContentParitySync.new(dry_run: false, io: StringIO.new).call
     end
 
     def with_modified_env(values)

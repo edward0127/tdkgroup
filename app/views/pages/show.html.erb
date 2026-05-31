@@ -4,7 +4,9 @@
 
 <section class="hero-section <%= page_template_class %>">
   <div class="hero-section__content">
-    <p class="eyebrow"><%= cms_edit_field("hero.eyebrow", hero["eyebrow"], label: "Hero eyebrow") %></p>
+    <% if hero["eyebrow"].present? || (cms_inline_editing? && hero.key?("eyebrow")) %>
+      <p class="eyebrow"><%= cms_edit_field("hero.eyebrow", hero["eyebrow"], label: "Hero eyebrow") %></p>
+    <% end %>
     <h1><%= cms_edit_field("hero.title", hero["title"].presence || @translation.title, label: "Hero title", multiline: true, rows: 2) %></h1>
     <p class="hero-lead"><%= cms_edit_field("hero.lead", hero["lead"], label: "Hero lead", multiline: true, rows: 3) %></p>
     <% if hero["primary_label"].present? || hero["secondary_label"].present? %>

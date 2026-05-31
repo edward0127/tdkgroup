@@ -1,8 +1,11 @@
 module ApplicationHelper
   def page_title
     return tdk_t("admin.title") if controller_path.start_with?("admin/")
+    return "TDK Group Pty Ltd – 黄金会计师事务所" if @page&.slug == "home"
 
-    @translation&.seo_title.presence || @translation&.title.presence || "TDK Group Pty Ltd"
+    title = @translation&.title.presence || "TDK Group Pty Ltd"
+    site_name = current_locale == "zh" ? "黄金会计师事务所" : "TDK Group Pty Ltd"
+    "#{title} – #{site_name}"
   end
 
   def page_description
@@ -33,26 +36,109 @@ module ApplicationHelper
   end
 
   def page_nav_label(page, locale: current_locale)
+    slug = page.respond_to?(:slug) ? page.slug : page.to_s
     nav_labels = {
       "en" => {
         "home" => "Home",
-        "about-us" => "About",
-        "our-services" => "Services",
+        "about-us" => "About Us",
+        "our-services" => "Our Services",
+        "our-services/tax-services" => "Tax Services",
+        "our-services/business-services" => "Business Services",
+        "our-services/management-consulting" => "Management Consulting",
+        "our-services/immigration-related-accounting-services" => "Immigration Related Accounting Services",
+        "audit-services" => "Audit Services",
         "our-team" => "Our Team",
         "careers" => "Careers",
-        "contact-us" => "Contact"
+        "contact-us" => "Contact Us"
       },
       "zh" => {
         "home" => "首页",
         "about-us" => "关于我们",
-        "our-services" => "服务",
-        "our-team" => "团队",
+        "our-services" => "我们的服务",
+        "our-services/tax-services" => "税务服务",
+        "our-services/business-services" => "商业会计服务",
+        "our-services/management-consulting" => "管理咨询",
+        "our-services/immigration-related-accounting-services" => "移民相关会计服务",
+        "audit-services" => "审计服务",
+        "our-team" => "我们的团队",
         "careers" => "职业机会",
         "contact-us" => "联系我们"
       }
     }
 
-    nav_labels.fetch(locale.to_s, nav_labels.fetch("en")).fetch(page.slug, page.translation_for(locale)&.title || page.slug.titleize)
+    nav_labels.fetch(locale.to_s, nav_labels.fetch("en")).fetch(slug, page.respond_to?(:translation_for) ? page.translation_for(locale)&.title : slug.titleize)
+  end
+
+  def header_nav_items
+    [
+      { slug: "home" },
+      { slug: "about-us" },
+      { slug: "our-services", children: service_nav_items },
+      { slug: "our-team" },
+      { slug: "contact-us" }
+    ]
+  end
+
+  def service_nav_items
+    [
+      { slug: "our-services/tax-services" },
+      { slug: "our-services/business-services" },
+      { slug: "our-services/management-consulting" },
+      { slug: "our-services/immigration-related-accounting-services" }
+    ]
+  end
+
+  def footer_link_groups
+    labels = {
+      "en" => {
+        company: "Company",
+        services: "Services",
+        resources: "Resources",
+        immigration_footer: "Immigration-Related Accounting",
+        faqs: "FAQs"
+      },
+      "zh" => {
+        company: "公司",
+        services: "服务",
+        resources: "资源",
+        immigration_footer: "移民相关会计",
+        faqs: "常见问题"
+      }
+    }.fetch(current_locale, {})
+
+    [
+      {
+        title: labels.fetch(:company),
+        links: [
+          { slug: "about-us" },
+          { slug: "our-team" },
+          { slug: "careers" }
+        ]
+      },
+      {
+        title: labels.fetch(:services),
+        links: [
+          { slug: "our-services/tax-services" },
+          { slug: "our-services/business-services" },
+          { slug: "our-services/management-consulting" },
+          { slug: "audit-services" },
+          { slug: "our-services/immigration-related-accounting-services", label: labels.fetch(:immigration_footer) }
+        ]
+      },
+      {
+        title: labels.fetch(:resources),
+        links: [
+          { label: labels.fetch(:faqs) },
+          { slug: "contact-us" }
+        ]
+      }
+    ]
+  end
+
+  def nav_item_active?(item)
+    slug = item.fetch(:slug)
+    children = Array(item[:children])
+    @page&.slug == slug || children.any? { |child| @page&.slug == child.fetch(:slug) }
   end
 
   def language_options
@@ -234,6 +320,7 @@ module ApplicationHelper
       "our-services/business-services" => "tax-service",
       "our-services/management-consulting" => "consulting-service",
       "our-services/immigration-related-accounting-services" => "client-meeting",
+      "audit-services" => "office-documents",
       "our-team" => "business-advisory",
       "careers" => "office-documents",
       "contact-us" => "office-documents"
@@ -250,7 +337,8 @@ module ApplicationHelper
       "our-services/tax-services" => "business-service",
       "our-services/business-services" => "tax-service",
       "our-services/management-consulting" => "consulting-service",
-      "our-services/immigration-related-accounting-services" => "client-meeting"
+      "our-services/immigration-related-accounting-services" => "client-meeting",
+      "audit-services" => "office-documents"
     }.fetch(slug, "business-advisory")
   end
 
@@ -259,10 +347,14 @@ module ApplicationHelper
   end
 
   def google_maps_embed_url
-    "https://www.google.com/maps?q=1%2F550%20Whitehorse%20Rd%2C%20Surrey%20Hills%20VIC%203127%2C%20Australia&output=embed"
+    "https://www.google.com/maps?q=#{google_maps_business_query}&output=embed"
   end
 
   def google_maps_open_url
-    "https://www.google.com/maps/search/?api=1&query=1%2F550%20Whitehorse%20Rd%2C%20Surrey%20Hills%20VIC%203127%2C%20Australia"
+    "https://www.google.com/maps/search/?api=1&query=#{google_maps_business_query}"
+  end
+
+  def google_maps_business_query
+    ERB::Util.url_encode("TDK Group 1/550 Whitehorse Rd Surrey Hills VIC 3127 Australia")
   end
 end

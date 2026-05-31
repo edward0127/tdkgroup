@@ -14,24 +14,23 @@
       <%= render "shared/language_selector" %>
     </section>
 
-    <section class="site-footer__panel">
-      <h2><%= current_locale == "zh" ? "联系信息" : "Contact" %></h2>
-      <p>1/550 Whitehorse Rd<br>Surrey Hills, VIC 3127</p>
-      <p><a href="tel:0398904988">03 9890 4988</a><br><a href="mailto:info@tdkgroup.com.au">info@tdkgroup.com.au</a></p>
-      <%= link_to current_locale == "zh" ? "查看地图" : "View map", google_maps_open_url, class: "footer-map-link", target: "_blank", rel: "noopener" %>
-    </section>
-
-    <section class="site-footer__panel">
-      <h2><%= current_locale == "zh" ? "网站导航" : "Pages" %></h2>
-      <nav class="site-footer__links" aria-label="Footer">
-        <% footer_pages.each do |page| %>
-          <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
-        <% end %>
-      </nav>
-    </section>
+    <% footer_link_groups.each do |group| %>
+      <section class="site-footer__panel">
+        <h2><%= group.fetch(:title) %></h2>
+        <nav class="site-footer__links" aria-label="<%= group.fetch(:title) %>">
+          <% group.fetch(:links).each do |link| %>
+            <% if link[:slug].present? %>
+              <%= link_to link[:label].presence || page_nav_label(link[:slug]), link_for_cms_slug(link[:slug]) %>
+            <% else %>
+              <span><%= link.fetch(:label) %></span>
+            <% end %>
+          <% end %>
+        </nav>
+      </section>
+    <% end %>
   </div>
   <div class="site-footer__base">
-    <span>© <%= Time.current.year %> TDK Group Pty Ltd</span>
+    <span>© TDK Group Pty Ltd 2024</span>
     <span><%= current_locale == "zh" ? "CPA 专业会计与咨询服务" : "CPA practice and professional advisory services" %></span>
   </div>
 </footer>

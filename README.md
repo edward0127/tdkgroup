@@ -26,6 +26,35 @@ bundle exec rails test
 bundle exec rails zeitwerk:check
 ```
 
+## TDK Original Content Parity
+
+The canonical old-site text is stored in `app/services/tdk_original_content.rb`.
+`db:seed` creates missing CMS pages from that source but does not overwrite
+existing CMS JSON. To update an existing database after review, use the scoped
+content parity task:
+
+```sh
+bin/rails tdk:content_parity:dry_run
+bin/rails tdk:content_parity:apply
+```
+
+Production run order:
+
+```sh
+# 1. Back up the persistent SQLite database volume first.
+cp /data/production.sqlite3 /data/production.sqlite3.phase5b.bak
+
+# 2. Review the planned known-page CMS changes.
+bin/rails tdk:content_parity:dry_run
+
+# 3. Apply only after the dry-run output is approved.
+bin/rails tdk:content_parity:apply
+```
+
+The task only touches the known TDK CMS pages/translations from the canonical
+content source. It updates page metadata plus both `draft_json` and
+`published_json`; it does not replace unrelated CMS assets or unrelated records.
+
 ## Environment
 
 Use `.env.example` as the safe placeholder reference. Do not commit a real

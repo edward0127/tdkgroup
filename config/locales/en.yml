@@ -7,12 +7,12 @@ en:
     thanks: "Thanks for your message."
     success: "Thanks. We will get back to you soon."
     failure: "Your message could not be sent right now. Please call or email TDK Group directly."
-    form_title: "Send an enquiry"
-    name: "Name"
-    email: "Email"
+    form_title: "Contact Us"
+    name: "Your name"
+    email: "Your email"
     subject: "Subject"
-    message: "Message"
-    submit: "Send message"
+    message: "Your message"
+    submit: "Submit"
   admin:
     title: "TDK Admin"
 

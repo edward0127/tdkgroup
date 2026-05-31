@@ -14,6 +14,7 @@ Rails.application.routes.draw do
   get "our-services/business-services", to: "pages#show", defaults: { slug: "our-services/business-services" }
   get "our-services/management-consulting", to: "pages#show", defaults: { slug: "our-services/management-consulting" }
   get "our-services/immigration-related-accounting-services", to: "pages#show", defaults: { slug: "our-services/immigration-related-accounting-services" }
+  get "audit-services", to: "pages#show", defaults: { slug: "audit-services" }
   get "our-team", to: "pages#show", defaults: { slug: "our-team" }
   get "careers", to: "pages#show", defaults: { slug: "careers" }
   get "contact-us", to: "pages#show", defaults: { slug: "contact-us" }
@@ -25,6 +26,7 @@ Rails.application.routes.draw do
   get "zh/our-services/business-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services/business-services" }
   get "zh/our-services/management-consulting", to: "pages#show", defaults: { locale: "zh", slug: "our-services/management-consulting" }
   get "zh/our-services/immigration-related-accounting-services", to: "pages#show", defaults: { locale: "zh", slug: "our-services/immigration-related-accounting-services" }
+  get "zh/audit-services", to: "pages#show", defaults: { locale: "zh", slug: "audit-services" }
   get "zh/our-team", to: "pages#show", defaults: { locale: "zh", slug: "our-team" }
   get "zh/careers", to: "pages#show", defaults: { locale: "zh", slug: "careers" }
   get "zh/contact-us", to: "pages#show", defaults: { locale: "zh", slug: "contact-us" }
@@ -40,9 +42,9 @@ Rails.application.routes.draw do
   get "zh/职业机会", to: redirect("/zh/careers")
   get "zh/我们的团队", to: redirect("/zh/our-team")
 
-  get "services-2/audit-service", to: redirect("/our-services")
+  get "services-2/audit-service", to: redirect("/audit-services")
   get "services-2/immigration-related-accounting-service", to: redirect("/our-services/immigration-related-accounting-services")
-  get "audit-services", to: redirect("/our-services")
+  get "zh/services-2/audit-service", to: redirect("/zh/audit-services")
   get "immigration-related-accounting-services", to: redirect("/our-services/immigration-related-accounting-services")
   get "our-services/management-consulting-and-financial-services", to: redirect("/our-services/management-consulting")
   get "author/tdkgroup", to: redirect("/")

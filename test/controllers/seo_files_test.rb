@@ -12,6 +12,8 @@ class SeoFilesTest < ActionDispatch::IntegrationTest
     assert_equal "application/xml", response.media_type
     assert_includes response.body, "<loc>#{root_url}</loc>"
     assert_includes response.body, "<loc>#{root_url}about-us</loc>"
+    assert_includes response.body, "<loc>#{root_url}audit-services</loc>"
+    assert_includes response.body, "<loc>#{root_url}zh/audit-services</loc>"
     assert_includes response.body, "<loc>#{root_url}zh/about-us</loc>"
     assert_no_match %r{/admin/}, response.body
     assert_no_match %r{inline_edit|preview|/edit}, response.body

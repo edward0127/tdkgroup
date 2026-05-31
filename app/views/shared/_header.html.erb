@@ -14,8 +14,19 @@
       <details class="mobile-menu">
         <summary aria-label="Open navigation"><span></span><span></span><span></span></summary>
         <nav class="mobile-menu__panel">
-          <% nav_pages.each do |page| %>
-            <%= link_to page_nav_label(page), link_for_cms_slug(page.slug) %>
+          <% header_nav_items.each do |item| %>
+            <% if item[:children].present? %>
+              <div class="mobile-menu__group">
+                <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]), class: "mobile-menu__parent" %>
+                <div class="mobile-menu__children">
+                  <% item[:children].each do |child| %>
+                    <%= link_to page_nav_label(child[:slug]), link_for_cms_slug(child[:slug]) %>
+                  <% end %>
+                </div>
+              </div>
+            <% else %>
+              <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]) %>
+            <% end %>
           <% end %>
           <%= link_to current_locale == "zh" ? "电话 03 9890 4988" : "Call 03 9890 4988", "tel:0398904988" %>
         </nav>
@@ -23,8 +34,19 @@
     </div>
 
     <nav class="site-nav">
-      <% nav_pages.each do |page| %>
-        <%= link_to page_nav_label(page), link_for_cms_slug(page.slug), class: ("is-active" if @page&.slug == page.slug) %>
+      <% header_nav_items.each do |item| %>
+        <% if item[:children].present? %>
+          <div class="site-nav__item site-nav__item--dropdown">
+            <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]), class: ("is-active" if nav_item_active?(item)) %>
+            <div class="site-nav__dropdown">
+              <% item[:children].each do |child| %>
+                <%= link_to page_nav_label(child[:slug]), link_for_cms_slug(child[:slug]), class: ("is-active" if @page&.slug == child[:slug]) %>
+              <% end %>
+            </div>
+          </div>
+        <% else %>
+          <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]), class: ("is-active" if nav_item_active?(item)) %>
+        <% end %>
       <% end %>
     </nav>
 
