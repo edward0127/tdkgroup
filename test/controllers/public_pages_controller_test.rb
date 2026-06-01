@@ -14,10 +14,14 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", /Empowering Businesses with Expert Taxation and Consulting Services/
     assert_select "nav.site-nav a:first-child", text: "Home"
     assert_select "nav.site-nav a", text: "Careers", count: 0
+    assert_select ".site-nav__item--dropdown[data-controller='nav-dropdown']"
+    assert_select ".site-nav__link--dropdown[aria-haspopup='true'][aria-expanded='false'][aria-controls='site-nav-our-services-submenu'] .site-nav__chevron"
+    assert_select "#site-nav-our-services-submenu.site-nav__dropdown"
     assert_select ".site-nav__dropdown a", text: "Tax Services"
     assert_select ".site-nav__dropdown a", text: "Business Services"
     assert_select ".site-nav__dropdown a", text: "Management Consulting"
     assert_select ".site-nav__dropdown a", text: "Immigration Related Accounting Services"
+    assert_select ".mobile-menu__parent--has-children[aria-haspopup='true'][aria-expanded='true'][aria-controls='mobile-nav-our-services-submenu'] .mobile-menu__chevron"
     assert_select "nav.site-nav", text: /TDK Group Pty Ltd/, count: 0
     logos = css_select("img.brand-logo__image")
     assert_equal 2, logos.size

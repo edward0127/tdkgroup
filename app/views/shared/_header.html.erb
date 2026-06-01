@@ -16,9 +16,17 @@
         <nav class="mobile-menu__panel">
           <% header_nav_items.each do |item| %>
             <% if item[:children].present? %>
+              <% mobile_children_id = "mobile-nav-#{item[:slug].to_s.parameterize}-submenu" %>
               <div class="mobile-menu__group">
-                <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]), class: "mobile-menu__parent" %>
-                <div class="mobile-menu__children">
+                <%= link_to link_for_cms_slug(item[:slug]),
+                            class: "mobile-menu__parent mobile-menu__parent--has-children",
+                            aria: { haspopup: "true", expanded: "true", controls: mobile_children_id } do %>
+                  <span class="mobile-menu__parent-label"><%= page_nav_label(item[:slug]) %></span>
+                  <svg class="mobile-menu__chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                <% end %>
+                <div class="mobile-menu__children" id="<%= mobile_children_id %>">
                   <% item[:children].each do |child| %>
                     <%= link_to page_nav_label(child[:slug]), link_for_cms_slug(child[:slug]) %>
                   <% end %>
@@ -36,9 +44,20 @@
     <nav class="site-nav">
       <% header_nav_items.each do |item| %>
         <% if item[:children].present? %>
-          <div class="site-nav__item site-nav__item--dropdown">
-            <%= link_to page_nav_label(item[:slug]), link_for_cms_slug(item[:slug]), class: ("is-active" if nav_item_active?(item)) %>
-            <div class="site-nav__dropdown">
+          <% dropdown_id = "site-nav-#{item[:slug].to_s.parameterize}-submenu" %>
+          <div class="site-nav__item site-nav__item--dropdown"
+               data-controller="nav-dropdown"
+               data-action="mouseenter->nav-dropdown#open mouseleave->nav-dropdown#close focusin->nav-dropdown#open focusout->nav-dropdown#close">
+            <%= link_to link_for_cms_slug(item[:slug]),
+                        class: ["site-nav__link", "site-nav__link--dropdown", ("is-active" if nav_item_active?(item))].compact.join(" "),
+                        aria: { haspopup: "true", expanded: "false", controls: dropdown_id },
+                        data: { nav_dropdown_target: "trigger" } do %>
+              <span class="site-nav__link-label"><%= page_nav_label(item[:slug]) %></span>
+              <svg class="site-nav__chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            <% end %>
+            <div class="site-nav__dropdown" id="<%= dropdown_id %>">
               <% item[:children].each do |child| %>
                 <%= link_to page_nav_label(child[:slug]), link_for_cms_slug(child[:slug]), class: ("is-active" if @page&.slug == child[:slug]) %>
               <% end %>
