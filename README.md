@@ -38,6 +38,14 @@ bin/rails tdk:content_parity:dry_run
 bin/rails tdk:content_parity:apply
 ```
 
+To scope the sync to one or more CMS page slugs, pass `TDK_CONTENT_SLUGS` as a
+comma-separated list:
+
+```sh
+TDK_CONTENT_SLUGS=our-services/tax-services bin/rails tdk:content_parity:dry_run
+TDK_CONTENT_SLUGS=our-services/tax-services bin/rails tdk:content_parity:apply
+```
+
 Production run order:
 
 ```sh

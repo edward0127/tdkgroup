@@ -319,12 +319,12 @@ class TdkOriginalContent
           lead: "Navigating the ever-changing and complex tax environment requires expertise and strategic planning. At TDK Group Pty Ltd, we specialize in helping individuals and businesses effectively utilize tax laws and regulations to maximize value and achieve financial goals. Our comprehensive tax services are designed to provide clarity, compliance, and long-term benefits.",
           list_title: "Our tax services include:",
           bullets: [
-            "– Tax planning and consulting, including real estate investment, import & export, overseas investment etc.",
-            "– Individual tax returns",
-            "– Company, trust, partnership and SMSF (Self-Managed Superannuation Fund) tax return",
-            "– BAS and GST Reporting",
-            "– Other indirect tax advice (land tax, payroll, stamp duty, payroll etc.)",
-            "– Assistance regarding ATO investigations and audits, including capital gains tax, GST and overseas income"
+            "Tax planning and consulting, including real estate investment, import & export, overseas investment etc.",
+            "Individual tax returns",
+            "Company, trust, partnership and SMSF (Self-Managed Superannuation Fund) tax return",
+            "BAS and GST Reporting",
+            "Other indirect tax advice (land tax, payroll, stamp duty, payroll etc.)",
+            "Assistance regarding ATO investigations and audits, including capital gains tax, GST and overseas income"
           ],
           cta: "Contact us to get started today"
         )

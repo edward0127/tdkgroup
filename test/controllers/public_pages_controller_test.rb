@@ -115,6 +115,26 @@ class PublicPagesControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "tax services page renders full original English description and service list" do
+    get "/our-services/tax-services"
+
+    assert_response :success
+    text = page_text
+    assert_includes text, "Navigating the ever-changing and complex tax environment requires expertise and strategic planning. At TDK Group Pty Ltd, we specialize in helping individuals and businesses effectively utilize tax laws and regulations to maximize value and achieve financial goals. Our comprehensive tax services are designed to provide clarity, compliance, and long-term benefits."
+    assert_includes text, "Our tax services include:"
+    [
+      "Tax planning and consulting, including real estate investment, import & export, overseas investment etc.",
+      "Individual tax returns",
+      "Company, trust, partnership and SMSF (Self-Managed Superannuation Fund) tax return",
+      "BAS and GST Reporting",
+      "Other indirect tax advice (land tax, payroll, stamp duty, payroll etc.)",
+      "Assistance regarding ATO investigations and audits, including capital gains tax, GST and overseas income"
+    ].each do |item|
+      assert_includes text, item
+    end
+    assert_select ".cta-band a[href='/contact-us']", text: "Contact Us"
+  end
+
   test "footer uses old-site Company Services Resources groups" do
     get root_url
 

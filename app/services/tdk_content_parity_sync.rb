@@ -2,15 +2,20 @@ class TdkContentParitySync
   PAGE_ATTRIBUTES = %i[template show_in_nav show_in_footer sort_order].freeze
   TRANSLATION_ATTRIBUTES = %i[title seo_title seo_description].freeze
 
-  def initialize(dry_run:, io: $stdout)
+  def self.slugs_from_env(env = ENV)
+    env.fetch("TDK_CONTENT_SLUGS", "").split(",").map(&:strip).reject(&:empty?)
+  end
+
+  def initialize(dry_run:, io: $stdout, slugs: nil)
     @dry_run = dry_run
     @io = io
+    @slugs = Array(slugs).map(&:to_s).map(&:strip).reject(&:empty?)
     @changes = []
   end
 
   def call
     CmsPage.transaction do
-      TdkOriginalContent.pages.each { |page_data| sync_page(page_data) }
+      pages.each { |page_data| sync_page(page_data) }
       raise ActiveRecord::Rollback if dry_run
     end
 
@@ -20,7 +25,13 @@ class TdkContentParitySync
 
   private
 
-  attr_reader :dry_run, :io, :changes
+  attr_reader :dry_run, :io, :slugs, :changes
+
+  def pages
+    return TdkOriginalContent.pages if slugs.empty?
+
+    TdkOriginalContent.pages.select { |page_data| slugs.include?(page_data.fetch(:slug)) }
+  end
 
   def sync_page(page_data)
     slug = page_data.fetch(:slug)
