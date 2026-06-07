@@ -1,0 +1,66 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS</p>
+    <h1>BAS workspace</h1>
+    <p>Admin-only working papers for BAS client jobs and supporting documents.</p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "New client", new_admin_bas_client_path, class: "btn-primary" %>
+    <%= link_to "New BAS job", new_admin_bas_job_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-grid">
+  <article class="admin-card">
+    <span><%= @active_client_count %></span>
+    <strong>Active BAS clients</strong>
+  </article>
+  <article class="admin-card">
+    <span><%= @open_job_count %></span>
+    <strong>Open BAS jobs</strong>
+  </article>
+  <article class="admin-card">
+    <span><%= @jobs_with_open_queries_count %></span>
+    <strong>Jobs with open queries</strong>
+  </article>
+  <article class="admin-card">
+    <span><%= @recent_jobs.count %></span>
+    <strong>Recently updated jobs</strong>
+  </article>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Recent BAS jobs</h2>
+    <%= link_to "View all jobs", admin_bas_jobs_path, class: "text-link" %>
+  </div>
+
+  <% if @recent_jobs.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Period</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @recent_jobs.each do |job| %>
+            <tr>
+              <td><%= job.bas_client.display_name %></td>
+              <td><%= job.period_label %></td>
+              <td><%= job.status.humanize %></td>
+              <td><%= l(job.updated_at, format: :short) %></td>
+              <td><%= link_to "Open", admin_bas_job_path(job), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No BAS jobs yet.</p>
+  <% end %>
+</section>

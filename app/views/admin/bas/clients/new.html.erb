@@ -1,0 +1,9 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS client</p>
+    <h1>New client</h1>
+  </div>
+  <%= link_to "Back to clients", admin_bas_clients_path, class: "btn-secondary" %>
+</section>
+
+<%= render "form", client: @client %>

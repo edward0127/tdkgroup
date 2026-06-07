@@ -1,0 +1,43 @@
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Confidence</th>
+        <th>Amount</th>
+        <th>Explanation</th>
+        <th>Items</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% matches.each do |match| %>
+        <tr>
+          <td><%= match.match_type.humanize %></td>
+          <td><%= match.confidence.present? ? "#{match.confidence.to_fs(:delimited)}%" : "Not scored" %></td>
+          <td><%= number_to_currency(match.matched_amount) if match.matched_amount.present? %></td>
+          <td><%= match.explanation %></td>
+          <td>
+            <% match.items.each do |item| %>
+              <div>
+                <strong><%= item.matchable_type.demodulize.titleize %></strong>
+                <%= match_item_summary(item.matchable) %>
+              </div>
+            <% end %>
+          </td>
+          <td><%= match.status.humanize %></td>
+          <td>
+            <%= link_to "View", admin_bas_job_match_path(job, match), class: "text-link" %>
+            <% if match.status == "proposed" && !job.locked? %>
+              <br>
+              <%= button_to "Accept", accept_admin_bas_job_match_path(job, match), method: :post, class: "text-link" %>
+              <%= button_to "Reject", reject_admin_bas_job_match_path(job, match), method: :post, class: "text-danger" %>
+              <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(job, match), method: :post, class: "text-link" %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

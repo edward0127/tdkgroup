@@ -1,0 +1,52 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS PDF conversions</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>PDF bank statement conversions</h2>
+  <% if @conversion_runs.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Source PDF</th>
+            <th>Status</th>
+            <th>Rows</th>
+            <th>Errors</th>
+            <th>Import run</th>
+            <th>Converted at</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @conversion_runs.each do |conversion_run| %>
+            <tr>
+              <td><%= conversion_run.source_bas_document.title %></td>
+              <td><%= conversion_run.status.humanize %></td>
+              <td><%= conversion_run.row_count %></td>
+              <td><%= conversion_run.error_count %></td>
+              <td>
+                <% if conversion_run.bas_import_run.present? %>
+                  <%= link_to "Open import", admin_bas_job_import_run_path(@job, conversion_run.bas_import_run), class: "text-link" %>
+                <% else %>
+                  Not imported
+                <% end %>
+              </td>
+              <td><%= conversion_run.converted_at.present? ? l(conversion_run.converted_at, format: :short) : "Not converted" %></td>
+              <td><%= link_to "Open", admin_bas_job_document_conversion_run_path(@job, conversion_run), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No PDF bank statement conversions have been created for this BAS job.</p>
+  <% end %>
+</section>

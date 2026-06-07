@@ -1,0 +1,190 @@
+require "test_helper"
+require "rack/test"
+
+class AdminBasImportRunsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    login_as_admin
+  end
+
+  test "non-admin cannot access import pages" do
+    job = create_job
+    document = create_document(job, "bas_bank_statement.csv", "bank_statement")
+    import_run = BasImports::Previewer.new(
+      bas_job: job,
+      bas_document: document,
+      import_type: "bank_statement",
+      actor_username: "bas-import-admin"
+    ).call
+
+    reset!
+
+    get admin_bas_job_import_runs_path(job)
+    assert_redirected_to admin_login_path
+
+    get new_admin_bas_job_import_run_path(job)
+    assert_redirected_to admin_login_path
+
+    get admin_bas_job_import_run_path(job, import_run)
+    assert_redirected_to admin_login_path
+  end
+
+  test "admin can view import runs for a job" do
+    job = create_job
+
+    get admin_bas_job_import_runs_path(job)
+
+    assert_response :success
+    assert_select "h1", job.bas_client.display_name
+  end
+
+  test "admin can create preview import run with audit actor" do
+    job = create_job
+    document = create_document(job, "bas_bank_statement.csv", "bank_statement")
+
+    assert_difference "BasImportRun.count", 1 do
+      assert_difference "BasAuditEvent.count", 1 do
+        post admin_bas_job_import_runs_path(job), params: {
+          bas_import_run: {
+            bas_document_id: document.id,
+            import_type: "bank_statement"
+          }
+        }
+      end
+    end
+
+    import_run = BasImportRun.last
+    assert_redirected_to admin_bas_job_import_run_path(job, import_run)
+    assert_equal "previewed", import_run.status
+    assert_equal "bas-import-admin", BasAuditEvent.last.actor_username
+    assert_equal "bas_import_previewed", BasAuditEvent.last.event_type
+  end
+
+  test "admin can confirm import" do
+    job = create_job
+    import_run = preview_import(job, "bas_bank_statement.csv", "bank_statement", "bank_statement")
+
+    assert_difference "BasBankTransaction.count", 2 do
+      assert_difference "BasAuditEvent.count", 2 do
+        post confirm_admin_bas_job_import_run_path(job, import_run), params: {
+          column_mapping: import_run.column_mapping
+        }
+      end
+    end
+
+    assert_redirected_to admin_bas_job_import_run_path(job, import_run)
+    assert_equal "imported", import_run.reload.status
+    assert_equal "review_ready", job.reload.status
+    assert_equal "bas-import-admin", BasAuditEvent.last.actor_username
+    assert_equal "bas_import_completed", BasAuditEvent.last.event_type
+  end
+
+  test "admin can view import errors" do
+    job = create_job
+    import_run = preview_import(job, "bas_bank_statement_with_error.csv", "bank_statement", "bank_statement")
+
+    post confirm_admin_bas_job_import_run_path(job, import_run), params: {
+      column_mapping: import_run.column_mapping
+    }
+
+    get admin_bas_job_import_run_path(job, import_run)
+
+    assert_response :success
+    assert_select "h2", "Row errors"
+    assert_select "td", /Transaction date is invalid/
+  end
+
+  test "admin can revert import run" do
+    job = create_job
+    import_run = preview_import(job, "bas_bank_statement.csv", "bank_statement", "bank_statement")
+    BasImports::Importer.new(import_run: import_run, column_mapping: import_run.column_mapping, actor_username: "bas-import-admin").call
+
+    assert_difference "BasBankTransaction.count", -2 do
+      assert_difference "BasAuditEvent.count", 1 do
+        post revert_admin_bas_job_import_run_path(job, import_run)
+      end
+    end
+
+    assert_redirected_to admin_bas_job_import_run_path(job, import_run)
+    assert_equal "reverted", import_run.reload.status
+    assert_equal "bas_import_reverted", BasAuditEvent.last.event_type
+  end
+
+  test "locked job blocks import and revert" do
+    locked_job = create_job(status: "locked")
+    locked_document = create_document(locked_job, "bas_bank_statement.csv", "bank_statement")
+
+    assert_no_difference "BasImportRun.count" do
+      post admin_bas_job_import_runs_path(locked_job), params: {
+        bas_import_run: {
+          bas_document_id: locked_document.id,
+          import_type: "bank_statement"
+        }
+      }
+    end
+
+    assert_redirected_to admin_bas_job_import_runs_path(locked_job)
+
+    job = create_job
+    import_run = preview_import(job, "bas_bank_statement.csv", "bank_statement", "bank_statement")
+    BasImports::Importer.new(import_run: import_run, column_mapping: import_run.column_mapping, actor_username: "bas-import-admin").call
+    job.update!(status: "locked")
+
+    assert_no_difference "BasBankTransaction.count" do
+      post revert_admin_bas_job_import_run_path(job, import_run)
+    end
+
+    assert_redirected_to admin_bas_job_import_runs_path(job)
+    assert_equal "imported", import_run.reload.status
+  end
+
+  private
+
+  def login_as_admin
+    with_modified_env("ADMIN_USERNAME" => "bas-import-admin", "ADMIN_PASSWORD" => "secret-password") do
+      post admin_login_path, params: { username: "bas-import-admin", password: "secret-password" }
+      assert_redirected_to admin_root_path
+    end
+  end
+
+  def create_client
+    BasClient.create!(
+      legal_name: "Synthetic Import Client Pty Ltd",
+      default_gst_basis: "cash",
+      default_reporting_method: "simpler_bas"
+    )
+  end
+
+  def create_job(attributes = {})
+    BasJob.create!({
+      bas_client: create_client,
+      period_start: Date.new(2026, 1, 1),
+      period_end: Date.new(2026, 3, 31)
+    }.merge(attributes))
+  end
+
+  def create_document(job, filename, document_type)
+    document = job.documents.build(
+      title: filename.titleize,
+      document_type: document_type,
+      uploaded_by: "bas-import-admin"
+    )
+    document.file.attach(
+      Rack::Test::UploadedFile.new(
+        Rails.root.join("test/fixtures/files/#{filename}").to_s,
+        "text/csv"
+      )
+    )
+    document.save!
+    document
+  end
+
+  def preview_import(job, filename, document_type, import_type)
+    document = create_document(job, filename, document_type)
+    BasImports::Previewer.new(
+      bas_job: job,
+      bas_document: document,
+      import_type: import_type,
+      actor_username: "bas-import-admin"
+    ).call
+  end
+end

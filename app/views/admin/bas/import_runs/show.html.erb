@@ -1,0 +1,175 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS import</p>
+    <h1><%= @import_run.import_type.humanize %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% if @import_run.status == "imported" && !@job.locked? %>
+      <%= button_to "Revert import", revert_admin_bas_job_import_run_path(@job, @import_run), method: :post, class: "btn-secondary", form: { data: { turbo_confirm: "Revert this import run?" } } %>
+    <% end %>
+    <%= link_to "All imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Import details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Document</dt>
+      <dd><%= link_to @import_run.bas_document.title, admin_bas_job_document_path(@job, @import_run.bas_document), class: "text-link" %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @import_run.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Counts</dt>
+      <dd><%= @import_run.row_count %> rows, <%= @import_run.imported_count %> imported, <%= @import_run.error_count %> errors</dd>
+    </div>
+    <div>
+      <dt>Imported by</dt>
+      <dd><%= @import_run.imported_by.presence || "Not imported" %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Imported records</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Record type</th>
+          <th>Count</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Bank transactions</td>
+          <td><%= @record_counts.fetch(:bank_transactions) %></td>
+          <td><%= link_to "View", admin_bas_job_bank_transactions_path(@job, import_run_id: @import_run.id), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Invoices</td>
+          <td><%= @record_counts.fetch(:invoices) %></td>
+          <td><%= link_to "View", admin_bas_job_invoices_path(@job, import_run_id: @import_run.id), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Cash transactions</td>
+          <td><%= @record_counts.fetch(:cash_transactions) %></td>
+          <td><%= link_to "View", admin_bas_job_cash_transactions_path(@job, import_run_id: @import_run.id), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Payroll summaries</td>
+          <td><%= @record_counts.fetch(:payroll_summaries) %></td>
+          <td><%= link_to "View", admin_bas_job_payroll_summaries_path(@job, import_run_id: @import_run.id), class: "text-link" %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<% if @import_run.status == "previewed" %>
+  <section class="admin-card-panel">
+    <h2>Column mapping</h2>
+    <%= form_with url: confirm_admin_bas_job_import_run_path(@job, @import_run), method: :post, class: "admin-form" do %>
+      <div class="admin-form-grid">
+        <% @import_fields.each do |field| %>
+          <div class="field">
+            <%= label_tag "column_mapping_#{field}", field.humanize %>
+            <%= select_tag "column_mapping[#{field}]",
+                  options_for_select([ [ "Not mapped", "" ] ] + @headers.map { |header| [ header, header ] }, @import_run.column_mapping[field]),
+                  id: "column_mapping_#{field}" %>
+          </div>
+        <% end %>
+      </div>
+      <button type="submit" class="btn-primary">Confirm import</button>
+    <% end %>
+  </section>
+<% else %>
+  <section class="admin-card-panel">
+    <h2>Column mapping</h2>
+    <% if @import_run.column_mapping.any? %>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Column</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @import_run.column_mapping.each do |field, header| %>
+              <tr>
+                <td><%= field.humanize %></td>
+                <td><%= header.presence || "Not mapped" %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <p class="admin-muted">No mapping recorded.</p>
+    <% end %>
+  </section>
+<% end %>
+
+<section class="admin-card-panel">
+  <h2>Preview rows</h2>
+  <% if @import_run.preview_rows.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <% @headers.each do |header| %>
+              <th><%= header %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% @import_run.preview_rows.each do |row| %>
+            <% data = row.fetch("data", {}) %>
+            <tr>
+              <td><%= row.fetch("row_number", "") %></td>
+              <% @headers.each do |header| %>
+                <td><%= data[header] %></td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No preview rows available.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Row errors</h2>
+  <% if @import_run.import_errors.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @import_run.import_errors.each do |error| %>
+            <tr>
+              <td><%= error["row_number"].presence || "Import" %></td>
+              <td><%= error["message"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No row errors recorded.</p>
+  <% end %>
+</section>

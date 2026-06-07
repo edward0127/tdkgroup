@@ -1,0 +1,61 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS match</p>
+    <h1><%= @match.match_type.humanize %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% if @match.status == "proposed" && !@job.locked? %>
+      <%= button_to "Accept", accept_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-primary" %>
+      <%= button_to "Reject", reject_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-secondary" %>
+      <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-secondary" %>
+    <% end %>
+    <%= link_to "All matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Match details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Status</dt>
+      <dd><%= @match.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Confidence</dt>
+      <dd><%= @match.confidence.present? ? "#{@match.confidence.to_fs(:delimited)}%" : "Not scored" %></dd>
+    </div>
+    <div>
+      <dt>Matched amount</dt>
+      <dd><%= number_to_currency(@match.matched_amount) if @match.matched_amount.present? %></dd>
+    </div>
+    <div>
+      <dt>Explanation</dt>
+      <dd><%= @match.explanation.presence || "None" %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Matched items</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Summary</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @match.items.each do |item| %>
+          <tr>
+            <td><%= item.matchable_type.demodulize.titleize %></td>
+            <td><%= match_item_summary(item.matchable) %></td>
+            <td><%= number_to_currency(item.amount) if item.amount.present? %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>

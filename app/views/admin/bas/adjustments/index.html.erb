@@ -1,0 +1,53 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS adjustments</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% unless @job.locked? %>
+      <%= link_to "New adjustment", new_admin_bas_job_adjustment_path(@job), class: "btn-primary" %>
+    <% end %>
+    <%= link_to "Report review", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Manual adjustments</h2>
+  <% if @adjustments.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Label</th>
+            <th>Amount</th>
+            <th>Reason</th>
+            <th>Created by</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @adjustments.each do |adjustment| %>
+            <tr>
+              <td><%= adjustment.adjustment_type.humanize %></td>
+              <td><%= adjustment.label %></td>
+              <td><%= number_to_currency(adjustment.amount) %></td>
+              <td><%= adjustment.reason %></td>
+              <td><%= adjustment.created_by.presence || "Not recorded" %></td>
+              <td>
+                <% unless @job.locked? %>
+                  <%= link_to "Edit", edit_admin_bas_job_adjustment_path(@job, adjustment), class: "text-link" %><br>
+                  <%= button_to "Delete", admin_bas_job_adjustment_path(@job, adjustment), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this adjustment?" } } %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No manual adjustments.</p>
+  <% end %>
+</section>

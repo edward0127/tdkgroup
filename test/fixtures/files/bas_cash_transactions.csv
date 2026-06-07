@@ -1,0 +1,3 @@
+Date,Direction,Party,Description,Total,GST,GST Code
+01/01/2026,cash_receipt,Synthetic Customer,Synthetic cash sale,22.00,2.00,taxable
+02/01/2026,cash_payment,Synthetic Supplier,Synthetic cash payment,11.00,1.00,taxable

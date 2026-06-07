@@ -35,6 +35,7 @@
 
 # Ignore key files for decrypting credentials and more.
 /config/*.key
+/.kamal/secrets
 
 
 /app/assets/builds/*
@@ -43,6 +44,7 @@
 # Local env / secrets
 .env*
 !.env.example
+!.env.prod.example
 /config/master.key
 
 # SQLite local database files

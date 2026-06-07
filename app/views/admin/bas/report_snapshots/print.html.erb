@@ -1,0 +1,113 @@
+<% totals = @snapshot.totals %>
+<% summary = totals.fetch("summary", {}) %>
+<% labels = summary.fetch("bas_labels", {}) %>
+<% payroll = totals.fetch("payroll", {}) %>
+
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">Printable BAS report</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Back to snapshot", admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Report details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Client</dt>
+      <dd><%= @job.bas_client.display_name %></dd>
+    </div>
+    <div>
+      <dt>Period</dt>
+      <dd><%= @job.period_start.to_fs(:db) %> to <%= @job.period_end.to_fs(:db) %></dd>
+    </div>
+    <div>
+      <dt>GST basis</dt>
+      <dd><%= @job.gst_basis.humanize %></dd>
+    </div>
+    <div>
+      <dt>Reporting method</dt>
+      <dd><%= @job.reporting_method.humanize %></dd>
+    </div>
+    <div>
+      <dt>Snapshot status</dt>
+      <dd><%= @snapshot.status.humanize %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <h2>BAS labels</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Exact amount</th>
+          <th>Whole-dollar suggestion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>G1 total sales</td>
+          <td><%= number_to_currency(summary["g1_total_sales"]) %></td>
+          <td><%= labels["G1"] %></td>
+        </tr>
+        <tr>
+          <td>1A GST on sales</td>
+          <td><%= number_to_currency(summary["gst_on_sales_1a"]) %></td>
+          <td><%= labels["1A"] %></td>
+        </tr>
+        <tr>
+          <td>1B GST on purchases</td>
+          <td><%= number_to_currency(summary["gst_on_purchases_1b"]) %></td>
+          <td><%= labels["1B"] %></td>
+        </tr>
+        <tr>
+          <td>Net GST payable/refundable</td>
+          <td><%= number_to_currency(summary["net_gst_payable"]) %></td>
+          <td><%= labels["net_gst_payable"] %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Payroll</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <tr>
+          <th>Gross wages</th>
+          <td><%= number_to_currency(payroll["gross_wages"]) %></td>
+        </tr>
+        <tr>
+          <th>PAYG withheld</th>
+          <td><%= number_to_currency(payroll["payg_withheld"]) %></td>
+        </tr>
+        <tr>
+          <th>Super amount</th>
+          <td><%= number_to_currency(payroll["super_amount"]) %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Validation blockers</h2>
+  <% if @snapshot.validation_errors.any? %>
+    <ul>
+      <% @snapshot.validation_errors.each do |error| %>
+        <li><%= error %></li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="admin-muted">No validation blockers recorded.</p>
+  <% end %>
+</section>

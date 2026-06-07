@@ -1,0 +1,37 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS</p>
+    <h1>Jobs</h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "New BAS job", new_admin_bas_job_path, class: "btn-primary" %>
+    <%= link_to "BAS dashboard", admin_bas_root_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Client</th>
+        <th>Period</th>
+        <th>Status</th>
+        <th>GST basis</th>
+        <th>Reporting method</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @jobs.each do |job| %>
+        <tr>
+          <td><%= job.bas_client.display_name %></td>
+          <td><%= job.period_label %></td>
+          <td><%= job.status.humanize %></td>
+          <td><%= job.gst_basis.humanize %></td>
+          <td><%= job.reporting_method.humanize %></td>
+          <td><%= link_to "Open", admin_bas_job_path(job), class: "text-link" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

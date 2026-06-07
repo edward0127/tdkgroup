@@ -1,0 +1,81 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS client query draft</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+    <%= link_to "Open queries", admin_bas_job_queries_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Email draft</h2>
+  <p class="text-danger">Please review before sending. This system does not send emails automatically.</p>
+  <% if @draft.recipient_email.present? %>
+    <div class="field">
+      <%= label_tag "email_draft_to", "To" %>
+      <%= text_field_tag "email_draft_to", @draft.recipient_email, readonly: true, id: "email_draft_to" %>
+    </div>
+  <% else %>
+    <p class="admin-muted">No client email is recorded. Please copy the draft manually.</p>
+  <% end %>
+
+  <% if @draft.queries.empty? %>
+    <p class="admin-muted">There are no open client queries for this BAS job.</p>
+  <% end %>
+
+  <div class="field">
+    <%= label_tag "email_draft_subject", "Subject" %>
+    <%= text_field_tag "email_draft_subject", @draft.subject, readonly: true, id: "email_draft_subject" %>
+  </div>
+  <button type="button" class="btn-secondary" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('email_draft_subject').value)">Copy subject</button>
+
+  <div class="field">
+    <%= label_tag "email_draft_body", "Body" %>
+    <%= text_area_tag "email_draft_body", @draft.body, rows: 20, readonly: true, id: "email_draft_body", class: "code-textarea" %>
+  </div>
+  <button type="button" class="btn-secondary" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('email_draft_body').value)">Copy body</button>
+
+  <% if @draft.queries.any? { |query| query.status == "open" } %>
+    <% if @job.locked? %>
+      <p class="admin-muted">Locked BAS jobs cannot change query statuses.</p>
+    <% else %>
+      <%= button_to "Mark included open queries as waiting for client",
+            mark_waiting_for_client_admin_bas_job_query_email_draft_path(@job),
+            method: :post,
+            class: "btn-primary" %>
+    <% end %>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Included queries</h2>
+  <% if @draft.queries.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @draft.queries.each do |query| %>
+            <tr>
+              <td><%= query.title %></td>
+              <td><%= query.query_type.humanize %></td>
+              <td><%= query.status.humanize %></td>
+              <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" unless @job.locked? %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">There are no open client queries for this BAS job.</p>
+  <% end %>
+</section>

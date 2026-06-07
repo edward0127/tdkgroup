@@ -1,0 +1,35 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS queries</p>
+    <h1><%= @job.period_label %></h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "btn-primary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Updated by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @queries.each do |query| %>
+        <tr>
+          <td><%= query.title %></td>
+          <td><%= query.query_type.humanize %></td>
+          <td><%= query.status.humanize %></td>
+          <td><%= query.updated_by.presence || "Not recorded" %></td>
+          <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

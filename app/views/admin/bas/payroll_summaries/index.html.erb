@@ -1,0 +1,43 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS records</p>
+    <h1>Payroll summaries</h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+</section>
+
+<section class="admin-card-panel">
+  <%= form_with url: admin_bas_job_payroll_summaries_path(@job), method: :get, class: "admin-form" do %>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= label_tag :import_run_id, "Import run" %>
+        <%= select_tag :import_run_id, options_for_select([ [ "Any", "" ] ] + @import_runs.map { |run| [ "##{run.id} #{run.import_type.humanize}", run.id ] }, params[:import_run_id]) %>
+      </div>
+    </div>
+    <button type="submit" class="btn-secondary">Filter</button>
+  <% end %>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Gross wages</th>
+        <th>PAYG withheld</th>
+        <th>Super</th>
+        <th>Source row</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @payroll_summaries.each do |summary| %>
+        <tr>
+          <td><%= number_to_currency(summary.gross_wages) if summary.gross_wages.present? %></td>
+          <td><%= number_to_currency(summary.payg_withheld) if summary.payg_withheld.present? %></td>
+          <td><%= number_to_currency(summary.super_amount) if summary.super_amount.present? %></td>
+          <td><%= summary.source_row_number %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

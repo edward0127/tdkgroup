@@ -1,0 +1,80 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS records</p>
+    <h1>Cash transactions</h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+</section>
+
+<section class="admin-card-panel">
+  <%= form_with url: admin_bas_job_cash_transactions_path(@job), method: :get, class: "admin-form" do %>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= label_tag :status %>
+        <%= select_tag :status, options_for_select([ [ "Any", "" ] ] + BasCashTransaction::STATUS_VALUES.map { |value| [ value.humanize, value ] }, params[:status]) %>
+      </div>
+      <div class="field">
+        <%= label_tag :q, "Party/description" %>
+        <%= text_field_tag :q, params[:q] %>
+      </div>
+      <div class="field">
+        <%= label_tag :start_date %>
+        <%= date_field_tag :start_date, params[:start_date] %>
+      </div>
+      <div class="field">
+        <%= label_tag :end_date %>
+        <%= date_field_tag :end_date, params[:end_date] %>
+      </div>
+      <div class="field">
+        <%= label_tag :import_run_id, "Import run" %>
+        <%= select_tag :import_run_id, options_for_select([ [ "Any", "" ] ] + @import_runs.map { |run| [ "##{run.id} #{run.import_type.humanize}", run.id ] }, params[:import_run_id]) %>
+      </div>
+    </div>
+    <button type="submit" class="btn-secondary">Filter</button>
+  <% end %>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Direction</th>
+        <th>Party</th>
+        <th>Description</th>
+        <th>Total</th>
+        <th>GST</th>
+        <th>GST code</th>
+        <th>Status</th>
+        <th>Matches</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @cash_transactions.each do |transaction| %>
+        <tr>
+          <td><%= transaction.transaction_date %></td>
+          <td><%= transaction.direction.humanize %></td>
+          <td><%= transaction.party_name %></td>
+          <td><%= transaction.description %></td>
+          <td><%= number_to_currency(transaction.total_amount) if transaction.total_amount.present? %></td>
+          <td><%= number_to_currency(transaction.gst_amount) if transaction.gst_amount.present? %></td>
+          <td><%= transaction.gst_code.humanize %></td>
+          <td><%= transaction.status.humanize %></td>
+          <td><%= transaction.matches.proposed.count %> proposed</td>
+          <td>
+            <% unless @job.locked? %>
+              <% if transaction.status == "ignored" %>
+                <%= button_to "Restore", restore_admin_bas_job_cash_transaction_path(@job, transaction), method: :post, class: "text-link" %>
+              <% else %>
+                <%= button_to "Ignore", ignore_admin_bas_job_cash_transaction_path(@job, transaction), method: :post, class: "text-danger" %>
+                <%= button_to "Needs review", mark_needs_review_admin_bas_job_cash_transaction_path(@job, transaction), method: :post, class: "text-link" %>
+              <% end %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

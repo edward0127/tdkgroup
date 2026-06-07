@@ -1,0 +1,70 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS client</p>
+    <h1><%= @client.display_name %></h1>
+    <p><%= @client.legal_name %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "New BAS job", new_admin_bas_job_path(bas_client_id: @client.id), class: "btn-primary" %>
+    <%= link_to "Edit client", edit_admin_bas_client_path(@client), class: "btn-secondary" %>
+    <%= link_to "Back to clients", admin_bas_clients_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Client details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>ABN</dt>
+      <dd><%= @client.abn.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Contact</dt>
+      <dd><%= [ @client.contact_name, @client.contact_email, @client.contact_phone ].compact_blank.join(" / ").presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>BAS defaults</dt>
+      <dd><%= @client.default_gst_basis.humanize %>, <%= @client.reporting_frequency.humanize %>, <%= @client.default_reporting_method.humanize %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @client.archived? ? "Archived" : "Active" %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>BAS jobs</h2>
+    <%= link_to "Create job", new_admin_bas_job_path(bas_client_id: @client.id), class: "text-link" %>
+  </div>
+
+  <% if @jobs.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Status</th>
+            <th>Documents</th>
+            <th>Open queries</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @jobs.each do |job| %>
+            <tr>
+              <td><%= job.period_label %></td>
+              <td><%= job.status.humanize %></td>
+              <td><%= job.documents.size %></td>
+              <td><%= job.queries.open_items.size %></td>
+              <td><%= link_to "Open", admin_bas_job_path(job), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No BAS jobs for this client yet.</p>
+  <% end %>
+</section>

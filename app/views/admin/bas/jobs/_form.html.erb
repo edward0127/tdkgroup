@@ -1,0 +1,63 @@
+<% if job.errors.any? %>
+  <div class="form-errors">
+    <ul>
+      <% job.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<% job_form_url = job.persisted? ? admin_bas_job_path(job) : admin_bas_jobs_path %>
+
+<%= form_with model: job, url: job_form_url, class: "admin-form" do |form| %>
+  <section class="admin-card-panel">
+    <h2>Job details</h2>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= form.label :bas_client_id, "Client" %>
+        <%= form.collection_select :bas_client_id, @clients, :id, :display_name, { prompt: "Select client" }, required: true %>
+      </div>
+      <div class="field">
+        <%= form.label :quarter_label %>
+        <%= form.text_field :quarter_label, placeholder: "FY2026 Q1" %>
+      </div>
+      <div class="field">
+        <%= form.label :period_start %>
+        <%= form.date_field :period_start, required: true %>
+      </div>
+      <div class="field">
+        <%= form.label :period_end %>
+        <%= form.date_field :period_end, required: true %>
+      </div>
+      <div class="field">
+        <%= form.label :status %>
+        <%= form.select :status, BasJob::STATUS_VALUES.map { |value| [ value.humanize, value ] } %>
+      </div>
+      <div class="field">
+        <%= form.label :gst_basis, "GST basis" %>
+        <%= form.select :gst_basis, BasClient::GST_BASIS_VALUES.map { |value| [ value.humanize, value ] } %>
+      </div>
+      <div class="field">
+        <%= form.label :reporting_method %>
+        <%= form.select :reporting_method, BasClient::REPORTING_METHOD_VALUES.map { |value| [ value.humanize, value ] } %>
+      </div>
+      <label class="checkbox-field">
+        <%= form.check_box :payroll_applicable %>
+        <span>Payroll applicable</span>
+      </label>
+      <label class="checkbox-field">
+        <%= form.check_box :cash_transactions_applicable %>
+        <span>Cash transactions applicable</span>
+      </label>
+    </div>
+    <div class="field">
+      <%= form.label :internal_notes %>
+      <%= form.text_area :internal_notes, rows: 5 %>
+    </div>
+  </section>
+
+  <div class="admin-submit-row">
+    <button type="submit" class="btn-primary">Save BAS job</button>
+  </div>
+<% end %>

@@ -56,6 +56,92 @@ Rails.application.routes.draw do
     post "login", to: "sessions#create"
     delete "logout", to: "sessions#destroy", as: :logout
 
+    namespace :bas do
+      root "dashboard#show"
+
+      resources :clients
+      resources :jobs do
+        resource :matching, only: [ :show ], controller: "matching" do
+          post :run
+          post :generate_queries
+        end
+        resources :matches, only: [ :index, :show, :new, :create ] do
+          member do
+            post :accept
+            post :reject
+            post :mark_needs_review
+          end
+        end
+        resources :import_runs, only: [ :index, :new, :create, :show ] do
+          member do
+            post :confirm
+            post :revert
+          end
+        end
+        resources :bank_transactions, only: [ :index ] do
+          member do
+            post :ignore
+            post :mark_needs_review
+            post :restore
+          end
+        end
+        resources :invoices, only: [ :index ] do
+          member do
+            post :ignore
+            post :mark_needs_review
+            post :restore
+          end
+        end
+        resources :cash_transactions, only: [ :index ] do
+          member do
+            post :ignore
+            post :mark_needs_review
+            post :restore
+          end
+        end
+        resources :payroll_summaries, only: [ :index ]
+        resources :adjustments, except: [ :show ]
+        resources :report_snapshots, only: [ :index, :show, :create ] do
+          member do
+            patch :approve
+            patch :lock
+            get :download_summary_csv
+            get :download_gst_detail_csv
+            get :download_matches_csv
+            get :download_queries_csv
+            get :download_adjustments_csv
+            get :print
+          end
+        end
+        resource :report, only: [ :show ], controller: "reports" do
+          post :calculate
+        end
+        resources :ai_runs, only: [ :index, :show, :create ]
+        resources :ai_suggestions, only: [ :index, :show ] do
+          member do
+            post :accept
+            post :reject
+            post :mark_needs_review
+          end
+        end
+        resources :documents do
+          get :download, on: :member
+        end
+        resources :document_conversion_runs, only: [ :index, :show, :create ] do
+          member do
+            post :confirm_import
+            post :confirm_import_and_match
+            get :download_csv
+            post :abandon
+          end
+        end
+        resources :queries, except: [ :destroy ]
+        resource :query_email_draft, only: [ :show ], controller: "query_email_drafts" do
+          post :mark_waiting_for_client
+        end
+      end
+    end
+
     resources :cms_pages, only: [ :index, :edit, :update ] do
       get :inline_edit, on: :member
       patch :inline_update, on: :member

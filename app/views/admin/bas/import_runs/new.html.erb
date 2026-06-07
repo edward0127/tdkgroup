@@ -1,0 +1,45 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS import</p>
+    <h1>New import</h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<% if @import_run.errors.any? %>
+  <div class="form-errors">
+    <ul>
+      <% @import_run.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<section class="admin-card-panel">
+  <h2>Preview import</h2>
+  <% if @documents.any? %>
+    <%= form_with model: @import_run,
+          url: admin_bas_job_import_runs_path(@job),
+          class: "admin-form" do |form| %>
+      <div class="admin-form-grid">
+        <div class="field">
+          <%= form.label :bas_document_id, "Uploaded document" %>
+          <%= form.collection_select :bas_document_id, @documents, :id, :title, { prompt: "Select document" }, required: true %>
+        </div>
+        <div class="field">
+          <%= form.label :import_type %>
+          <%= form.select :import_type, BasImportRun::IMPORT_TYPE_VALUES.map { |value| [ value.humanize, value ] }, { prompt: "Select import type" }, required: true %>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary">Create preview</button>
+    <% end %>
+  <% else %>
+    <p class="admin-muted">Upload a BAS document before creating an import preview.</p>
+    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+  <% end %>
+</section>

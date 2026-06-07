@@ -197,6 +197,19 @@ module ApplicationHelper
     controller_path.start_with?("admin/")
   end
 
+  def match_item_summary(record)
+    case record
+    when BasBankTransaction
+      [ record.transaction_date, record.description.presence || record.details, number_to_currency(record.amount) ].compact_blank.join(" - ")
+    when BasInvoice
+      [ record.invoice_number.presence || "Invoice ##{record.id}", record.party_name, number_to_currency(record.total_amount) ].compact_blank.join(" - ")
+    when BasCashTransaction
+      [ record.transaction_date, record.party_name.presence || record.description, number_to_currency(record.total_amount) ].compact_blank.join(" - ")
+    else
+      record.to_s
+    end
+  end
+
   def body_classes
     classes = [ "site-body" ]
     classes << page_template_class if !admin_page? || cms_public_shell?

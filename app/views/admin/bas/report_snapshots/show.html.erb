@@ -1,0 +1,158 @@
+<% totals = @snapshot.totals %>
+<% summary = totals.fetch("summary", {}) %>
+<% labels = summary.fetch("bas_labels", {}) %>
+<% payroll = totals.fetch("payroll", {}) %>
+
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS report snapshot</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% if @snapshot.status == "draft" && @snapshot.validation_errors.blank? && !@job.locked? %>
+      <%= button_to "Approve final", approve_admin_bas_job_report_snapshot_path(@job, @snapshot), method: :patch, class: "btn-primary", form: { data: { turbo_confirm: "Approve this BAS report snapshot?" } } %>
+    <% end %>
+    <% if @snapshot.final? && @job.status == "approved" %>
+      <%= button_to "Lock job", lock_admin_bas_job_report_snapshot_path(@job, @snapshot), method: :patch, class: "btn-primary", form: { data: { turbo_confirm: "Lock this BAS job? This cannot be edited afterward." } } %>
+    <% end %>
+    <%= link_to "Print", print_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "All snapshots", admin_bas_job_report_snapshots_path(@job), class: "btn-secondary" %>
+    <%= link_to "Report review", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Snapshot details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Status</dt>
+      <dd><%= @snapshot.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Generated</dt>
+      <dd><%= @snapshot.generated_at ? l(@snapshot.generated_at, format: :short) : "Not recorded" %> by <%= @snapshot.generated_by.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Approved</dt>
+      <dd><%= @snapshot.approved_at ? "#{l(@snapshot.approved_at, format: :short)} by #{@snapshot.approved_by}" : "Not approved" %></dd>
+    </div>
+    <div>
+      <dt>Locked</dt>
+      <dd><%= @snapshot.locked_at ? "#{l(@snapshot.locked_at, format: :short)} by #{@snapshot.locked_by}" : "Not locked" %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <h2>BAS summary</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Exact amount</th>
+          <th>BAS whole-dollar suggestion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>G1 total sales</td>
+          <td><%= number_to_currency(summary["g1_total_sales"]) %></td>
+          <td><%= labels["G1"] %></td>
+        </tr>
+        <tr>
+          <td>1A GST on sales</td>
+          <td><%= number_to_currency(summary["gst_on_sales_1a"]) %></td>
+          <td><%= labels["1A"] %></td>
+        </tr>
+        <tr>
+          <td>1B GST on purchases</td>
+          <td><%= number_to_currency(summary["gst_on_purchases_1b"]) %></td>
+          <td><%= labels["1B"] %></td>
+        </tr>
+        <tr>
+          <td>Net GST payable/refundable</td>
+          <td><%= number_to_currency(summary["net_gst_payable"]) %></td>
+          <td><%= labels["net_gst_payable"] %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Payroll</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <tr>
+          <th>Gross wages</th>
+          <td><%= number_to_currency(payroll["gross_wages"]) %></td>
+        </tr>
+        <tr>
+          <th>PAYG withheld</th>
+          <td><%= number_to_currency(payroll["payg_withheld"]) %></td>
+        </tr>
+        <tr>
+          <th>Super amount</th>
+          <td><%= number_to_currency(payroll["super_amount"]) %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Validation blockers</h2>
+  <% if @snapshot.validation_errors.any? %>
+    <ul>
+      <% @snapshot.validation_errors.each do |error| %>
+        <li><%= error %></li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="admin-muted">No validation blockers were recorded for this snapshot.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Exports</h2>
+  <div class="admin-actions">
+    <%= link_to "Summary CSV", download_summary_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "GST detail CSV", download_gst_detail_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "Matches CSV", download_matches_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "Queries CSV", download_queries_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "Adjustments CSV", download_adjustments_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Manual adjustments</h2>
+  <% if Array(totals["adjustments"]).any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Label</th>
+            <th>Amount</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% Array(totals["adjustments"]).each do |adjustment| %>
+            <tr>
+              <td><%= adjustment["adjustment_type"].to_s.humanize %></td>
+              <td><%= adjustment["label"] %></td>
+              <td><%= number_to_currency(adjustment["amount"]) %></td>
+              <td><%= adjustment["reason"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No manual adjustments in this snapshot.</p>
+  <% end %>
+</section>

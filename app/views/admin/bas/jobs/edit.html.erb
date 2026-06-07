@@ -1,0 +1,12 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS job</p>
+    <h1>Edit BAS job</h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "View job", admin_bas_job_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to jobs", admin_bas_jobs_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<%= render "form", job: @job %>

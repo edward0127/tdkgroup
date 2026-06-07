@@ -1,0 +1,85 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS AI run</p>
+    <h1><%= @run.input_kind.to_s.humanize %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "All AI runs", admin_bas_job_ai_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "AI suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Run details</h2>
+  <% if @config.openai_warning_message.present? %>
+    <p class="text-danger"><%= @config.openai_warning_message %></p>
+  <% end %>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Status</dt>
+      <dd><%= @run.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Provider</dt>
+      <dd><%= @run.provider.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Model</dt>
+      <dd><%= @run.ai_model_name.presence || "Not configured" %></dd>
+    </div>
+    <div>
+      <dt>Document</dt>
+      <dd><%= @run.bas_document ? link_to(@run.bas_document.title, admin_bas_job_document_path(@job, @run.bas_document), class: "text-link") : "None" %></dd>
+    </div>
+    <div>
+      <dt>Started</dt>
+      <dd><%= @run.started_at ? l(@run.started_at, format: :short) : "Not started" %></dd>
+    </div>
+    <div>
+      <dt>Completed</dt>
+      <dd><%= @run.completed_at ? l(@run.completed_at, format: :short) : "Not completed" %></dd>
+    </div>
+  </dl>
+  <% if @run.summary.present? %>
+    <p><%= @run.summary %></p>
+  <% end %>
+  <% if @run.error_message.present? %>
+    <p class="text-danger"><%= @run.error_message %></p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Suggestions</h2>
+  <% if @suggestions.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Confidence</th>
+            <th>Source</th>
+            <th>Explanation</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @suggestions.each do |suggestion| %>
+            <tr>
+              <td><%= suggestion.suggestion_type.humanize %></td>
+              <td><%= suggestion.status.humanize %></td>
+              <td><%= suggestion.confidence || "Not scored" %></td>
+              <td><%= [ suggestion.source_type, suggestion.source_id ].compact.join(" #") %></td>
+              <td><%= suggestion.explanation %></td>
+              <td><%= link_to "Open", admin_bas_job_ai_suggestion_path(@job, suggestion), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No AI suggestions were created by this run.</p>
+  <% end %>
+</section>

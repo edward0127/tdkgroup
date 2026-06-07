@@ -1,0 +1,64 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS AI suggestion</p>
+    <h1><%= @suggestion.suggestion_type.humanize %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% if @suggestion.status == "proposed" && !@job.locked? %>
+      <%= button_to "Accept", accept_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-primary" %>
+      <%= button_to "Reject", reject_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-secondary" %>
+      <%= button_to "Needs review", mark_needs_review_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-secondary" %>
+    <% end %>
+    <%= link_to "All suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
+    <%= link_to "AI run", admin_bas_job_ai_run_path(@job, @suggestion.bas_ai_extraction_run), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Suggestion details</h2>
+  <% if @config.openai_warning_message.present? %>
+    <p class="text-danger"><%= @config.openai_warning_message %></p>
+  <% end %>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Status</dt>
+      <dd><%= @suggestion.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Confidence</dt>
+      <dd><%= @suggestion.confidence || "Not scored" %></dd>
+    </div>
+    <div>
+      <dt>Source</dt>
+      <dd><%= [ @suggestion.source_type, @suggestion.source_id ].compact.join(" #").presence || "Not linked" %></dd>
+    </div>
+    <div>
+      <dt>Accepted</dt>
+      <dd><%= @suggestion.accepted_at ? "#{l(@suggestion.accepted_at, format: :short)} by #{@suggestion.accepted_by}" : "No" %></dd>
+    </div>
+    <div>
+      <dt>Rejected</dt>
+      <dd><%= @suggestion.rejected_at ? "#{l(@suggestion.rejected_at, format: :short)} by #{@suggestion.rejected_by}" : "No" %></dd>
+    </div>
+  </dl>
+  <% if @suggestion.explanation.present? %>
+    <p><%= @suggestion.explanation %></p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Structured suggestion data</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <% @suggestion.suggested_data.each do |key, value| %>
+          <tr>
+            <th><%= key.to_s.humanize %></th>
+            <td><%= value.is_a?(Array) ? value.join(", ") : value %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>

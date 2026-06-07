@@ -1,0 +1,54 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS match</p>
+    <h1>Manual match</h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <%= link_to "Back to matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
+</section>
+
+<% if @match.errors.any? %>
+  <div class="form-errors">
+    <ul>
+      <% @match.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<section class="admin-card-panel">
+  <h2>Create manual match</h2>
+  <%= form_with model: @match,
+        url: admin_bas_job_matches_path(@job),
+        class: "admin-form" do |form| %>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= label_tag "bas_match_invoice_ids", "Invoices" %>
+        <%= select_tag "bas_match[invoice_ids][]",
+              options_from_collection_for_select(@invoices, :id, ->(invoice) { "#{invoice.invoice_number.presence || invoice.id} - #{invoice.party_name} - #{number_to_currency(invoice.total_amount)}" }),
+              multiple: true,
+              size: 8 %>
+      </div>
+      <div class="field">
+        <%= label_tag "bas_match_bank_transaction_id", "Bank transaction" %>
+        <%= select_tag "bas_match[bank_transaction_id]",
+              options_for_select([ [ "None", "" ] ] + @bank_transactions.map { |transaction| [ "#{transaction.transaction_date} - #{transaction.description} - #{number_to_currency(transaction.amount)}", transaction.id ] }) %>
+      </div>
+      <div class="field">
+        <%= label_tag "bas_match_cash_transaction_id", "Cash transaction" %>
+        <%= select_tag "bas_match[cash_transaction_id]",
+              options_for_select([ [ "None", "" ] ] + @cash_transactions.map { |transaction| [ "#{transaction.transaction_date} - #{transaction.party_name} - #{number_to_currency(transaction.total_amount)}", transaction.id ] }) %>
+      </div>
+      <div class="field">
+        <%= form.label :matched_amount %>
+        <%= form.number_field :matched_amount, step: "0.01" %>
+      </div>
+    </div>
+    <div class="field">
+      <%= form.label :notes %>
+      <%= form.text_area :notes, rows: 4 %>
+    </div>
+    <button type="submit" class="btn-primary">Create manual match</button>
+  <% end %>
+</section>

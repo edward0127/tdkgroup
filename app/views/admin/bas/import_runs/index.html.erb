@@ -1,0 +1,50 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS imports</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% unless @job.locked? %>
+      <%= link_to "New import", new_admin_bas_job_import_run_path(@job), class: "btn-primary" %>
+    <% end %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Document</th>
+        <th>Status</th>
+        <th>Rows</th>
+        <th>Imported</th>
+        <th>Errors</th>
+        <th>Imported at</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @import_runs.each do |import_run| %>
+        <tr>
+          <td><%= import_run.import_type.humanize %></td>
+          <td><%= import_run.bas_document.title %></td>
+          <td><%= import_run.status.humanize %></td>
+          <td><%= import_run.row_count %></td>
+          <td><%= import_run.imported_count %></td>
+          <td><%= import_run.error_count %></td>
+          <td><%= import_run.imported_at.present? ? l(import_run.imported_at, format: :short) : "Not imported" %></td>
+          <td>
+            <%= link_to "View", admin_bas_job_import_run_path(@job, import_run), class: "text-link" %>
+            <% if import_run.status == "imported" && !@job.locked? %>
+              <br>
+              <%= button_to "Revert", revert_admin_bas_job_import_run_path(@job, import_run), method: :post, class: "text-danger", form: { data: { turbo_confirm: "Revert this import run?" } } %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,108 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS AI runs</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "AI suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>AI configuration</h2>
+  <% if @config.disabled? %>
+    <p class="admin-muted">AI suggestions are not enabled.</p>
+  <% else %>
+    <p class="admin-muted">AI suggestions require accountant review. They do not change final BAS figures unless accepted by an admin.</p>
+    <% if @config.openai_warning_message.present? %>
+      <p class="text-danger"><%= @config.openai_warning_message %></p>
+    <% end %>
+    <% if @config.safe_configuration_message.present? %>
+      <p class="admin-muted"><%= @config.safe_configuration_message %></p>
+    <% end %>
+    <dl class="admin-asset-details">
+      <div>
+        <dt>Provider</dt>
+        <dd><%= @config.provider %></dd>
+      </div>
+      <div>
+        <dt>Model</dt>
+        <dd><%= @config.model_name.presence || "Not configured" %></dd>
+      </div>
+      <div>
+        <dt>API key</dt>
+        <dd><%= @config.api_key_configured? ? "Configured" : "Not configured" %></dd>
+      </div>
+    </dl>
+  <% end %>
+</section>
+
+<% if @config.enabled? && !@job.locked? %>
+  <section class="admin-card-panel">
+    <h2>Run AI review</h2>
+    <% if @config.openai_provider? %>
+      <p class="admin-muted"><%= BasAi::OpenaiProvider::DOCUMENT_TEXT_DISABLED_MESSAGE %></p>
+    <% end %>
+    <%= form_with url: admin_bas_job_ai_runs_path(@job), method: :post, class: "admin-form" do %>
+      <div class="admin-form-grid">
+        <div class="field">
+          <%= label_tag "bas_ai_extraction_run_input_kind", "Input kind" %>
+          <% input_kind_options = [
+            [ "Job review", "job_review" ],
+            [ "Matching review", "matching_review" ],
+            [ "GST review", "gst_review" ]
+          ] %>
+          <% input_kind_options << [ "Selected document extraction", "document_text" ] unless @config.openai_provider? %>
+          <%= select_tag "bas_ai_extraction_run[input_kind]",
+                options_for_select(input_kind_options) %>
+        </div>
+        <div class="field">
+          <%= label_tag "bas_ai_extraction_run_bas_document_id", "Document" %>
+          <%= select_tag "bas_ai_extraction_run[bas_document_id]",
+                options_for_select([ [ "No document", "" ] ] + @documents.map { |document| [ document.title, document.id ] }) %>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary">Run AI</button>
+    <% end %>
+  </section>
+<% end %>
+
+<section class="admin-card-panel">
+  <h2>AI runs</h2>
+  <% if @runs.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Input</th>
+            <th>Document</th>
+            <th>Started</th>
+            <th>Completed</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @runs.each do |run| %>
+            <tr>
+              <td><%= run.status.humanize %></td>
+              <td><%= run.provider.presence || "Not recorded" %></td>
+              <td><%= run.ai_model_name.presence || "Not configured" %></td>
+              <td><%= run.input_kind.to_s.humanize %></td>
+              <td><%= run.bas_document&.title || "None" %></td>
+              <td><%= run.started_at ? l(run.started_at, format: :short) : "Not started" %></td>
+              <td><%= run.completed_at ? l(run.completed_at, format: :short) : "Not completed" %></td>
+              <td><%= link_to "Open", admin_bas_job_ai_run_path(@job, run), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No AI runs recorded.</p>
+  <% end %>
+</section>

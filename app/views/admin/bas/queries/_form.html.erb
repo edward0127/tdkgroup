@@ -1,0 +1,43 @@
+<% if query.errors.any? %>
+  <div class="form-errors">
+    <ul>
+      <% query.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>
+
+<% query_form_url = query.persisted? ? admin_bas_job_query_path(job, query) : admin_bas_job_queries_path(job) %>
+
+<%= form_with model: query, url: query_form_url, class: "admin-form" do |form| %>
+  <section class="admin-card-panel">
+    <h2>Query details</h2>
+    <div class="admin-form-grid">
+      <div class="field">
+        <%= form.label :title %>
+        <%= form.text_field :title, required: true %>
+      </div>
+      <div class="field">
+        <%= form.label :query_type %>
+        <%= form.select :query_type, BasQuery::QUERY_TYPE_VALUES.map { |value| [ value.humanize, value ] } %>
+      </div>
+      <div class="field">
+        <%= form.label :status %>
+        <%= form.select :status, BasQuery::STATUS_VALUES.map { |value| [ value.humanize, value ] } %>
+      </div>
+    </div>
+    <div class="field">
+      <%= form.label :details %>
+      <%= form.text_area :details, rows: 5 %>
+    </div>
+    <div class="field">
+      <%= form.label :resolution_notes %>
+      <%= form.text_area :resolution_notes, rows: 4 %>
+    </div>
+  </section>
+
+  <div class="admin-submit-row">
+    <button type="submit" class="btn-primary">Save query</button>
+  </div>
+<% end %>

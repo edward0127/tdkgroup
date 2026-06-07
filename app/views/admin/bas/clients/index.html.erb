@@ -1,0 +1,42 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS</p>
+    <h1>Clients</h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "New client", new_admin_bas_client_path, class: "btn-primary" %>
+    <%= link_to "BAS dashboard", admin_bas_root_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Legal name</th>
+        <th>Trading name</th>
+        <th>ABN</th>
+        <th>GST basis</th>
+        <th>Frequency</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @clients.each do |client| %>
+        <tr>
+          <td><%= client.legal_name %></td>
+          <td><%= client.trading_name.presence || "None" %></td>
+          <td><%= client.abn.presence || "Not recorded" %></td>
+          <td><%= client.default_gst_basis.humanize %></td>
+          <td><%= client.reporting_frequency.humanize %></td>
+          <td><%= client.archived? ? "Archived" : "Active" %></td>
+          <td>
+            <%= link_to "View", admin_bas_client_path(client), class: "text-link" %><br>
+            <%= link_to "Jobs", admin_bas_client_path(client), class: "text-link" %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

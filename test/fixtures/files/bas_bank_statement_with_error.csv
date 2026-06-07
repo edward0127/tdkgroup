@@ -1,0 +1,3 @@
+Date,Description,Amount
+not-a-date,Synthetic bad row,10.00
+01/01/2026,Synthetic good row,20.00

@@ -1,0 +1,37 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS document</p>
+    <h1><%= @document.title %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Download", download_admin_bas_job_document_path(@job, @document), class: "btn-primary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Document details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Type</dt>
+      <dd><%= @document.document_type.humanize %></dd>
+    </div>
+    <div>
+      <dt>File</dt>
+      <dd><%= @document.safe_filename %> - <%= number_to_human_size(@document.file.byte_size) %></dd>
+    </div>
+    <div>
+      <dt>Processing status</dt>
+      <dd><%= @document.processing_status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Uploaded by</dt>
+      <dd><%= @document.uploaded_by.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Notes</dt>
+      <dd><%= simple_format(@document.notes.presence || "None") %></dd>
+    </div>
+  </dl>
+</section>

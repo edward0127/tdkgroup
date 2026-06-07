@@ -1,0 +1,150 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">PDF bank statement conversion</p>
+    <h1><%= @conversion_run.source_bas_document.title %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% if @conversion_run.preview_rows.any? %>
+      <%= link_to "Download CSV", download_csv_admin_bas_job_document_conversion_run_path(@job, @conversion_run), class: "btn-secondary" %>
+    <% end %>
+    <%= link_to "All PDF conversions", admin_bas_job_document_conversion_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Conversion details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Source PDF</dt>
+      <dd><%= link_to @conversion_run.source_bas_document.safe_filename, admin_bas_job_document_path(@job, @conversion_run.source_bas_document), class: "text-link" %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @conversion_run.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>Detected bank</dt>
+      <dd><%= @conversion_run.detected_bank_name.presence || "Not detected" %></dd>
+    </div>
+    <div>
+      <dt>Pages</dt>
+      <dd><%= @conversion_run.page_count.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Rows</dt>
+      <dd><%= @conversion_run.row_count %> extracted, <%= @conversion_run.converted_count %> ready, <%= @conversion_run.error_count %> errors</dd>
+    </div>
+    <div>
+      <dt>Converted by</dt>
+      <dd><%= @conversion_run.converted_by.presence || "Not recorded" %></dd>
+    </div>
+    <% if @conversion_run.bas_import_run.present? %>
+      <div>
+        <dt>Import run</dt>
+        <dd><%= link_to "Open import run", admin_bas_job_import_run_path(@job, @conversion_run.bas_import_run), class: "text-link" %></dd>
+      </div>
+    <% end %>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Review before importing</h2>
+  <p class="admin-muted">Please review extracted rows before importing. PDF extraction may require manual checking.</p>
+
+  <% if @conversion_run.status == "failed" && @conversion_run.row_errors.any? %>
+    <% @conversion_run.row_errors.each do |error| %>
+      <p class="text-danger"><%= error["message"] %></p>
+    <% end %>
+  <% elsif @conversion_run.status == "previewed" && @conversion_run.row_errors.blank? && !@job.locked? %>
+    <div class="admin-actions">
+      <%= button_to "Confirm Import",
+            confirm_import_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
+            method: :post,
+            class: "btn-primary" %>
+      <%= button_to "Confirm Import and Run Matching",
+            confirm_import_and_match_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
+            method: :post,
+            class: "btn-secondary" %>
+    </div>
+  <% elsif @conversion_run.status == "previewed" && @conversion_run.row_errors.any? %>
+    <p class="text-danger">Resolve PDF conversion row errors before importing.</p>
+  <% elsif @job.locked? %>
+    <p class="admin-muted">This BAS job is locked. Existing PDF conversion previews are read-only.</p>
+  <% end %>
+
+  <% if !@job.locked? && !@conversion_run.status.in?(%w[imported matched abandoned]) %>
+    <%= button_to "Abandon",
+          abandon_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
+          method: :post,
+          class: "text-danger",
+          form: { data: { turbo_confirm: "Abandon this PDF conversion?" } } %>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Extracted transactions</h2>
+  <% if @conversion_run.preview_rows.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Amount</th>
+            <th>Balance</th>
+            <th>Confidence</th>
+            <th>Warnings</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @conversion_run.preview_rows.each do |row| %>
+            <tr>
+              <td><%= row["row_number"] %></td>
+              <td><%= row["transaction_date"] %></td>
+              <td><%= row["description"] %></td>
+              <td><%= row["debit"] %></td>
+              <td><%= row["credit"] %></td>
+              <td><%= row["amount"] %></td>
+              <td><%= row["balance"] %></td>
+              <td><%= row["confidence"] %></td>
+              <td><%= Array(row["warnings"]).join(", ").presence || "None" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No extracted transaction rows are available.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Row warnings and errors</h2>
+  <% if @conversion_run.row_errors.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @conversion_run.row_errors.each do |error| %>
+            <tr>
+              <td><%= error["row_number"].presence || "Conversion" %></td>
+              <td><%= error["message"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No row errors recorded.</p>
+  <% end %>
+</section>

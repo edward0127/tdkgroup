@@ -1,0 +1,351 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS job</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+    <%= link_to "Imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Matching", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
+    <%= link_to "Report", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+    <%= link_to "AI", admin_bas_job_ai_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "btn-secondary" %>
+    <%= link_to "Edit job", edit_admin_bas_job_path(@job), class: "btn-secondary" %>
+    <%= link_to "All jobs", admin_bas_jobs_path, class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Workspace summary</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Client</dt>
+      <dd><%= link_to @job.bas_client.legal_name, admin_bas_client_path(@job.bas_client), class: "text-link" %></dd>
+    </div>
+    <div>
+      <dt>Period</dt>
+      <dd><%= @job.period_start.to_fs(:db) %> to <%= @job.period_end.to_fs(:db) %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @job.status.humanize %></dd>
+    </div>
+    <div>
+      <dt>GST basis and method</dt>
+      <dd><%= @job.gst_basis.humanize %>, <%= @job.reporting_method.humanize %></dd>
+    </div>
+    <div>
+      <dt>Payroll</dt>
+      <dd><%= @job.payroll_applicable? ? "Applicable" : "Not applicable" %></dd>
+    </div>
+    <div>
+      <dt>Cash transactions</dt>
+      <dd><%= @job.cash_transactions_applicable? ? "Applicable" : "Not applicable" %></dd>
+    </div>
+  </dl>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>AI suggestions</h2>
+    <%= link_to "Open AI runs", admin_bas_job_ai_runs_path(@job), class: "text-link" %>
+  </div>
+  <% if @ai_config.disabled? %>
+    <p class="admin-muted">AI suggestions are not enabled.</p>
+  <% else %>
+    <p class="admin-muted">AI suggestions require accountant review. They do not change final BAS figures unless accepted by an admin.</p>
+    <% if @ai_config.openai_warning_message.present? %>
+      <p class="text-danger"><%= @ai_config.openai_warning_message %></p>
+    <% end %>
+    <% if @ai_config.safe_configuration_message.present? %>
+      <p class="admin-muted"><%= @ai_config.safe_configuration_message %></p>
+    <% end %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <tbody>
+          <tr>
+            <th>Provider</th>
+            <td><%= @ai_config.provider %></td>
+          </tr>
+          <tr>
+            <th>Model</th>
+            <td><%= @ai_config.model_name.presence || "Not configured" %></td>
+          </tr>
+          <tr>
+            <th>Proposed suggestions</th>
+            <td><%= @ai_suggestions_count %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <% unless @job.locked? %>
+      <%= button_to "Run AI job review", admin_bas_job_ai_runs_path(@job), method: :post, params: { bas_ai_extraction_run: { input_kind: "job_review" } }, class: "btn-primary" %>
+    <% end %>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Report / Review</h2>
+    <%= link_to "Open report review", admin_bas_job_report_path(@job), class: "text-link" %>
+  </div>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <tr>
+          <th>Approval blockers</th>
+          <td><%= @approval_blockers_count %></td>
+        </tr>
+        <tr>
+          <th>Latest snapshot</th>
+          <td>
+            <% if @latest_report_snapshot %>
+              <%= link_to "#{@latest_report_snapshot.status.humanize} snapshot", admin_bas_job_report_snapshot_path(@job, @latest_report_snapshot), class: "text-link" %>
+              (<%= @latest_report_snapshot.validation_errors.size %> blockers)
+            <% else %>
+              No snapshot generated
+            <% end %>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <% unless @job.locked? %>
+    <%= button_to "Calculate BAS draft", calculate_admin_bas_job_report_path(@job), method: :post, class: "btn-primary" %>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Matching</h2>
+    <%= link_to "Open matching", admin_bas_job_matching_path(@job), class: "text-link" %>
+  </div>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <tr>
+          <th>Proposed matches</th>
+          <td><%= @proposed_matches_count %></td>
+        </tr>
+        <tr>
+          <th>Accepted matches</th>
+          <td><%= @accepted_matches_count %></td>
+        </tr>
+        <tr>
+          <th>Unmatched bank transactions</th>
+          <td><%= @unmatched_bank_transactions_count %></td>
+        </tr>
+        <tr>
+          <th>Unmatched invoices</th>
+          <td><%= @unmatched_invoices_count %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Imports</h2>
+    <% unless @job.locked? %>
+      <%= link_to "New import", new_admin_bas_job_import_run_path(@job), class: "text-link" %>
+    <% end %>
+  </div>
+
+  <% if @import_runs.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Document</th>
+            <th>Status</th>
+            <th>Imported</th>
+            <th>Errors</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @import_runs.each do |import_run| %>
+            <tr>
+              <td><%= import_run.import_type.humanize %></td>
+              <td><%= import_run.bas_document.title %></td>
+              <td><%= import_run.status.humanize %></td>
+              <td><%= import_run.imported_count %></td>
+              <td><%= import_run.error_count %></td>
+              <td><%= link_to "Open", admin_bas_job_import_run_path(@job, import_run), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+    <%= link_to "View all imports", admin_bas_job_import_runs_path(@job), class: "text-link" %>
+  <% else %>
+    <p class="admin-muted">No import runs yet.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Imported records</h2>
+  </div>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Record type</th>
+          <th>Count</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Bank transactions</td>
+          <td><%= @job.bank_transactions.count %></td>
+          <td><%= link_to "View", admin_bas_job_bank_transactions_path(@job), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Invoices</td>
+          <td><%= @job.invoices.count %></td>
+          <td><%= link_to "View", admin_bas_job_invoices_path(@job), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Cash transactions</td>
+          <td><%= @job.cash_transactions.count %></td>
+          <td><%= link_to "View", admin_bas_job_cash_transactions_path(@job), class: "text-link" %></td>
+        </tr>
+        <tr>
+          <td>Payroll summaries</td>
+          <td><%= @job.payroll_summaries.count %></td>
+          <td><%= link_to "View", admin_bas_job_payroll_summaries_path(@job), class: "text-link" %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Uploaded documents</h2>
+    <div class="admin-actions">
+      <%= link_to "PDF conversions", admin_bas_job_document_conversion_runs_path(@job), class: "text-link" %>
+      <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "text-link" %>
+    </div>
+  </div>
+
+  <% if @documents_by_type.any? %>
+    <% @documents_by_type.each do |document_type, documents| %>
+      <h3><%= document_type.humanize %></h3>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>File</th>
+              <th>Status</th>
+              <th>Uploaded by</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% documents.each do |document| %>
+              <tr>
+                <td><%= document.title %></td>
+                <td><%= document.safe_filename %></td>
+                <td><%= document.processing_status.humanize %></td>
+                <td><%= document.uploaded_by.presence || "Not recorded" %></td>
+                <td>
+                  <%= link_to "View", admin_bas_job_document_path(@job, document), class: "text-link" %><br>
+                  <%= link_to "Download", download_admin_bas_job_document_path(@job, document), class: "text-link" %>
+                  <% pdf_bank_statement = document.document_type == "bank_statement" && document.file.attached? && document.file.blob.content_type.to_s == "application/pdf" %>
+                  <% if pdf_bank_statement && !@job.locked? %>
+                    <br>
+                    <%= button_to "Convert & Import PDF Bank Statement",
+                          admin_bas_job_document_conversion_runs_path(@job),
+                          method: :post,
+                          params: { bas_document_id: document.id },
+                          class: "btn-secondary" %>
+                  <% end %>
+                  <% unless @job.locked? %>
+                    <br>
+                    <%= button_to "Delete", admin_bas_job_document_path(@job, document), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this BAS document?" } } %>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% end %>
+  <% else %>
+    <p class="admin-muted">No documents uploaded yet.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Open queries</h2>
+    <div class="admin-actions">
+      <%= link_to "Generate client email draft", admin_bas_job_query_email_draft_path(@job), class: "text-link" %>
+      <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "text-link" %>
+    </div>
+  </div>
+
+  <% if @open_queries.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @open_queries.each do |query| %>
+            <tr>
+              <td><%= query.title %></td>
+              <td><%= query.query_type.humanize %></td>
+              <td><%= query.status.humanize %></td>
+              <td><%= l(query.updated_at, format: :short) %></td>
+              <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No open queries.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Recent audit events</h2>
+  <% if @audit_events.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>Actor</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @audit_events.each do |event| %>
+            <tr>
+              <td><%= event.event_type.humanize %></td>
+              <td><%= event.actor_username.presence || "Not recorded" %></td>
+              <td><%= l(event.created_at, format: :short) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No audit events yet.</p>
+  <% end %>
+</section>

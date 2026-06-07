@@ -1,0 +1,21 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS matches</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% unless @job.locked? %>
+      <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-primary" %>
+    <% end %>
+    <%= link_to "Matching", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<% if @matches.any? %>
+  <%= render "table", job: @job, matches: @matches %>
+<% else %>
+  <section class="admin-card-panel">
+    <p class="admin-muted">No matches yet.</p>
+  </section>
+<% end %>

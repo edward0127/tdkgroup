@@ -1,0 +1,3 @@
+Direction,Invoice Number,Issue Date,Paid Date,Party Name,Description,Total,GST,Payment Method,GST Code
+sale,INV-001,01/01/2026,02/01/2026,Synthetic Customer,Synthetic sale,110.00,10.00,bank,taxable
+purchase,BILL-001,03/01/2026,,Synthetic Supplier,Synthetic purchase,55.00,,unpaid,unknown

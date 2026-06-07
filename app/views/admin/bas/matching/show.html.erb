@@ -1,0 +1,44 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS matching</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <% unless @job.locked? %>
+      <%= button_to "Run matching", run_admin_bas_job_matching_path(@job), method: :post, class: "btn-primary" %>
+      <%= button_to "Generate queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-secondary" %>
+    <% end %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Matching summary</h2>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <tbody>
+        <% @summary.each do |label, count| %>
+          <tr>
+            <th><%= label.to_s.humanize %></th>
+            <td><%= count %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Proposed matches</h2>
+    <%= link_to "View all matches", admin_bas_job_matches_path(@job), class: "text-link" %>
+  </div>
+
+  <% if @proposed_matches.any? %>
+    <%= render "admin/bas/matches/table", job: @job, matches: @proposed_matches %>
+  <% else %>
+    <p class="admin-muted">No proposed matches.</p>
+  <% end %>
+</section>

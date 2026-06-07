@@ -1,0 +1,35 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS documents</p>
+    <h1><%= @job.period_label %></h1>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Type</th>
+        <th>File</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @documents.each do |document| %>
+        <tr>
+          <td><%= document.title %></td>
+          <td><%= document.document_type.humanize %></td>
+          <td><%= document.safe_filename %></td>
+          <td><%= document.processing_status.humanize %></td>
+          <td><%= link_to "View", admin_bas_job_document_path(@job, document), class: "text-link" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

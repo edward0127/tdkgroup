@@ -1,0 +1,55 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS AI suggestions</p>
+    <h1><%= @job.bas_client.display_name %></h1>
+    <p><%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "AI runs", admin_bas_job_ai_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Suggestions</h2>
+  <% if @config.openai_warning_message.present? %>
+    <p class="text-danger"><%= @config.openai_warning_message %></p>
+  <% end %>
+  <% if @suggestions.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Confidence</th>
+            <th>Source</th>
+            <th>Explanation</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @suggestions.each do |suggestion| %>
+            <tr>
+              <td><%= suggestion.suggestion_type.humanize %></td>
+              <td><%= suggestion.status.humanize %></td>
+              <td><%= suggestion.confidence || "Not scored" %></td>
+              <td><%= [ suggestion.source_type, suggestion.source_id ].compact.join(" #") %></td>
+              <td><%= suggestion.explanation %></td>
+              <td>
+                <%= link_to "Open", admin_bas_job_ai_suggestion_path(@job, suggestion), class: "text-link" %>
+                <% if suggestion.status == "proposed" && !@job.locked? %>
+                  <br>
+                  <%= button_to "Accept", accept_admin_bas_job_ai_suggestion_path(@job, suggestion), method: :post, class: "text-link" %>
+                  <%= button_to "Reject", reject_admin_bas_job_ai_suggestion_path(@job, suggestion), method: :post, class: "text-danger" %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No AI suggestions recorded.</p>
+  <% end %>
+</section>
