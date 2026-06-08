@@ -44,6 +44,7 @@
             <th>Period</th>
             <th>Status</th>
             <th>Updated</th>
+            <th>Cleanup</th>
             <th></th>
           </tr>
         </thead>
@@ -54,6 +55,13 @@
               <td><%= job.period_label %></td>
               <td><%= job.status.humanize %></td>
               <td><%= l(job.updated_at, format: :short) %></td>
+              <td>
+                <% if job.cleanup_deletable? %>
+                  <%= link_to "Open danger zone", admin_bas_job_path(job), class: "text-link" %>
+                <% else %>
+                  <span class="admin-muted">Locked/final BAS jobs cannot be deleted.</span>
+                <% end %>
+              </td>
               <td><%= link_to "Open", admin_bas_job_path(job), class: "text-link" %></td>
             </tr>
           <% end %>

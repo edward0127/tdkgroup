@@ -412,3 +412,20 @@
     <p class="admin-muted">No audit events yet.</p>
   <% end %>
 </section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Danger zone</h2>
+  </div>
+
+  <% if @job.cleanup_deletable? %>
+    <p class="admin-muted">Delete this draft/test job and all imported/uploaded BAS working-paper records.</p>
+    <%= button_to "Delete draft/test job",
+          admin_bas_job_path(@job),
+          method: :delete,
+          class: "text-danger",
+          form: { data: { turbo_confirm: "Delete this BAS job and all imported/uploaded BAS working-paper records? This cannot be undone." } } %>
+  <% else %>
+    <p class="admin-muted">Locked/final BAS jobs cannot be deleted.</p>
+  <% end %>
+</section>

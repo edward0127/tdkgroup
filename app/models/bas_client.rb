@@ -1,9 +1,13 @@
 class BasClient < ApplicationRecord
+  CLEANUP_DELETE_BLOCKED_MESSAGE = "This client has BAS jobs. Delete draft/test jobs first, then delete the client."
+
   GST_BASIS_VALUES = %w[unknown cash accrual].freeze
   REPORTING_FREQUENCY_VALUES = %w[monthly quarterly annually unknown].freeze
   REPORTING_METHOD_VALUES = %w[unknown simpler_bas full_bas].freeze
 
   has_many :bas_jobs, dependent: :restrict_with_error
+
+  before_destroy :prevent_destroy_with_jobs, prepend: true
 
   validates :legal_name, presence: true
   validates :default_gst_basis, inclusion: { in: GST_BASIS_VALUES }
@@ -17,5 +21,18 @@ class BasClient < ApplicationRecord
 
   def display_name
     trading_name.presence || legal_name
+  end
+
+  def cleanup_deletable?
+    !bas_jobs.exists?
+  end
+
+  private
+
+  def prevent_destroy_with_jobs
+    return if cleanup_deletable?
+
+    errors.add(:base, CLEANUP_DELETE_BLOCKED_MESSAGE)
+    throw :abort
   end
 end

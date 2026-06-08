@@ -43,7 +43,7 @@ class BasDocument < ApplicationRecord
     foreign_key: :source_bas_document_id,
     dependent: :restrict_with_error,
     inverse_of: :source_bas_document
-  has_one_attached :file
+  has_one_attached :file, dependent: :purge_later
 
   before_validation :copy_source_filename_from_file
   before_validation :normalize_metadata

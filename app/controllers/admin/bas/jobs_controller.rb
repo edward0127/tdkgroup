@@ -1,11 +1,11 @@
 module Admin
   module Bas
     class JobsController < Admin::BaseController
-      before_action :set_job, only: [ :show, :edit, :update ]
+      before_action :set_job, only: [ :show, :edit, :update, :destroy ]
       before_action :set_clients, only: [ :new, :create, :edit, :update ]
 
       def index
-        @jobs = BasJob.includes(:bas_client).order(period_end: :desc, id: :desc)
+        @jobs = BasJob.includes(:bas_client, :report_snapshots).order(period_end: :desc, id: :desc)
       end
 
       def show
@@ -66,6 +66,21 @@ module Admin
           redirect_to admin_bas_job_path(@job), notice: "BAS job updated."
         else
           render :edit, status: :unprocessable_entity
+        end
+      end
+
+      def destroy
+        client = @job.bas_client
+
+        unless @job.cleanup_deletable?
+          redirect_to admin_bas_job_path(@job), alert: BasJob::CLEANUP_DELETE_BLOCKED_MESSAGE
+          return
+        end
+
+        if @job.destroy
+          redirect_to admin_bas_client_path(client), notice: "BAS job was deleted."
+        else
+          redirect_to admin_bas_job_path(@job), alert: @job.errors.full_messages.to_sentence.presence || BasJob::CLEANUP_DELETE_BLOCKED_MESSAGE
         end
       end
 

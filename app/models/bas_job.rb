@@ -1,4 +1,7 @@
 class BasJob < ApplicationRecord
+  CLEANUP_DELETE_BLOCKED_MESSAGE = "This BAS job cannot be deleted because it is locked or has final approved records."
+  PROTECTED_CLEANUP_STATUS_VALUES = %w[approved locked final lodged completed].freeze
+
   STATUS_VALUES = %w[
     draft
     collecting_materials
@@ -14,56 +17,59 @@ class BasJob < ApplicationRecord
   ].freeze
 
   belongs_to :bas_client
-  has_many :documents,
-    class_name: "BasDocument",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :queries,
-    class_name: "BasQuery",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :import_runs,
-    class_name: "BasImportRun",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :document_conversion_runs,
-    class_name: "BasDocumentConversionRun",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :bank_transactions,
-    class_name: "BasBankTransaction",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :invoices,
-    class_name: "BasInvoice",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :cash_transactions,
-    class_name: "BasCashTransaction",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :payroll_summaries,
-    class_name: "BasPayrollSummary",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :matches,
-    class_name: "BasMatch",
+
+  before_destroy :prevent_destroy_unless_cleanup_deletable, prepend: true
+
+  has_many :ai_suggestions,
+    class_name: "BasAiSuggestion",
     dependent: :destroy,
-    inverse_of: :bas_job
-  has_many :adjustments,
-    class_name: "BasAdjustment",
-    dependent: :restrict_with_error,
-    inverse_of: :bas_job
-  has_many :report_snapshots,
-    class_name: "BasReportSnapshot",
-    dependent: :restrict_with_error,
     inverse_of: :bas_job
   has_many :ai_extraction_runs,
     class_name: "BasAiExtractionRun",
     dependent: :destroy,
     inverse_of: :bas_job
-  has_many :ai_suggestions,
-    class_name: "BasAiSuggestion",
+  has_many :document_conversion_runs,
+    class_name: "BasDocumentConversionRun",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :matches,
+    class_name: "BasMatch",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :bank_transactions,
+    class_name: "BasBankTransaction",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :invoices,
+    class_name: "BasInvoice",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :cash_transactions,
+    class_name: "BasCashTransaction",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :payroll_summaries,
+    class_name: "BasPayrollSummary",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :import_runs,
+    class_name: "BasImportRun",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :documents,
+    class_name: "BasDocument",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :queries,
+    class_name: "BasQuery",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :adjustments,
+    class_name: "BasAdjustment",
+    dependent: :destroy,
+    inverse_of: :bas_job
+  has_many :report_snapshots,
+    class_name: "BasReportSnapshot",
     dependent: :destroy,
     inverse_of: :bas_job
   has_many :audit_events,
@@ -85,6 +91,29 @@ class BasJob < ApplicationRecord
 
   def locked?
     status == "locked" || locked_at.present?
+  end
+
+  def cleanup_deletable?
+    !locked? &&
+      !cleanup_protected_status? &&
+      !approved_for_cleanup? &&
+      !final_or_approved_report_snapshot?
+  end
+
+  def cleanup_protected_status?
+    PROTECTED_CLEANUP_STATUS_VALUES.include?(status.to_s)
+  end
+
+  def approved_for_cleanup?
+    approved_at.present? || approved_by.present?
+  end
+
+  def final_or_approved_report_snapshot?
+    report_snapshots.where(status: "final").exists? ||
+      report_snapshots.where.not(approved_at: nil).exists? ||
+      report_snapshots.where.not(approved_by: [ nil, "" ]).exists? ||
+      report_snapshots.where.not(locked_at: nil).exists? ||
+      report_snapshots.where.not(locked_by: [ nil, "" ]).exists?
   end
 
   def period_label
@@ -126,5 +155,12 @@ class BasJob < ApplicationRecord
     return if period_start.blank? || period_end.blank?
 
     errors.add(:period_start, "must be before or equal to period end") if period_start > period_end
+  end
+
+  def prevent_destroy_unless_cleanup_deletable
+    return if cleanup_deletable?
+
+    errors.add(:base, CLEANUP_DELETE_BLOCKED_MESSAGE)
+    throw :abort
   end
 end

@@ -1,14 +1,14 @@
 module Admin
   module Bas
     class ClientsController < Admin::BaseController
-      before_action :set_client, only: [ :show, :edit, :update ]
+      before_action :set_client, only: [ :show, :edit, :update, :destroy ]
 
       def index
-        @clients = BasClient.ordered
+        @clients = BasClient.ordered.includes(:bas_jobs)
       end
 
       def show
-        @jobs = @client.bas_jobs.includes(:documents, :queries).order(period_end: :desc, id: :desc)
+        @jobs = @client.bas_jobs.includes(:documents, :queries, :report_snapshots).order(period_end: :desc, id: :desc)
       end
 
       def new
@@ -48,6 +48,19 @@ module Admin
           redirect_to admin_bas_client_path(@client), notice: "BAS client updated."
         else
           render :edit, status: :unprocessable_entity
+        end
+      end
+
+      def destroy
+        unless @client.cleanup_deletable?
+          redirect_to admin_bas_client_path(@client), alert: BasClient::CLEANUP_DELETE_BLOCKED_MESSAGE
+          return
+        end
+
+        if @client.destroy
+          redirect_to admin_bas_clients_path, notice: "BAS client was deleted."
+        else
+          redirect_to admin_bas_client_path(@client), alert: @client.errors.full_messages.to_sentence.presence || BasClient::CLEANUP_DELETE_BLOCKED_MESSAGE
         end
       end
 

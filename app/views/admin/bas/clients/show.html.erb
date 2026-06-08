@@ -48,6 +48,7 @@
             <th>Status</th>
             <th>Documents</th>
             <th>Open queries</th>
+            <th>Cleanup</th>
             <th></th>
           </tr>
         </thead>
@@ -58,6 +59,13 @@
               <td><%= job.status.humanize %></td>
               <td><%= job.documents.size %></td>
               <td><%= job.queries.open_items.size %></td>
+              <td>
+                <% if job.cleanup_deletable? %>
+                  <%= link_to "Open danger zone", admin_bas_job_path(job), class: "text-link" %>
+                <% else %>
+                  <span class="admin-muted">Locked/final BAS jobs cannot be deleted.</span>
+                <% end %>
+              </td>
               <td><%= link_to "Open", admin_bas_job_path(job), class: "text-link" %></td>
             </tr>
           <% end %>
@@ -66,5 +74,22 @@
     </div>
   <% else %>
     <p class="admin-muted">No BAS jobs for this client yet.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>Danger zone</h2>
+  </div>
+
+  <% if @client.cleanup_deletable? %>
+    <p class="admin-muted">Delete this BAS client record.</p>
+    <%= button_to "Delete client",
+          admin_bas_client_path(@client),
+          method: :delete,
+          class: "text-danger",
+          form: { data: { turbo_confirm: "Delete this BAS client? This cannot be undone." } } %>
+  <% else %>
+    <p class="admin-muted">Delete draft/test jobs before deleting this client.</p>
   <% end %>
 </section>
