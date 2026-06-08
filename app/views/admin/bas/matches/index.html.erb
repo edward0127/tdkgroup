@@ -1,19 +1,38 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS matches</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1>BAS matches</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
       <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-primary" %>
     <% end %>
-    <%= link_to "Matching", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to matching workflow", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
   </div>
 </section>
 
+<section class="admin-card-panel">
+  <p class="admin-muted">This page lists created matches. Use the matching workflow page to create suggestions and generate client queries.</p>
+  <% unless @job.locked? %>
+    <% if @matching_review_open_count.positive? %>
+      <p class="text-danger">Review <%= @matching_review_open_count %> proposed/needs-review matches before generating client queries.</p>
+      <button type="button" class="btn-secondary" disabled>Generate client queries</button>
+    <% elsif @open_queries_count.positive? %>
+      <p class="admin-muted">Client queries generated.</p>
+      <div class="admin-actions">
+        <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "btn-secondary" %>
+        <%= button_to "Generate/re-run client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      </div>
+    <% else %>
+      <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+    <% end %>
+  <% end %>
+</section>
+
 <% if @matches.any? %>
-  <%= render "table", job: @job, matches: @matches %>
+  <%= render "table", job: @job, matches: @matches, return_to: "matches" %>
 <% else %>
   <section class="admin-card-panel">
     <p class="admin-muted">No matches yet.</p>

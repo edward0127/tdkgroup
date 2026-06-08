@@ -1,8 +1,9 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS client query draft</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1>Generate client email draft</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
@@ -66,10 +67,10 @@
         <tbody>
           <% @draft.queries.each do |query| %>
             <tr>
-              <td><%= query.title %></td>
+              <td><%= query.display_title %></td>
               <td><%= query.query_type.humanize %></td>
               <td><%= query.status.humanize %></td>
-              <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" unless @job.locked? %></td>
+              <td><%= link_to "Review query", edit_admin_bas_job_query_path(@job, query), class: "text-link" unless @job.locked? %></td>
             </tr>
           <% end %>
         </tbody>

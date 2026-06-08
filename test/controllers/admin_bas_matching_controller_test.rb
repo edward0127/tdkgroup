@@ -22,7 +22,8 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
 
     get admin_bas_job_matching_path(job)
     assert_response :success
-    assert_select "h1", job.bas_client.display_name
+    assert_select "h1", "Matching & review"
+    assert_includes response.body, "Client: #{job.bas_client.primary_name}"
 
     assert_difference "BasMatch.count", 1 do
       assert_difference "BasAuditEvent.count", 2 do
@@ -42,7 +43,7 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
 
     post accept_admin_bas_job_match_path(job, accepted_match)
 
-    assert_redirected_to admin_bas_job_match_path(job, accepted_match)
+    assert_redirected_to admin_bas_job_matching_path(job)
     assert_equal "accepted", accepted_match.reload.status
     assert_equal "bas-matching-admin", accepted_match.accepted_by
     assert accepted_match.items.all? { |item| item.matchable.reload.status == "matched" }
@@ -54,7 +55,7 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
 
     post reject_admin_bas_job_match_path(rejected_job, rejected_match)
 
-    assert_redirected_to admin_bas_job_match_path(rejected_job, rejected_match)
+    assert_redirected_to admin_bas_job_matching_path(rejected_job)
     assert_equal "rejected", rejected_match.reload.status
     assert_equal "bas-matching-admin", rejected_match.rejected_by
     assert_equal "bas_match_rejected", BasAuditEvent.last.event_type
@@ -106,6 +107,25 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "bas_item_needs_review", BasAuditEvent.last.event_type
   end
 
+  test "ignore actions auto resolve related generated source queries" do
+    job = create_job_with_bank_match_candidate
+    bank_transaction = job.bank_transactions.first
+    invoice = job.invoices.first
+    bank_query = generated_query_for(job, bank_transaction, query_type: "unmatched_bank_transaction")
+    invoice_query = generated_query_for(job, invoice, query_type: "unmatched_invoice")
+
+    assert_difference -> { BasAuditEvent.where(event_type: "bas_query_auto_resolved").count }, 1 do
+      post ignore_admin_bas_job_bank_transaction_path(job, bank_transaction)
+    end
+    assert_equal "resolved", bank_query.reload.status
+    assert_equal BasQueries::SourceResolutionSync::RESOLUTION_NOTE, bank_query.resolution_notes
+
+    assert_difference -> { BasAuditEvent.where(event_type: "bas_query_auto_resolved").count }, 1 do
+      post ignore_admin_bas_job_invoice_path(job, invoice)
+    end
+    assert_equal "resolved", invoice_query.reload.status
+  end
+
   test "admin can generate queries" do
     job = create_job_with_bank_match_candidate
 
@@ -113,21 +133,88 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
       post generate_queries_admin_bas_job_matching_path(job)
     end
 
-    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_redirected_to admin_bas_job_matching_path(job, anchor: "open-client-queries")
     assert_equal "bas_queries_generated", BasAuditEvent.last.event_type
     assert_equal "bas-matching-admin", BasAuditEvent.last.actor_username
+    assert_equal "2 client queries generated.", flash[:notice]
+    follow_redirect!
+    assert_response :success
+    assert_select "h2", "Open client queries"
+    assert_select "a[href='#{admin_bas_job_path(job, anchor: 'open-queries')}']", text: "View open queries"
+
+    assert_no_difference "BasQuery.count" do
+      post generate_queries_admin_bas_job_matching_path(job)
+    end
+    assert_equal "No new client queries needed. 2 existing queries already covered these unresolved items.", flash[:notice]
   end
 
   test "generate client queries is blocked when proposed matches exist" do
     job = create_job_with_bank_match_candidate
     BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
 
+    get admin_bas_job_matching_path(job)
+    assert_response :success
+    assert_select "button[disabled]", text: "Generate client queries"
+    assert_includes response.body, "Review 1 proposed/needs-review matches before generating client queries."
+
     assert_no_difference "BasQuery.count" do
       post generate_queries_admin_bas_job_matching_path(job)
     end
 
     assert_redirected_to admin_bas_job_matching_path(job)
-    assert_equal "Review proposed and needs-review matches before generating client queries.", flash[:alert]
+    assert_equal "Review 1 proposed/needs-review matches before generating client queries.", flash[:alert]
+  end
+
+  test "generate client queries is enabled after proposed matches are resolved" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+    BasMatch.last.update!(status: "rejected", rejected_at: Time.current, rejected_by: "bas-matching-admin")
+
+    get admin_bas_job_matching_path(job)
+
+    assert_response :success
+    assert_select "button[disabled]", text: "Generate client queries", count: 0
+    assert_select "form[action='#{generate_queries_admin_bas_job_matching_path(job)}'] button", text: "Generate client queries"
+  end
+
+  test "accept from workflow returns to matching page with remaining count" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+    match = BasMatch.last
+
+    post accept_admin_bas_job_match_path(job, match), params: { return_to: "workflow" }
+
+    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_equal "Match accepted. No proposed/needs-review matches remaining.", flash[:notice]
+  end
+
+  test "accepting match auto resolves related generated source queries" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+    match = BasMatch.last
+    invoice = job.invoices.first
+    bank_transaction = job.bank_transactions.first
+    invoice_query = generated_query_for(job, invoice, query_type: "unmatched_invoice")
+    bank_query = generated_query_for(job, bank_transaction, query_type: "unmatched_bank_transaction")
+
+    assert_difference -> { BasAuditEvent.where(event_type: "bas_query_auto_resolved").count }, 2 do
+      post accept_admin_bas_job_match_path(job, match), params: { return_to: "workflow" }
+    end
+
+    assert_equal "resolved", invoice_query.reload.status
+    assert_equal "resolved", bank_query.reload.status
+  end
+
+  test "matches list identifies return to matching workflow" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+
+    get admin_bas_job_matches_path(job)
+
+    assert_response :success
+    assert_select "h1", "BAS matches"
+    assert_select "a[href='#{admin_bas_job_matching_path(job)}']", text: "Back to matching workflow"
+    assert_includes response.body, "This page lists created matches. Use the matching workflow page to create suggestions and generate client queries."
   end
 
   test "generate client queries is blocked when needs review matches exist" do
@@ -146,6 +233,7 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to admin_bas_job_matching_path(job)
     assert_equal "needs_review", match.reload.status
+    assert_equal "Review 1 proposed/needs-review matches before generating client queries.", flash[:alert]
   end
 
   test "generate client queries works once proposed matches are rejected" do
@@ -158,7 +246,7 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
       post generate_queries_admin_bas_job_matching_path(job)
     end
 
-    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_redirected_to admin_bas_job_matching_path(job, anchor: "open-client-queries")
     assert_equal "bas_queries_generated", BasAuditEvent.last.event_type
   end
 
@@ -238,5 +326,20 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
       gst_code: "taxable",
       status: "imported"
     )
+  end
+
+  def generated_query_for(job, source, attributes = {})
+    job.queries.create!({
+      title: "Generated source query",
+      query_type: "other",
+      status: "open",
+      source_type: source.class.name,
+      source_id: source.id,
+      dedupe_key: "controller-sync:#{SecureRandom.hex(8)}",
+      generated_by_rule: "controller_sync",
+      auto_generated: true,
+      created_by: "bas-matching-admin",
+      updated_by: "bas-matching-admin"
+    }.merge(attributes))
   end
 end

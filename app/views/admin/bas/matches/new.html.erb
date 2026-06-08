@@ -2,9 +2,13 @@
   <div>
     <p class="eyebrow">BAS match</p>
     <h1>Manual match</h1>
-    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
-  <%= link_to "Back to matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
+  <div class="admin-actions">
+    <%= link_to "Back to matching workflow", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
+    <%= link_to "View all matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
+  </div>
 </section>
 
 <% if @match.errors.any? %>

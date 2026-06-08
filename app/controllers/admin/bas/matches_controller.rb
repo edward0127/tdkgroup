@@ -7,6 +7,8 @@ module Admin
 
       def index
         @matches = @job.matches.includes(items: :matchable).recent
+        @matching_review_open_count = matching_review_open_count
+        @open_queries_count = @job.queries.open_items.count
       end
 
       def show
@@ -35,6 +37,7 @@ module Admin
           render :new, status: :unprocessable_entity
         elsif @match.save
           update_matched_item_statuses(@match)
+          sync_resolved_source_queries(@match)
           create_match_audit_event("bas_manual_match_created", @match)
           redirect_to admin_bas_job_match_path(@job, @match), notice: "Manual match created."
         else
@@ -54,8 +57,9 @@ module Admin
           accepted_by: current_admin_identifier
         )
         update_matched_item_statuses(@match)
+        sync_resolved_source_queries(@match)
         create_match_audit_event("bas_match_accepted", @match)
-        redirect_to admin_bas_job_match_path(@job, @match), notice: "Match accepted."
+        redirect_to return_path, notice: accepted_flash
       end
 
       def reject
@@ -65,14 +69,14 @@ module Admin
           rejected_by: current_admin_identifier
         )
         create_match_audit_event("bas_match_rejected", @match)
-        redirect_to admin_bas_job_match_path(@job, @match), notice: "Match rejected."
+        redirect_to return_path, notice: rejected_flash
       end
 
       def mark_needs_review
         @match.update!(status: "needs_review")
         @match.items.each { |item| item.matchable.update!(status: "needs_review") if item.matchable.respond_to?(:status) }
         create_match_audit_event("bas_match_needs_review", @match)
-        redirect_to admin_bas_job_match_path(@job, @match), notice: "Match marked for review."
+        redirect_to return_path, notice: "Match marked as needs review."
       end
 
       private
@@ -117,7 +121,20 @@ module Admin
 
       def update_matched_item_statuses(match)
         match.items.each do |item|
-          item.matchable.update!(status: "matched") if item.matchable.respond_to?(:status)
+          next unless item.matchable.respond_to?(:status)
+          next unless item.matchable.class.const_defined?(:STATUS_VALUES)
+          next unless item.matchable.class::STATUS_VALUES.include?("matched")
+
+          item.matchable.update!(status: "matched")
+        end
+      end
+
+      def sync_resolved_source_queries(match)
+        match.items.each do |item|
+          BasQueries::SourceResolutionSync.new(
+            source: item.matchable,
+            actor_username: current_admin_identifier
+          ).call
         end
       end
 
@@ -140,6 +157,35 @@ module Admin
         return unless @job.locked?
 
         redirect_to admin_bas_job_matches_path(@job), alert: "Locked BAS jobs cannot have matches changed."
+      end
+
+      def return_path
+        case params[:return_to]
+        when "matches"
+          admin_bas_job_matches_path(@job)
+        when "workflow"
+          admin_bas_job_matching_path(@job)
+        else
+          admin_bas_job_matching_path(@job)
+        end
+      end
+
+      def matching_review_open_count
+        @job.matches.proposed.count + @job.matches.needs_review.count
+      end
+
+      def accepted_flash
+        remaining = matching_review_open_count
+        return "Match accepted. No proposed/needs-review matches remaining." if remaining.zero?
+
+        "Match accepted. #{remaining} proposed/needs-review matches remaining."
+      end
+
+      def rejected_flash
+        remaining = matching_review_open_count
+        return "Match rejected. Generate client queries is now available." if remaining.zero?
+
+        "Match rejected. Review #{remaining} proposed/needs-review matches before generating client queries."
       end
     end
   end

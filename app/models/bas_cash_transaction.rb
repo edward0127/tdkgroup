@@ -21,7 +21,7 @@ class BasCashTransaction < ApplicationRecord
       .where(matchable_type: "BasCashTransaction", bas_matches: { status: "accepted" })
       .select(:matchable_id)
 
-    where.not(status: %w[ignored]).where.not(id: accepted_match_ids)
+    where.not(status: %w[ignored]).where.not(gst_code: "bas_excluded").where.not(id: accepted_match_ids)
   }
 
   private

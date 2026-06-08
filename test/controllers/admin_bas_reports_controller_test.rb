@@ -26,7 +26,8 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
 
     get admin_bas_job_report_path(job)
     assert_response :success
-    assert_select "h1", job.bas_client.display_name
+    assert_select "h1", "Report & snapshots"
+    assert_includes response.body, "Client: #{job.bas_client.primary_name}"
 
     assert_difference "BasReportSnapshot.count", 1 do
       assert_difference "BasAuditEvent.count", 2 do
@@ -148,7 +149,8 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
 
     get print_admin_bas_job_report_snapshot_path(job, snapshot)
     assert_response :success
-    assert_select "h1", job.bas_client.display_name
+    assert_select "h1", "Printable BAS report"
+    assert_includes response.body, "Client: #{job.bas_client.primary_name}"
   end
 
   private

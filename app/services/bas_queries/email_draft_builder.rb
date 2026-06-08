@@ -172,7 +172,7 @@ module BasQueries
 
     def query_lines(query, number, instruction)
       lines = [
-        "#{number}. #{sanitize_text(query.title)}"
+        "#{number}. #{sanitize_text(query.display_title)}"
       ]
 
       details = sanitize_text(query.details)
@@ -205,8 +205,8 @@ module BasQueries
     end
 
     def source_summary_for(query)
-      source = safe_source_for(query)
-      return nil if source.blank?
+      source = query.source_record
+      return query.source_summary if source.blank?
 
       parts = case source
       when BasBankTransaction
@@ -244,25 +244,6 @@ module BasQueries
       end
 
       parts.compact.join("; ").presence
-    end
-
-    def safe_source_for(query)
-      return nil if query.source_type.blank? || query.source_id.blank?
-
-      case query.source_type
-      when "BasBankTransaction"
-        bas_job.bank_transactions.find_by(id: query.source_id)
-      when "BasInvoice"
-        bas_job.invoices.find_by(id: query.source_id)
-      when "BasCashTransaction"
-        bas_job.cash_transactions.find_by(id: query.source_id)
-      when "BasPayrollSummary"
-        bas_job.payroll_summaries.find_by(id: query.source_id)
-      when "BasImportRun"
-        bas_job.import_runs.includes(:bas_document).find_by(id: query.source_id)
-      else
-        nil
-      end
     end
 
     def safe_part(label, value)

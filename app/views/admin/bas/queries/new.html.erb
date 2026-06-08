@@ -2,7 +2,8 @@
   <div>
     <p class="eyebrow">BAS query</p>
     <h1>New query</h1>
-    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
 </section>

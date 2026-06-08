@@ -8,7 +8,7 @@
     <% unless @job.locked? %>
       <%= link_to "New adjustment", new_admin_bas_job_adjustment_path(@job), class: "btn-primary" %>
     <% end %>
-    <%= link_to "Report review", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+    <%= link_to "Report & snapshots", admin_bas_job_report_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>

@@ -6,8 +6,9 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS report review</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1>Report &amp; snapshots</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>

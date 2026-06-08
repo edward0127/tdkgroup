@@ -71,6 +71,7 @@ module Admin
           actor_username: current_admin_identifier,
           metadata: { record_type: record.class.name, record_id: record.id, status: status }
         )
+        BasQueries::SourceResolutionSync.new(source: record, actor_username: current_admin_identifier).call
       end
 
       def block_locked_job

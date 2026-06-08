@@ -6,7 +6,10 @@ module BasMatching
       @bas_job = bas_job
       @actor_username = actor_username
       @created_count = 0
+      @existing_count = 0
     end
+
+    attr_reader :created_count, :existing_count
 
     def call
       raise LockedJobError, "locked BAS jobs cannot generate queries" if bas_job.locked?
@@ -26,7 +29,7 @@ module BasMatching
 
     private
 
-    attr_reader :bas_job, :actor_username, :created_count
+    attr_reader :bas_job, :actor_username
 
     def generate_unmatched_bank_queries
       bas_job.bank_transactions.unmatched.find_each do |transaction|
@@ -138,12 +141,15 @@ module BasMatching
     def create_query!(source:, query_type:, title:, details:, rule:)
       dedupe_key = "#{rule}:#{source.class.name}:#{source.id}"
       existing = bas_job.queries.find_by(dedupe_key: dedupe_key)
-      return if existing.present?
+      if existing.present?
+        @existing_count += 1
+        return
+      end
 
       bas_job.queries.create!(
         query_type: query_type,
         status: "open",
-        title: title,
+        title: generated_title(fallback_title: title, source: source),
         details: details,
         created_by: actor_username,
         updated_by: actor_username,
@@ -154,6 +160,59 @@ module BasMatching
         auto_generated: true
       )
       @created_count += 1
+    end
+
+    def generated_title(fallback_title:, source:)
+      parts = [
+        fallback_title,
+        source_party_description(source),
+        formatted_money(source_amount(source))
+      ].compact_blank
+
+      return fallback_title if parts.size <= 1
+
+      parts.join("  ")
+    end
+
+    def source_party_description(source)
+      case source
+      when BasBankTransaction
+        first_present(source.description, source.details, source.reference)
+      when BasInvoice
+        first_present(source.party_name, source.description, source.invoice_number)
+      when BasCashTransaction
+        first_present(source.party_name, source.description)
+      when BasPayrollSummary
+        "Payroll summary ##{source.id}"
+      when BasImportRun
+        first_present(source.bas_document&.title, "Import run ##{source.id}")
+      when BasJob
+        source.period_label
+      end
+    end
+
+    def source_amount(source)
+      case source
+      when BasBankTransaction
+        source.amount
+      when BasInvoice, BasCashTransaction
+        source.total_amount
+      when BasPayrollSummary
+        source.gross_wages
+      end
+    end
+
+    def first_present(*values)
+      values.map { |value| value.to_s.squish }.find(&:present?)
+    end
+
+    def formatted_money(value)
+      return nil if value.blank?
+
+      amount = BigDecimal(value.to_s).round(2)
+      sign = amount.negative? ? "-" : ""
+      integer_part, decimal_part = amount.abs.to_s("F").split(".", 2)
+      "#{sign}$#{integer_part}.#{decimal_part.to_s.ljust(2, '0')[0, 2]}"
     end
 
     def active_invoices
@@ -171,6 +230,7 @@ module BasMatching
         actor_username: actor_username,
         metadata: {
           created_count: created_count,
+          existing_count: existing_count,
           open_query_count: bas_job.queries.open_items.count,
           status: bas_job.status
         }

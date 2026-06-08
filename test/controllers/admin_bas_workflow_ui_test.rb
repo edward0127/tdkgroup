@@ -39,6 +39,82 @@ class AdminBasWorkflowUiTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Start CSV/XLSX import"
   end
 
+  test "job page explains no open query state and disables email draft action" do
+    job = create_job
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "h2", "Open client/internal queries"
+    assert_includes response.body, "No open queries. Generate client queries after matching review if unresolved items remain."
+    assert_includes response.body, "Available after open queries are generated."
+    assert_select "a[href='#{admin_bas_job_query_email_draft_path(job)}']", count: 0
+  end
+
+  test "job page open queries table shows source details and review action" do
+    job = create_job
+    transaction = BasBankTransaction.create!(
+      bas_job: job,
+      transaction_date: Date.new(2026, 3, 12),
+      description: "Generic supplier card purchase",
+      amount: BigDecimal("77.00"),
+      status: "imported"
+    )
+    query = BasQuery.create!(
+      bas_job: job,
+      title: "Unmatched bank transaction",
+      query_type: "unmatched_bank_transaction",
+      status: "open",
+      source_type: "BasBankTransaction",
+      source_id: transaction.id,
+      auto_generated: true
+    )
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "th", "Query"
+    assert_select "th", "Source"
+    assert_includes response.body, "Generic supplier card purchase"
+    assert_includes response.body, "$77.00"
+    assert_select "a[href='#{edit_admin_bas_job_query_path(job, query)}']", text: "Review query"
+    assert_select "a[href='#{admin_bas_job_query_email_draft_path(job)}']", text: "Generate client email draft"
+  end
+
+  test "query review page shows source context" do
+    job = create_job
+    invoice = BasInvoice.create!(
+      bas_job: job,
+      invoice_number: "INV-CTX",
+      issue_date: Date.new(2026, 3, 15),
+      party_name: "Generic supplier",
+      total_amount: BigDecimal("132.00"),
+      gst_amount: BigDecimal("12.00"),
+      status: "imported"
+    )
+    query = BasQuery.create!(
+      bas_job: job,
+      title: "Unmatched invoice",
+      query_type: "unmatched_invoice",
+      source_type: "BasInvoice",
+      source_id: invoice.id,
+      auto_generated: true
+    )
+
+    get edit_admin_bas_job_query_path(job, query)
+
+    assert_response :success
+    assert_select "h1", "Review query"
+    assert_select "h2", "Source context"
+    assert_includes response.body, "Source type"
+    assert_includes response.body, "Invoice"
+    assert_includes response.body, "2026-03-15"
+    assert_includes response.body, "Generic supplier"
+    assert_includes response.body, "$132.00"
+    assert_includes response.body, "INV-CTX"
+    assert_includes response.body, "Imported"
+  end
+
   private
 
   def login_as_admin

@@ -1,14 +1,15 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS report snapshots</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1>Report snapshots</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
       <%= button_to "Generate draft", admin_bas_job_report_snapshots_path(@job), method: :post, class: "btn-primary" %>
     <% end %>
-    <%= link_to "Report review", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+    <%= link_to "Report & snapshots", admin_bas_job_report_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>

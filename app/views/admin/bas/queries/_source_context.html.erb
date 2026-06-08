@@ -1,0 +1,38 @@
+<section class="admin-card-panel">
+  <h2>Source context</h2>
+
+  <% if query.source_record.present? %>
+    <dl class="admin-asset-details">
+      <div>
+        <dt>Source type</dt>
+        <dd><%= query.source_type_label %></dd>
+      </div>
+      <div>
+        <dt>Source date</dt>
+        <dd><%= query.source_date.present? ? query.source_date.to_fs(:db) : "Not recorded" %></dd>
+      </div>
+      <div>
+        <dt>Source party/description</dt>
+        <dd><%= query.source_party_description.presence || "Not recorded" %></dd>
+      </div>
+      <div>
+        <dt>Source amount</dt>
+        <dd><%= query.source_amount.present? ? number_to_currency(query.source_amount) : "Not recorded" %></dd>
+      </div>
+      <div>
+        <dt>Source reference/invoice number</dt>
+        <dd><%= query.source_reference.presence || "Not recorded" %></dd>
+      </div>
+      <div>
+        <dt>Current source status</dt>
+        <dd><%= query.source_status_label.presence || "Not recorded" %></dd>
+      </div>
+    </dl>
+
+    <% if query.source_resolved? && !query.closed? %>
+      <p class="text-danger">Source item has been ignored/excluded/matched. Review and close this query.</p>
+    <% end %>
+  <% else %>
+    <p class="admin-muted">No source record is linked. The stored title/details are shown as fallback context.</p>
+  <% end %>
+</section>

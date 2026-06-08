@@ -20,9 +20,9 @@ class BasClient < ApplicationRecord
   scope :ordered, -> { order(archived: :asc, legal_name: :asc, id: :asc) }
 
   def display_name
-    legal = legal_name.to_s.squish
+    legal = primary_name
     trading = trading_name.to_s.squish
-    name = legal.presence || trading.presence || "Unnamed BAS client"
+    name = legal
 
     if legal.present? && trading.present? && !trading.casecmp?(legal)
       name = "#{name} (#{trading})"
@@ -34,11 +34,9 @@ class BasClient < ApplicationRecord
     "#{name}  ABN #{abn_label}"
   end
 
-  def cleanup_deletable?
-    !bas_jobs.exists?
+  def primary_name
+    legal_name.to_s.squish.presence || trading_name.to_s.squish.presence || "Unnamed BAS client"
   end
-
-  private
 
   def formatted_abn
     raw_abn = abn.to_s.squish
@@ -48,6 +46,12 @@ class BasClient < ApplicationRecord
 
     "#{digits[0, 2]} #{digits[2, 3]} #{digits[5, 3]} #{digits[8, 3]}"
   end
+
+  def cleanup_deletable?
+    !bas_jobs.exists?
+  end
+
+  private
 
   def prevent_destroy_with_jobs
     return if cleanup_deletable?

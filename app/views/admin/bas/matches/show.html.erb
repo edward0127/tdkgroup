@@ -2,15 +2,17 @@
   <div>
     <p class="eyebrow">BAS match</p>
     <h1><%= @match.match_type.humanize %></h1>
-    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <% if @match.status == "proposed" && !@job.locked? %>
-      <%= button_to "Accept", accept_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-primary" %>
-      <%= button_to "Reject", reject_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-secondary" %>
-      <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(@job, @match), method: :post, class: "btn-secondary" %>
+      <%= button_to "Accept", accept_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-primary" %>
+      <%= button_to "Reject", reject_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-secondary" %>
+      <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-secondary" %>
     <% end %>
     <%= link_to "All matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to matching workflow", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
   </div>
 </section>
 

@@ -1,7 +1,9 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS queries</p>
-    <h1><%= @job.period_label %></h1>
+    <h1>Client/internal queries</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "btn-primary" %>
@@ -13,8 +15,9 @@
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Title</th>
-        <th>Type</th>
+        <th>Query</th>
+        <th>Source</th>
+        <th>Amount</th>
         <th>Status</th>
         <th>Updated by</th>
         <th></th>
@@ -23,11 +26,12 @@
     <tbody>
       <% @queries.each do |query| %>
         <tr>
-          <td><%= query.title %></td>
           <td><%= query.query_type.humanize %></td>
+          <td><%= query.source_summary.presence || query.display_title %></td>
+          <td><%= number_to_currency(query.source_amount) if query.source_amount.present? %></td>
           <td><%= query.status.humanize %></td>
           <td><%= query.updated_by.presence || "Not recorded" %></td>
-          <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
+          <td><%= link_to "Review query", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
         </tr>
       <% end %>
     </tbody>

@@ -246,6 +246,10 @@ class BasMatchingTest < ActiveSupport::TestCase
     assert job.queries.exists?(query_type: "gst_treatment_unclear")
     assert job.queries.exists?(query_type: "import_error")
     assert job.queries.exists?(query_type: "payroll_unclear")
+    assert_includes job.queries.find_by!(query_type: "unmatched_bank_transaction").title, "Unmatched bank"
+    assert_includes job.queries.find_by!(query_type: "unmatched_bank_transaction").title, "$99.00"
+    assert_includes job.queries.find_by!(query_type: "unmatched_invoice").title, "Unmatched Invoice"
+    assert_includes job.queries.find_by!(query_type: "unmatched_invoice").title, "$120.00"
   end
 
   test "query generation creates admin queries for unknown direction records" do

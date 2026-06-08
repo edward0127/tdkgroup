@@ -1,8 +1,8 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS job</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1><%= bas_client_heading_name(@job.bas_client) %></h1>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <%= link_to "Upload source/supporting file", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
@@ -162,7 +162,7 @@
 <section class="admin-card-panel">
   <div class="admin-panel-heading">
     <h2>Matching</h2>
-    <%= link_to "Open matching", admin_bas_job_matching_path(@job), class: "text-link" %>
+    <%= link_to "Matching & review", admin_bas_job_matching_path(@job), class: "text-link" %>
   </div>
   <div class="admin-table-wrap">
     <table class="admin-table">
@@ -345,46 +345,55 @@
   <% end %>
 </section>
 
-<section class="admin-card-panel">
+<section class="admin-card-panel" id="open-queries">
   <div class="admin-panel-heading">
-    <h2>Open queries</h2>
+    <h2>Open client/internal queries</h2>
     <div class="admin-actions">
       <% if @open_queries.any? %>
         <%= link_to "Generate client email draft", admin_bas_job_query_email_draft_path(@job), class: "text-link" %>
       <% else %>
-        <span class="admin-muted">Client email draft will be available after client queries are generated.</span>
+        <span class="admin-muted">Available after open queries are generated.</span>
       <% end %>
       <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "text-link" %>
     </div>
   </div>
+  <p class="admin-muted">Resolve or dismiss these before final approval. Use Generate client email draft to create copy/paste wording for the client.</p>
 
   <% if @open_queries.any? %>
     <div class="admin-table-wrap">
       <table class="admin-table">
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Type</th>
+            <th>Query</th>
+            <th>Source</th>
+            <th>Amount</th>
             <th>Status</th>
             <th>Updated</th>
-            <th></th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
           <% @open_queries.each do |query| %>
             <tr>
-              <td><%= query.title %></td>
-              <td><%= query.query_type.humanize %></td>
+              <td>
+                <%= query.query_type.humanize %>
+                <% if query.source_resolved? && !query.closed? %>
+                  <br>
+                  <span class="text-danger">Source item has been ignored/excluded/matched. Review and close this query.</span>
+                <% end %>
+              </td>
+              <td><%= query.source_summary.presence || query.display_title %></td>
+              <td><%= number_to_currency(query.source_amount) if query.source_amount.present? %></td>
               <td><%= query.status.humanize %></td>
               <td><%= l(query.updated_at, format: :short) %></td>
-              <td><%= link_to "Edit", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
+              <td><%= link_to "Review query", edit_admin_bas_job_query_path(@job, query), class: "text-link" %></td>
             </tr>
           <% end %>
         </tbody>
       </table>
     </div>
   <% else %>
-    <p class="admin-muted">No open queries.</p>
+    <p class="admin-muted">No open queries. Generate client queries after matching review if unresolved items remain.</p>
   <% end %>
 </section>
 

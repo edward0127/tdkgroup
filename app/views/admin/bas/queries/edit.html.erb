@@ -1,13 +1,17 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS query</p>
-    <h1>Edit query</h1>
-    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+    <h1>Review query</h1>
+    <p><%= @query.display_title %></p>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <%= link_to "View query", admin_bas_job_query_path(@job, @query), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
+
+<%= render "source_context", query: @query %>
 
 <%= render "form", job: @job, query: @query %>

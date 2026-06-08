@@ -19,16 +19,17 @@ module Admin
 
       def generate_queries
         if matching_review_open?
-          redirect_to admin_bas_job_matching_path(@job), alert: "Review proposed and needs-review matches before generating client queries."
+          redirect_to admin_bas_job_matching_path(@job), alert: "Review #{matching_review_open_count} proposed/needs-review matches before generating client queries."
           return
         end
 
-        created_count = BasMatching::QueryGenerator.new(
+        generator = BasMatching::QueryGenerator.new(
           bas_job: @job,
           actor_username: current_admin_identifier
-        ).call
+        )
+        created_count = generator.call
 
-        redirect_to admin_bas_job_matching_path(@job), notice: "Client query generation completed. #{created_count} queries created."
+        redirect_to admin_bas_job_matching_path(@job, anchor: "open-client-queries"), notice: query_generation_notice(created_count, generator.existing_count)
       end
 
       private
@@ -51,7 +52,25 @@ module Admin
       end
 
       def matching_review_open?
-        @job.matches.proposed.exists? || @job.matches.needs_review.exists?
+        matching_review_open_count.positive?
+      end
+
+      def matching_review_open_count
+        @job.matches.proposed.count + @job.matches.needs_review.count
+      end
+
+      def query_generation_notice(created_count, existing_count)
+        messages = []
+        if created_count.positive?
+          messages << "#{created_count} client #{'query'.pluralize(created_count)} generated."
+        else
+          messages << "No new client queries needed."
+        end
+        if existing_count.positive?
+          messages << "#{existing_count} existing #{'query'.pluralize(existing_count)} already covered these unresolved items."
+        end
+
+        messages.join(" ")
       end
 
       def block_locked_job

@@ -1,8 +1,8 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS client</p>
-    <h1><%= @client.display_name %></h1>
-    <p><%= @client.archived? ? "Archived client" : "Active client" %></p>
+    <h1><%= bas_client_heading_name(@client) %></h1>
+    <%= bas_client_heading_metadata(@client, include_status: true) %>
   </div>
   <div class="admin-actions">
     <%= link_to "Edit client", edit_admin_bas_client_path(@client), class: "btn-primary" %>

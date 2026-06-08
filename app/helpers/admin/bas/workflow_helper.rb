@@ -58,7 +58,7 @@ module Admin
             title: "Step 4: Generate client queries",
             description: "Create query list and email draft after match review is complete.",
             status: bas_workflow_status(locked: locked, completed: open_queries_count.positive?, action_required: imported_records_count.positive? && matching_review_count.zero? && open_queries_count.zero?),
-            action_label: locked ? nil : "Open matching review",
+            action_label: locked ? nil : "Generate client queries",
             action_path: locked ? nil : admin_bas_job_matching_path(job)
           },
           {
@@ -84,6 +84,36 @@ module Admin
             action_path: latest_report_snapshot.present? ? admin_bas_job_report_snapshot_path(job, latest_report_snapshot) : admin_bas_job_report_path(job)
           }
         ]
+      end
+
+      def bas_client_heading_name(client)
+        client.primary_name
+      end
+
+      def bas_client_metadata_lines(client, job: nil, include_status: false)
+        lines = []
+        trading_name = client.trading_name.to_s.squish
+
+        if trading_name.present? && !trading_name.casecmp?(client.primary_name)
+          lines << "Trading name: #{trading_name}"
+        end
+
+        lines << "ABN: #{client.formatted_abn}" if client.formatted_abn.present?
+        lines << "BAS job: #{job.period_label}" if job.present?
+        lines << (client.archived? ? "Archived client" : "Active client") if include_status
+        lines
+      end
+
+      def bas_job_heading_metadata(job)
+        safe_join(
+          bas_client_metadata_lines(job.bas_client, job: job).map { |line| content_tag(:p, line) }
+        )
+      end
+
+      def bas_client_heading_metadata(client, include_status: false)
+        safe_join(
+          bas_client_metadata_lines(client, include_status: include_status).map { |line| content_tag(:p, line) }
+        )
       end
 
       def bas_job_warning_banners(job)

@@ -1,27 +1,25 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS matching</p>
-    <h1><%= @job.bas_client.display_name %></h1>
-    <p><%= @job.period_label %></p>
+    <h1>Matching &amp; review</h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
       <%= button_to "Create match suggestions", run_admin_bas_job_matching_path(@job), method: :post, class: "btn-primary" %>
-      <% if @summary[:proposed_matches].zero? && @summary[:needs_review_matches].zero? %>
-        <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
-      <% end %>
       <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-secondary" %>
     <% end %>
+    <%= link_to "View all matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
 
+<% matching_review_count = @summary[:proposed_matches] + @summary[:needs_review_matches] %>
+
 <section class="admin-card-panel">
   <h2>Matching summary</h2>
   <p class="admin-muted">Review proposed and needs-review matches before generating client queries. Client queries should only be generated after obvious matches are accepted/rejected and internal review items are resolved.</p>
-  <% if !@job.locked? && (@summary[:proposed_matches].positive? || @summary[:needs_review_matches].positive?) %>
-    <p class="text-danger">Generate client queries is locked until all proposed/needs-review matches are accepted, rejected, or resolved.</p>
-  <% end %>
   <div class="admin-table-wrap">
     <table class="admin-table">
       <tbody>
@@ -38,12 +36,48 @@
 
 <section class="admin-card-panel">
   <div class="admin-panel-heading">
+    <h2>Generate client queries</h2>
+    <% if @summary[:open_queries].positive? %>
+      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "text-link" %>
+    <% end %>
+  </div>
+
+  <% if @job.locked? %>
+    <p class="admin-muted">Locked BAS jobs cannot generate client queries.</p>
+    <button type="button" class="btn-secondary" disabled>Generate client queries</button>
+  <% elsif matching_review_count.positive? %>
+    <p class="text-danger">Review <%= matching_review_count %> proposed/needs-review matches before generating client queries.</p>
+    <button type="button" class="btn-secondary" disabled>Generate client queries</button>
+  <% elsif @summary[:open_queries].positive? %>
+    <p class="admin-muted">Client queries generated.</p>
+    <div class="admin-actions">
+      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "btn-secondary" %>
+      <%= button_to "Generate/re-run client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+    </div>
+  <% else %>
+    <p class="admin-muted">No proposed/needs-review matches remain. Generate client queries for unresolved source items.</p>
+    <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+  <% end %>
+</section>
+
+<% if @summary[:open_queries].positive? %>
+  <section class="admin-card-panel" id="open-client-queries">
+    <div class="admin-panel-heading">
+      <h2>Open client queries</h2>
+      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "text-link" %>
+    </div>
+    <p class="admin-muted"><%= @summary[:open_queries] %> open client/internal <%= "query".pluralize(@summary[:open_queries]) %> currently need review.</p>
+  </section>
+<% end %>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
     <h2>Proposed matches</h2>
     <%= link_to "View all matches", admin_bas_job_matches_path(@job), class: "text-link" %>
   </div>
 
   <% if @proposed_matches.any? %>
-    <%= render "admin/bas/matches/table", job: @job, matches: @proposed_matches %>
+    <%= render "admin/bas/matches/table", job: @job, matches: @proposed_matches, return_to: "workflow" %>
   <% else %>
     <p class="admin-muted">No proposed matches.</p>
   <% end %>

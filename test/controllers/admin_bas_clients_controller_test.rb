@@ -42,7 +42,9 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
     get admin_bas_client_path(client)
 
     assert_response :success
-    assert_select "h1", client.display_name.squish
+    assert_select "h1", client.primary_name
+    assert_includes response.body, "Trading name: #{client.trading_name}"
+    assert_includes response.body, "ABN: #{client.formatted_abn}"
     assert_includes response.body, client.legal_name
     assert_includes response.body, client.trading_name
     assert_includes response.body, client.abn

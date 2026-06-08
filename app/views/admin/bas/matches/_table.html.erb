@@ -1,3 +1,5 @@
+<% return_to_value = local_assigns[:return_to].presence || "workflow" %>
+
 <div class="admin-table-wrap">
   <table class="admin-table">
     <thead>
@@ -31,9 +33,9 @@
             <%= link_to "View", admin_bas_job_match_path(job, match), class: "text-link" %>
             <% if match.status == "proposed" && !job.locked? %>
               <br>
-              <%= button_to "Accept", accept_admin_bas_job_match_path(job, match), method: :post, class: "text-link" %>
-              <%= button_to "Reject", reject_admin_bas_job_match_path(job, match), method: :post, class: "text-danger" %>
-              <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(job, match), method: :post, class: "text-link" %>
+              <%= button_to "Accept", accept_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-link" %>
+              <%= button_to "Reject", reject_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-danger" %>
+              <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-link" %>
             <% end %>
           </td>
         </tr>
