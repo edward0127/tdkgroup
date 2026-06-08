@@ -16,38 +16,24 @@
         <th>Legal name</th>
         <th>Trading name</th>
         <th>ABN</th>
-        <th>GST basis</th>
-        <th>Frequency</th>
-        <th>Status</th>
+        <th>Contact email</th>
         <th>Jobs</th>
-        <th>Cleanup</th>
+        <th>Status</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       <% @clients.each do |client| %>
         <tr>
-          <td><%= client.legal_name %></td>
-          <td><%= client.trading_name.presence || "None" %></td>
+          <td><%= link_to client.legal_name, admin_bas_client_path(client), class: "text-link" %></td>
+          <td><%= client.trading_name.presence || "Not recorded" %></td>
           <td><%= client.abn.presence || "Not recorded" %></td>
-          <td><%= client.default_gst_basis.humanize %></td>
-          <td><%= client.reporting_frequency.humanize %></td>
-          <td><%= client.archived? ? "Archived" : "Active" %></td>
+          <td><%= client.contact_email.presence || "Not recorded" %></td>
           <td><%= client.bas_jobs.size %></td>
+          <td><%= client.archived? ? "Archived" : "Active" %></td>
           <td>
-            <% if client.cleanup_deletable? %>
-              <%= button_to "Delete client",
-                    admin_bas_client_path(client),
-                    method: :delete,
-                    class: "text-danger",
-                    form: { data: { turbo_confirm: "Delete this BAS client? This cannot be undone." } } %>
-            <% else %>
-              <span class="admin-muted">Delete draft/test jobs before deleting this client.</span>
-            <% end %>
-          </td>
-          <td>
-            <%= link_to "View", admin_bas_client_path(client), class: "text-link" %><br>
-            <%= link_to "Jobs", admin_bas_client_path(client), class: "text-link" %>
+            <%= link_to "Open", admin_bas_client_path(client), class: "text-link" %><br>
+            <%= link_to "Edit", edit_admin_bas_client_path(client), class: "text-link" %>
           </td>
         </tr>
       <% end %>

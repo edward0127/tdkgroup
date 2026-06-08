@@ -16,23 +16,24 @@
     <div class="admin-form-grid">
       <div class="field">
         <%= form.label :legal_name %>
-        <%= form.text_field :legal_name, required: true %>
+        <%= form.text_field :legal_name, required: true, placeholder: "Acme Test Pty Ltd" %>
       </div>
       <div class="field">
         <%= form.label :trading_name %>
-        <%= form.text_field :trading_name %>
+        <%= form.text_field :trading_name, placeholder: "Acme Test" %>
+        <p class="admin-muted">Optional. Leave blank if same as legal name.</p>
       </div>
       <div class="field">
         <%= form.label :abn, "ABN" %>
-        <%= form.text_field :abn %>
+        <%= form.text_field :abn, placeholder: "12 345 678 901" %>
       </div>
       <div class="field">
         <%= form.label :contact_name %>
-        <%= form.text_field :contact_name %>
+        <%= form.text_field :contact_name, placeholder: "Accounts contact" %>
       </div>
       <div class="field">
         <%= form.label :contact_email %>
-        <%= form.email_field :contact_email %>
+        <%= form.email_field :contact_email, placeholder: "accounts@example.com" %>
       </div>
       <div class="field">
         <%= form.label :contact_phone %>
@@ -62,8 +63,8 @@
       </label>
     </div>
     <div class="field">
-      <%= form.label :notes %>
-      <%= form.text_area :notes, rows: 5 %>
+      <%= form.label :notes, "Notes / internal notes" %>
+      <%= form.text_area :notes, rows: 5, placeholder: "Internal BAS notes for this client" %>
     </div>
   </section>
 

@@ -81,6 +81,46 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.body, "Locked/final BAS jobs cannot be deleted."
   end
 
+  test "new job form client dropdown uses BasClient display_name" do
+    client = create_client(
+      legal_name: "Synthetic Legal Client Pty Ltd",
+      trading_name: "Synthetic Legal Trading",
+      abn: "12345678901",
+      notes: "leave blank or Acme Test"
+    )
+
+    get new_admin_bas_job_path
+
+    assert_response :success
+    assert_select "select[name='bas_job[bas_client_id]'] option[value='#{client.id}']", text: client.display_name.squish
+    assert_includes client.display_name, "Synthetic Legal Client Pty Ltd"
+    assert_not_includes response.body, ">Synthetic Legal Trading</option>"
+    assert_not_includes response.body, client.notes
+  end
+
+  test "new job form client dropdown uses legal name as primary label" do
+    client = create_client(
+      legal_name: "Synthetic Primary Legal Pty Ltd",
+      trading_name: "Primary"
+    )
+
+    get new_admin_bas_job_path
+
+    assert_response :success
+    assert_select "select[name='bas_job[bas_client_id]'] option[value='#{client.id}']", text: "Synthetic Primary Legal Pty Ltd (Primary)"
+  end
+
+  test "client name on job show links to client show" do
+    client = create_client(legal_name: "Synthetic Linked Client Pty Ltd")
+    job = create_job(bas_client: client)
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "a[href='#{admin_bas_client_path(client)}']", text: client.display_name
+    assert_select "a[href='#{admin_bas_client_path(client)}']", text: "View client details"
+  end
+
   private
 
   def login_as_admin
@@ -90,13 +130,17 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  def create_client
-    BasClient.create!(legal_name: "Synthetic Jobs Controller Client Pty Ltd")
+  def create_client(attributes = {})
+    BasClient.create!({
+      legal_name: "Synthetic Jobs Controller Client Pty Ltd"
+    }.merge(attributes))
   end
 
   def create_job(attributes = {})
+    client = attributes.delete(:bas_client) || create_client
+
     BasJob.create!({
-      bas_client: create_client,
+      bas_client: client,
       period_start: Date.new(2026, 1, 1),
       period_end: Date.new(2026, 3, 31),
       gst_basis: "cash",

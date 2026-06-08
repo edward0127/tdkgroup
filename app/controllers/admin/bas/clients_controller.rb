@@ -45,7 +45,7 @@ module Admin
             actor_username: current_admin_identifier,
             metadata: { bas_client_id: @client.id, changed_fields: changed_fields }
           )
-          redirect_to admin_bas_client_path(@client), notice: "BAS client updated."
+          redirect_to admin_bas_client_path(@client), notice: "BAS client was updated."
         else
           render :edit, status: :unprocessable_entity
         end

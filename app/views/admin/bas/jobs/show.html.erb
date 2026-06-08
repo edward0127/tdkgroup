@@ -17,11 +17,14 @@
 </section>
 
 <section class="admin-card-panel">
-  <h2>Workspace summary</h2>
+  <div class="admin-panel-heading">
+    <h2>Workspace summary</h2>
+    <%= link_to "View client details", admin_bas_client_path(@job.bas_client), class: "text-link" %>
+  </div>
   <dl class="admin-asset-details">
     <div>
       <dt>Client</dt>
-      <dd><%= link_to @job.bas_client.legal_name, admin_bas_client_path(@job.bas_client), class: "text-link" %></dd>
+      <dd><%= link_to @job.bas_client.display_name, admin_bas_client_path(@job.bas_client), class: "text-link" %></dd>
     </div>
     <div>
       <dt>Period</dt>

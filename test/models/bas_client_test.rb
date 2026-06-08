@@ -30,6 +30,49 @@ class BasClientTest < ActiveSupport::TestCase
     assert_equal :invalid, client.errors.details[:contact_email].first.fetch(:error)
   end
 
+  test "display_name uses legal name as the primary label" do
+    client = BasClient.new(
+      legal_name: "Acme Test Pty Ltd",
+      trading_name: "Acme Test"
+    )
+
+    assert_equal "Acme Test Pty Ltd (Acme Test)", client.display_name
+  end
+
+  test "display_name includes trading name only when useful" do
+    client = BasClient.new(
+      legal_name: "Acme Test Pty Ltd",
+      trading_name: "Acme Test Pty Ltd"
+    )
+
+    assert_equal "Acme Test Pty Ltd", client.display_name
+  end
+
+  test "display_name appends formatted ABN when present" do
+    client = BasClient.new(
+      legal_name: "Acme Test Pty Ltd",
+      abn: "12345678901"
+    )
+
+    assert_equal "Acme Test Pty Ltd  ABN 12 345 678 901", client.display_name
+  end
+
+  test "display_name does not depend on notes" do
+    client = BasClient.new(
+      legal_name: "Synthetic Client Pty Ltd",
+      notes: "leave blank or Acme Test"
+    )
+
+    assert_equal "Synthetic Client Pty Ltd", client.display_name
+    assert_not_includes client.display_name, "leave blank"
+  end
+
+  test "display_name handles missing trading name cleanly" do
+    client = BasClient.new(legal_name: "Synthetic Client Pty Ltd", trading_name: "")
+
+    assert_equal "Synthetic Client Pty Ltd", client.display_name
+  end
+
   test "client without jobs is cleanup deletable" do
     client = bas_client
 
