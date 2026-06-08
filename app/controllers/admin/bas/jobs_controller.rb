@@ -9,16 +9,19 @@ module Admin
       end
 
       def show
-        @documents_by_type = @job.documents.with_attached_file.ordered.group_by(&:document_type)
+        @documents = @job.documents.with_attached_file.includes(:import_runs, :conversion_runs).ordered
+        @documents_by_type = @documents.group_by(&:document_type)
         @import_runs = @job.import_runs.includes(:bas_document).recent.limit(6)
         @bank_transactions = @job.bank_transactions.recent.limit(8)
         @invoices = @job.invoices.recent.limit(8)
         @cash_transactions = @job.cash_transactions.recent.limit(8)
         @payroll_summaries = @job.payroll_summaries.recent.limit(8)
         @proposed_matches_count = @job.matches.proposed.count
+        @needs_review_matches_count = @job.matches.needs_review.count
         @accepted_matches_count = @job.matches.accepted.count
         @unmatched_bank_transactions_count = @job.bank_transactions.unmatched.count
         @unmatched_invoices_count = @job.invoices.unmatched.count
+        @imported_records_count = @job.bank_transactions.count + @job.invoices.count + @job.cash_transactions.count + @job.payroll_summaries.count
         @latest_report_snapshot = @job.report_snapshots.recent.first
         @approval_blockers_count = BasReports::ApprovalValidator.new(bas_job: @job).call.size
         @ai_config = BasAi::Config.current

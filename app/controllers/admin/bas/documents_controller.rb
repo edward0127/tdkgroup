@@ -5,7 +5,7 @@ module Admin
       before_action :set_document, only: [ :show, :download, :destroy ]
 
       def index
-        @documents = @job.documents.with_attached_file.ordered
+        @documents = @job.documents.with_attached_file.includes(:import_runs, :conversion_runs).ordered
       end
 
       def show

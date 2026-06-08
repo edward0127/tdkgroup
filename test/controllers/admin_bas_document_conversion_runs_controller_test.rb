@@ -66,7 +66,9 @@ class AdminBasDocumentConversionRunsControllerTest < ActionDispatch::Integration
 
     assert_response :success
     assert_select "h1", "Synthetic PDF Bank Statement"
-    assert_select "p", /Please review extracted rows before importing/
+    assert_select "p", /This preview was extracted from a standard bank-downloaded PDF/
+    assert_select "button", "Confirm import"
+    assert_select "button", text: "Confirm Import and Run Matching", count: 0
     assert_select "td", "Synthetic debit"
   end
 
@@ -102,7 +104,49 @@ class AdminBasDocumentConversionRunsControllerTest < ActionDispatch::Integration
     )
     conversion_run = preview_conversion(job, nil, matching_statement_text)
 
-    assert_difference "BasBankTransaction.count", 1 do
+    assert_no_difference "BasQuery.count" do
+      assert_difference "BasBankTransaction.count", 1 do
+        assert_difference "BasMatch.count", 1 do
+          post confirm_import_and_match_admin_bas_job_document_conversion_run_path(job, conversion_run)
+        end
+      end
+    end
+
+    assert_redirected_to admin_bas_job_document_conversion_run_path(job, conversion_run)
+    assert_equal "matched", conversion_run.reload.status
+    assert_equal "bas_pdf_bank_statement_imported_and_matched", BasAuditEvent.last.event_type
+  end
+
+  test "conversion preview page does not encourage one click query generation" do
+    job = create_job
+    conversion_run = preview_conversion(job)
+
+    get admin_bas_job_document_conversion_run_path(job, conversion_run)
+
+    assert_response :success
+    assert_select "button", "Confirm import"
+    assert_select "button", text: "Confirm Import and Run Matching", count: 0
+    assert_no_match "Generate client queries", response.body
+  end
+
+  test "confirm import and match direct action does not create client queries" do
+    job = create_job
+    BasInvoice.create!(
+      bas_job: job,
+      direction: "sale",
+      invoice_number: "INV-001",
+      issue_date: Date.new(2026, 1, 1),
+      paid_date: Date.new(2026, 1, 1),
+      party_name: "Acme Customer",
+      total_amount: BigDecimal("110.00"),
+      gst_amount: BigDecimal("10.00"),
+      net_amount: BigDecimal("100.00"),
+      payment_method: "bank",
+      gst_code: "taxable"
+    )
+    conversion_run = preview_conversion(job, nil, matching_statement_text)
+
+    assert_no_difference "BasQuery.count" do
       assert_difference "BasMatch.count", 1 do
         post confirm_import_and_match_admin_bas_job_document_conversion_run_path(job, conversion_run)
       end
@@ -110,7 +154,7 @@ class AdminBasDocumentConversionRunsControllerTest < ActionDispatch::Integration
 
     assert_redirected_to admin_bas_job_document_conversion_run_path(job, conversion_run)
     assert_equal "matched", conversion_run.reload.status
-    assert_equal "bas_pdf_bank_statement_imported_and_matched", BasAuditEvent.last.event_type
+    assert_equal "PDF bank statement imported and matching suggestions created. Review proposed matches before generating client queries.", flash[:notice]
   end
 
   test "admin can download converted CSV" do

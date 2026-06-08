@@ -20,10 +20,6 @@ module BasPdfBankStatements
         bas_job: bas_job,
         actor_username: actor_username
       ).call
-      BasMatching::QueryGenerator.new(
-        bas_job: bas_job,
-        actor_username: actor_username
-      ).call
 
       conversion_run.update!(
         status: "matched",

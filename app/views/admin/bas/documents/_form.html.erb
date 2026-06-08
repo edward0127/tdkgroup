@@ -8,6 +8,40 @@
   </div>
 <% end %>
 
+<section class="admin-card-panel">
+  <h2>Document type guide</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Bank statement</dt>
+      <dd>CSV/XLSX bank export or standard bank-downloaded PDF statement.</dd>
+    </div>
+    <div>
+      <dt>Invoice summary</dt>
+      <dd>CSV/XLSX invoice summary spreadsheet.</dd>
+    </div>
+    <div>
+      <dt>Cash transaction list</dt>
+      <dd>CSV/XLSX cash transaction spreadsheet.</dd>
+    </div>
+    <div>
+      <dt>Payroll summary</dt>
+      <dd>CSV/XLSX payroll summary spreadsheet.</dd>
+    </div>
+    <div>
+      <dt>Receipt</dt>
+      <dd>Supporting receipt only; stored for review, not imported automatically.</dd>
+    </div>
+    <div>
+      <dt>Sales invoice / Supplier invoice</dt>
+      <dd>Supporting invoice document only; not automatically imported in this workflow.</dd>
+    </div>
+    <div>
+      <dt>Other</dt>
+      <dd>Supporting document only.</dd>
+    </div>
+  </dl>
+</section>
+
 <%= form_with model: document,
       url: admin_bas_job_documents_path(job),
       class: "admin-form",
@@ -26,6 +60,7 @@
       <div class="field">
         <%= form.label :file %>
         <%= form.file_field :file, accept: BasDocument::ACCEPT_ATTRIBUTE, required: true %>
+        <p class="admin-muted">Uploading stores the file only. CSV/XLSX files must be imported afterwards. Standard bank PDF statements must be converted to preview and confirmed before bank transactions are created.</p>
       </div>
     </div>
     <div class="field">
@@ -35,6 +70,6 @@
   </section>
 
   <div class="admin-submit-row">
-    <button type="submit" class="btn-primary">Upload document</button>
+    <button type="submit" class="btn-primary">Upload source/supporting file</button>
   </div>
 <% end %>

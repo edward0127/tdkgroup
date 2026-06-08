@@ -49,17 +49,16 @@ module Admin
       end
 
       def confirm_import_and_match
-        result = BasPdfBankStatements::ImportAndMatchRunner.new(
+        BasPdfBankStatements::ImportAndMatchRunner.new(
           conversion_run: @conversion_run,
           actor_username: current_admin_identifier
         ).call
 
         redirect_to admin_bas_job_document_conversion_run_path(@job, @conversion_run),
-          notice: "PDF bank statement imported. #{result.proposed_match_count} proposed matches and #{result.open_query_count} open queries after matching."
+          notice: "PDF bank statement imported and matching suggestions created. Review proposed matches before generating client queries."
       rescue BasPdfBankStatements::ImportRunner::ImportError,
              BasImports::Importer::LockedJobError,
-             BasMatching::Matcher::LockedJobError,
-             BasMatching::QueryGenerator::LockedJobError => e
+             BasMatching::Matcher::LockedJobError => e
         redirect_to admin_bas_job_document_conversion_run_path(@job, @conversion_run), alert: e.message
       end
 

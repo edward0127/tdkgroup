@@ -1,6 +1,6 @@
 <section class="admin-page-heading">
   <div>
-    <p class="eyebrow">BAS PDF conversions</p>
+    <p class="eyebrow">BAS PDF bank statement history</p>
     <h1><%= @job.bas_client.display_name %></h1>
     <p><%= @job.period_label %></p>
   </div>
@@ -10,7 +10,7 @@
 </section>
 
 <section class="admin-card-panel">
-  <h2>PDF bank statement conversions</h2>
+  <h2>PDF bank statement history</h2>
   <% if @conversion_runs.any? %>
     <div class="admin-table-wrap">
       <table class="admin-table">

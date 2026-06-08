@@ -8,7 +8,7 @@
     <% if @conversion_run.preview_rows.any? %>
       <%= link_to "Download CSV", download_csv_admin_bas_job_document_conversion_run_path(@job, @conversion_run), class: "btn-secondary" %>
     <% end %>
-    <%= link_to "All PDF conversions", admin_bas_job_document_conversion_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "PDF bank statement history", admin_bas_job_document_conversion_runs_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
@@ -51,7 +51,7 @@
 
 <section class="admin-card-panel">
   <h2>Review before importing</h2>
-  <p class="admin-muted">Please review extracted rows before importing. PDF extraction may require manual checking.</p>
+  <p class="admin-muted">This preview was extracted from a standard bank-downloaded PDF. Review rows before confirming. Scanned/photo PDFs and PDF receipts are not supported for automatic import.</p>
 
   <% if @conversion_run.status == "failed" && @conversion_run.row_errors.any? %>
     <% @conversion_run.row_errors.each do |error| %>
@@ -59,14 +59,10 @@
     <% end %>
   <% elsif @conversion_run.status == "previewed" && @conversion_run.row_errors.blank? && !@job.locked? %>
     <div class="admin-actions">
-      <%= button_to "Confirm Import",
+      <%= button_to "Confirm import",
             confirm_import_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
             method: :post,
             class: "btn-primary" %>
-      <%= button_to "Confirm Import and Run Matching",
-            confirm_import_and_match_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
-            method: :post,
-            class: "btn-secondary" %>
     </div>
   <% elsif @conversion_run.status == "previewed" && @conversion_run.row_errors.any? %>
     <p class="text-danger">Resolve PDF conversion row errors before importing.</p>

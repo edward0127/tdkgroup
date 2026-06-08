@@ -5,11 +5,11 @@
     <p><%= @job.period_label %></p>
   </div>
   <div class="admin-actions">
-    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
-    <%= link_to "Imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
-    <%= link_to "Matching", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
-    <%= link_to "Report", admin_bas_job_report_path(@job), class: "btn-secondary" %>
-    <%= link_to "AI", admin_bas_job_ai_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Upload source/supporting file", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+    <%= link_to "CSV/XLSX imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "Matching & review", admin_bas_job_matching_path(@job), class: "btn-secondary" %>
+    <%= link_to "Report & snapshots", admin_bas_job_report_path(@job), class: "btn-secondary" %>
+    <%= link_to "AI suggestions", admin_bas_job_ai_runs_path(@job), class: "btn-secondary" %>
     <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "btn-secondary" %>
     <%= link_to "Edit job", edit_admin_bas_job_path(@job), class: "btn-secondary" %>
     <%= link_to "All jobs", admin_bas_jobs_path, class: "btn-secondary" %>
@@ -44,6 +44,46 @@
       <dd><%= @job.cash_transactions_applicable? ? "Applicable" : "Not applicable" %></dd>
     </div>
   </dl>
+</section>
+
+<% bas_job_warning_banners(@job).each do |banner| %>
+  <section class="bas-warning-banner">
+    <p><%= banner[:message] %></p>
+    <% if banner[:action_path].present? %>
+      <%= link_to banner[:action_label], banner[:action_path], class: "text-link" %>
+    <% end %>
+  </section>
+<% end %>
+
+<section class="admin-card-panel">
+  <div class="admin-panel-heading">
+    <h2>BAS workflow</h2>
+  </div>
+  <ol class="bas-workflow-list">
+    <% bas_workflow_steps(
+         job: @job,
+         documents_count: @documents.size,
+         imported_records_count: @imported_records_count,
+         proposed_matches_count: @proposed_matches_count,
+         needs_review_matches_count: @needs_review_matches_count,
+         open_queries_count: @open_queries.count,
+         approval_blockers_count: @approval_blockers_count,
+         latest_report_snapshot: @latest_report_snapshot
+       ).each do |step| %>
+      <li class="bas-workflow-step">
+        <div>
+          <h3><%= step[:title] %></h3>
+          <p class="admin-muted"><%= step[:description] %></p>
+        </div>
+        <div class="bas-workflow-step__actions">
+          <span class="bas-status-pill"><%= step[:status] %></span>
+          <% if step[:action_path].present? && step[:action_label].present? %>
+            <%= link_to step[:action_label], step[:action_path], class: "text-link" %>
+          <% end %>
+        </div>
+      </li>
+    <% end %>
+  </ol>
 </section>
 
 <section class="admin-card-panel">
@@ -227,10 +267,10 @@
 
 <section class="admin-card-panel">
   <div class="admin-panel-heading">
-    <h2>Uploaded documents</h2>
+    <h2>Uploaded source/supporting files</h2>
     <div class="admin-actions">
-      <%= link_to "PDF conversions", admin_bas_job_document_conversion_runs_path(@job), class: "text-link" %>
-      <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "text-link" %>
+      <%= link_to "PDF bank statement history", admin_bas_job_document_conversion_runs_path(@job), class: "text-link" %>
+      <%= link_to "Upload source/supporting file", new_admin_bas_job_document_path(@job), class: "text-link" %>
     </div>
   </div>
 
@@ -253,19 +293,38 @@
               <tr>
                 <td><%= document.title %></td>
                 <td><%= document.safe_filename %></td>
-                <td><%= document.processing_status.humanize %></td>
+                <td><%= bas_document_status_label(document) %></td>
                 <td><%= document.uploaded_by.presence || "Not recorded" %></td>
                 <td>
                   <%= link_to "View", admin_bas_job_document_path(@job, document), class: "text-link" %><br>
                   <%= link_to "Download", download_admin_bas_job_document_path(@job, document), class: "text-link" %>
-                  <% pdf_bank_statement = document.document_type == "bank_statement" && document.file.attached? && document.file.blob.content_type.to_s == "application/pdf" %>
-                  <% if pdf_bank_statement && !@job.locked? %>
+                  <% latest_import_run = bas_latest_import_run_for_document(document) %>
+                  <% latest_conversion_run = bas_latest_conversion_run_for_document(document) %>
+                  <% if bas_spreadsheet_importable_document?(document) && !@job.locked? && latest_import_run&.status == "previewed" %>
                     <br>
-                    <%= button_to "Convert & Import PDF Bank Statement",
+                    <%= link_to "Open import preview",
+                          admin_bas_job_import_run_path(@job, latest_import_run),
+                          class: "text-link" %>
+                  <% elsif bas_spreadsheet_importable_document?(document) && !@job.locked? && latest_import_run&.status != "imported" %>
+                    <br>
+                    <%= link_to "Start CSV/XLSX import",
+                          new_admin_bas_job_import_run_path(@job, bas_document_id: document.id),
+                          class: "text-link" %>
+                  <% elsif bas_pdf_bank_statement_document?(document) && !@job.locked? && latest_conversion_run&.status == "previewed" %>
+                    <br>
+                    <%= link_to "Open PDF preview",
+                          admin_bas_job_document_conversion_run_path(@job, latest_conversion_run),
+                          class: "text-link" %>
+                  <% elsif bas_pdf_bank_statement_document?(document) && !@job.locked? && !(latest_conversion_run&.status&.in?(%w[imported matched])) %>
+                    <br>
+                    <%= button_to "Convert PDF to preview",
                           admin_bas_job_document_conversion_runs_path(@job),
                           method: :post,
                           params: { bas_document_id: document.id },
                           class: "btn-secondary" %>
+                  <% elsif bas_supporting_only_document?(document) %>
+                    <br>
+                    <span class="admin-muted">No import required</span>
                   <% end %>
                   <% unless @job.locked? %>
                     <br>
@@ -287,7 +346,11 @@
   <div class="admin-panel-heading">
     <h2>Open queries</h2>
     <div class="admin-actions">
-      <%= link_to "Generate client email draft", admin_bas_job_query_email_draft_path(@job), class: "text-link" %>
+      <% if @open_queries.any? %>
+        <%= link_to "Generate client email draft", admin_bas_job_query_email_draft_path(@job), class: "text-link" %>
+      <% else %>
+        <span class="admin-muted">Client email draft will be available after client queries are generated.</span>
+      <% end %>
       <%= link_to "Add query", new_admin_bas_job_query_path(@job), class: "text-link" %>
     </div>
   </div>

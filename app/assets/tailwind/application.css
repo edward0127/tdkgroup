@@ -1552,6 +1552,70 @@ img {
   text-transform: uppercase;
 }
 
+.bas-warning-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(180, 83, 9, 0.35);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-weight: 800;
+}
+
+.bas-warning-banner p {
+  margin: 0;
+}
+
+.bas-workflow-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bas-workflow-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.bas-workflow-step h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.bas-workflow-step p {
+  margin: 0;
+}
+
+.bas-workflow-step__actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.bas-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: white;
+  color: var(--blue-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .code-textarea {
   font-family: Consolas, "Liberation Mono", monospace;
   font-size: 13px;
@@ -1914,7 +1978,8 @@ img {
   .contact-details dl,
   .admin-form-grid,
   .admin-grid,
-  .admin-asset-current {
+  .admin-asset-current,
+  .bas-workflow-step {
     grid-template-columns: 1fr;
   }
 
@@ -1932,8 +1997,13 @@ img {
 
   .cta-band,
   .admin-page-heading,
+  .bas-warning-banner,
   .site-footer__base {
     display: grid;
+  }
+
+  .bas-workflow-step__actions {
+    justify-items: start;
   }
 
   .cta-band {

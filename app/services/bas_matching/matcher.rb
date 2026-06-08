@@ -51,6 +51,13 @@ module BasMatching
     end
 
     def score_candidate(candidate)
+      if candidate.confidence.present? && candidate.explanation.present?
+        return BasMatching::ConfidenceScorer::Result.new(
+          confidence: candidate.confidence,
+          explanation: candidate.explanation
+        )
+      end
+
       if candidate.invoices.one?
         ConfidenceScorer.score(invoice: candidate.invoices.first, payment_record: candidate.payment_record)
       else

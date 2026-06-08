@@ -1,6 +1,8 @@
 module Admin
   module Bas
     class ImportRunsController < Admin::BaseController
+      include Admin::Bas::WorkflowHelper
+
       before_action :set_job
       before_action :set_import_run, only: [ :show, :confirm, :revert ]
       before_action :block_locked_job, only: [ :new, :create, :confirm, :revert ]
@@ -11,11 +13,22 @@ module Admin
 
       def new
         @documents = importable_documents
+        @non_importable_documents = non_importable_documents
         @import_run = @job.import_runs.build
+        preselect_document
       end
 
       def create
         document = @job.documents.find(import_run_params[:bas_document_id])
+        unless bas_spreadsheet_importable_document?(document)
+          @documents = importable_documents
+          @non_importable_documents = non_importable_documents
+          @import_run = @job.import_runs.build(import_run_params)
+          @import_run.errors.add(:bas_document, "must be an uploaded CSV/XLSX file for this import workflow")
+          render :new, status: :unprocessable_entity
+          return
+        end
+
         import_run = BasImports::Previewer.new(
           bas_job: @job,
           bas_document: document,
@@ -30,11 +43,13 @@ module Admin
         end
       rescue ActiveRecord::RecordNotFound
         @documents = importable_documents
+        @non_importable_documents = non_importable_documents
         @import_run = @job.import_runs.build(import_run_params)
         @import_run.errors.add(:bas_document, "must be selected")
         render :new, status: :unprocessable_entity
       rescue ActiveRecord::RecordInvalid => e
         @documents = importable_documents
+        @non_importable_documents = non_importable_documents
         @import_run = e.record
         render :new, status: :unprocessable_entity
       end
@@ -84,7 +99,27 @@ module Admin
       end
 
       def importable_documents
-        @job.documents.with_attached_file.ordered
+        @job.documents.with_attached_file.ordered.select { |document| bas_spreadsheet_importable_document?(document) }
+      end
+
+      def non_importable_documents
+        @job.documents.with_attached_file.ordered.reject { |document| bas_spreadsheet_importable_document?(document) }
+      end
+
+      def preselect_document
+        return if params[:bas_document_id].blank?
+
+        selected_document = @job.documents.with_attached_file.find_by(id: params[:bas_document_id])
+        return if selected_document.blank?
+
+        if bas_spreadsheet_importable_document?(selected_document)
+          @import_run.bas_document = selected_document
+          @import_run.import_type = bas_import_type_for_document(selected_document)
+        elsif bas_pdf_bank_statement_document?(selected_document)
+          @selected_document_guidance = "PDF bank statements should be converted from the uploaded document row."
+        else
+          @selected_document_guidance = "Receipts and supporting invoices are stored for review and are not imported as CSV/XLSX files."
+        end
       end
 
       def import_run_params

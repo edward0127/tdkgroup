@@ -22,8 +22,8 @@
       <dd><%= @document.safe_filename %> - <%= number_to_human_size(@document.file.byte_size) %></dd>
     </div>
     <div>
-      <dt>Processing status</dt>
-      <dd><%= @document.processing_status.humanize %></dd>
+      <dt>Workflow status</dt>
+      <dd><%= bas_document_status_label(@document) %></dd>
     </div>
     <div>
       <dt>Uploaded by</dt>

@@ -118,6 +118,50 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "bas-matching-admin", BasAuditEvent.last.actor_username
   end
 
+  test "generate client queries is blocked when proposed matches exist" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+
+    assert_no_difference "BasQuery.count" do
+      post generate_queries_admin_bas_job_matching_path(job)
+    end
+
+    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_equal "Review proposed and needs-review matches before generating client queries.", flash[:alert]
+  end
+
+  test "generate client queries is blocked when needs review matches exist" do
+    job = create_job_with_bank_match_candidate
+    match = BasMatch.create!(
+      bas_job: job,
+      match_type: "manual",
+      status: "needs_review",
+      matched_amount: BigDecimal("110.00"),
+      created_by_rule: "manual"
+    )
+
+    assert_no_difference "BasQuery.count" do
+      post generate_queries_admin_bas_job_matching_path(job)
+    end
+
+    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_equal "needs_review", match.reload.status
+  end
+
+  test "generate client queries works once proposed matches are rejected" do
+    job = create_job_with_bank_match_candidate
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+    match = BasMatch.last
+    match.update!(status: "rejected", rejected_at: Time.current, rejected_by: "bas-matching-admin")
+
+    assert_difference "BasQuery.count", 2 do
+      post generate_queries_admin_bas_job_matching_path(job)
+    end
+
+    assert_redirected_to admin_bas_job_matching_path(job)
+    assert_equal "bas_queries_generated", BasAuditEvent.last.event_type
+  end
+
   test "locked job blocks matching actions" do
     job = create_job_with_bank_match_candidate(status: "locked")
     bank_transaction = job.bank_transactions.first

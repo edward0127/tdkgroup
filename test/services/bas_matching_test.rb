@@ -41,6 +41,126 @@ class BasMatchingTest < ActiveSupport::TestCase
     assert_equal BigDecimal("110.00"), match.matched_amount
   end
 
+  test "cross party grouped purchase invoices can match one bank payment" do
+    job = bas_job
+    first_invoice = invoice(
+      job,
+      direction: "purchase",
+      invoice_number: "GEN-001",
+      party_name: "Generic Alpha",
+      total_amount: "40.00",
+      paid_date: Date.new(2026, 1, 4)
+    )
+    second_invoice = invoice(
+      job,
+      direction: "purchase",
+      invoice_number: "GEN-002",
+      party_name: "Generic Beta",
+      total_amount: "60.00",
+      paid_date: Date.new(2026, 1, 4)
+    )
+    payment = bank_transaction(
+      job,
+      transaction_date: Date.new(2026, 1, 4),
+      description: "Generic Alpha Generic Beta grouped payment",
+      amount: "-100.00"
+    )
+
+    assert_no_difference "BasQuery.count" do
+      assert_difference "BasMatch.count", 1 do
+        BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+      end
+    end
+
+    match = BasMatch.last
+    assert_equal "invoices_to_bank_transaction", match.match_type
+    assert_equal "proposed", match.status
+    assert_equal "grouped_invoices_to_bank", match.created_by_rule
+    assert_match "Multiple invoices total the same amount", match.explanation
+    assert_equal BigDecimal("100.00"), match.matched_amount
+    expected_items = [
+      "BasInvoice:#{first_invoice.id}",
+      "BasInvoice:#{second_invoice.id}",
+      "BasBankTransaction:#{payment.id}"
+    ].sort
+    actual_items = match.items.map { |item| "#{item.matchable_type}:#{item.matchable_id}" }.sort
+    assert_equal expected_items, actual_items
+  end
+
+  test "cross party grouped payment matching is idempotent" do
+    job = bas_job
+    invoice(job, direction: "purchase", party_name: "Generic Alpha", total_amount: "40.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Beta", total_amount: "60.00", paid_date: Date.new(2026, 1, 4))
+    bank_transaction(job, transaction_date: Date.new(2026, 1, 4), description: "Generic Alpha Generic Beta grouped payment", amount: "-100.00")
+
+    BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+
+    assert_no_difference "BasMatch.count" do
+      BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    end
+  end
+
+  test "grouped payment is not proposed when one invoice is already accepted elsewhere" do
+    job = bas_job
+    first_invoice = invoice(job, direction: "purchase", party_name: "Generic Alpha", total_amount: "40.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Beta", total_amount: "60.00", paid_date: Date.new(2026, 1, 4))
+    bank_transaction(job, transaction_date: Date.new(2026, 1, 4), description: "Generic Alpha Generic Beta grouped payment", amount: "-100.00")
+    accepted_payment = bank_transaction(job, transaction_date: Date.new(2026, 1, 4), description: "Generic Alpha accepted payment", amount: "-40.00")
+    accepted_match = BasMatch.create!(bas_job: job, match_type: "manual", status: "accepted", accepted_by: "phase3", accepted_at: Time.current)
+    accepted_match.items.create!(matchable: first_invoice, amount: first_invoice.total_amount)
+    accepted_match.items.create!(matchable: accepted_payment, amount: accepted_payment.amount)
+
+    assert_no_difference "BasMatch.count" do
+      BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    end
+  end
+
+  test "grouped payment is not proposed when totals do not exactly match" do
+    job = bas_job
+    invoice(job, direction: "purchase", party_name: "Generic Alpha", total_amount: "40.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Beta", total_amount: "61.00", paid_date: Date.new(2026, 1, 4))
+    bank_transaction(job, transaction_date: Date.new(2026, 1, 4), description: "Generic Alpha Generic Beta grouped payment", amount: "-100.00")
+
+    assert_no_difference "BasMatch.count" do
+      BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    end
+  end
+
+  test "grouped payment is not proposed when exact candidate groups are ambiguous" do
+    job = bas_job
+    invoice(job, direction: "purchase", party_name: "Generic Alpha", total_amount: "40.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Beta", total_amount: "60.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Gamma", total_amount: "30.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Delta", total_amount: "70.00", paid_date: Date.new(2026, 1, 4))
+    bank_transaction(
+      job,
+      transaction_date: Date.new(2026, 1, 4),
+      description: "Generic Alpha Generic Beta Generic Gamma Generic Delta grouped payment",
+      amount: "-100.00"
+    )
+
+    assert_no_difference "BasMatch.count" do
+      BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    end
+  end
+
+  test "rejected grouped payment match is not recreated" do
+    job = bas_job
+    invoice(job, direction: "purchase", party_name: "Generic Alpha", total_amount: "40.00", paid_date: Date.new(2026, 1, 4))
+    invoice(job, direction: "purchase", party_name: "Generic Beta", total_amount: "60.00", paid_date: Date.new(2026, 1, 4))
+    bank_transaction(job, transaction_date: Date.new(2026, 1, 4), description: "Generic Alpha Generic Beta grouped payment", amount: "-100.00")
+
+    BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    match = BasMatch.last
+    match.update!(status: "rejected", rejected_by: "phase3", rejected_at: Time.current)
+
+    assert_no_difference "BasMatch.count" do
+      BasMatching::Matcher.new(bas_job: job, actor_username: "phase3").call
+    end
+
+    assert_equal "rejected", match.reload.status
+  end
+
   test "cash invoice matches cash transaction and is not forced to bank transaction" do
     job = bas_job
     invoice(job, party_name: "Cash Customer", total_amount: "33.00", payment_method: "cash")

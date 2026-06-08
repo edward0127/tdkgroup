@@ -1,10 +1,11 @@
 <section class="admin-page-heading">
   <div>
     <p class="eyebrow">BAS documents</p>
-    <h1><%= @job.period_label %></h1>
+    <h1>Uploaded source/supporting files</h1>
+    <p><%= @job.period_label %></p>
   </div>
   <div class="admin-actions">
-    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+    <%= link_to "Upload source/supporting file", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
@@ -26,7 +27,7 @@
           <td><%= document.title %></td>
           <td><%= document.document_type.humanize %></td>
           <td><%= document.safe_filename %></td>
-          <td><%= document.processing_status.humanize %></td>
+          <td><%= bas_document_status_label(document) %></td>
           <td><%= link_to "View", admin_bas_job_document_path(@job, document), class: "text-link" %></td>
         </tr>
       <% end %>

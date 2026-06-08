@@ -5,7 +5,7 @@
     <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
   </div>
   <div class="admin-actions">
-    <%= link_to "Imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
+    <%= link_to "CSV/XLSX imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
@@ -22,6 +22,10 @@
 
 <section class="admin-card-panel">
   <h2>Preview import</h2>
+  <p class="admin-muted">This screen creates an import preview from an uploaded CSV/XLSX file. It does not import PDF receipts or invoice images. Standard bank PDF statements use the PDF conversion workflow.</p>
+  <% if @selected_document_guidance.present? %>
+    <p class="text-danger"><%= @selected_document_guidance %></p>
+  <% end %>
   <% if @documents.any? %>
     <%= form_with model: @import_run,
           url: admin_bas_job_import_runs_path(@job),
@@ -36,10 +40,43 @@
           <%= form.select :import_type, BasImportRun::IMPORT_TYPE_VALUES.map { |value| [ value.humanize, value ] }, { prompt: "Select import type" }, required: true %>
         </div>
       </div>
-      <button type="submit" class="btn-primary">Create preview</button>
+      <button type="submit" class="btn-primary">Create import preview</button>
     <% end %>
   <% else %>
-    <p class="admin-muted">Upload a BAS document before creating an import preview.</p>
-    <%= link_to "Upload document", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
+    <p class="admin-muted">Upload a CSV/XLSX bank statement, invoice summary, cash transaction list, or payroll summary before creating an import preview.</p>
+    <%= link_to "Upload source/supporting file", new_admin_bas_job_document_path(@job), class: "btn-primary" %>
   <% end %>
 </section>
+
+<% if @non_importable_documents.any? %>
+  <section class="admin-card-panel">
+    <h2>Files not available for CSV/XLSX import</h2>
+    <p class="admin-muted">PDF bank statements should be converted from the uploaded document row. Receipts and supporting invoices are stored for review and are not imported as spreadsheets.</p>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Type</th>
+            <th>Guidance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @non_importable_documents.each do |document| %>
+            <tr>
+              <td><%= document.title %></td>
+              <td><%= document.document_type.humanize %></td>
+              <td>
+                <% if bas_pdf_bank_statement_document?(document) %>
+                  PDF bank statements should be converted from the uploaded document row.
+                <% else %>
+                  Supporting document only - no CSV/XLSX import required.
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% end %>

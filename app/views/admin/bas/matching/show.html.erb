@@ -6,8 +6,10 @@
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
-      <%= button_to "Run matching", run_admin_bas_job_matching_path(@job), method: :post, class: "btn-primary" %>
-      <%= button_to "Generate queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      <%= button_to "Create match suggestions", run_admin_bas_job_matching_path(@job), method: :post, class: "btn-primary" %>
+      <% if @summary[:proposed_matches].zero? && @summary[:needs_review_matches].zero? %>
+        <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      <% end %>
       <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-secondary" %>
     <% end %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
@@ -16,6 +18,10 @@
 
 <section class="admin-card-panel">
   <h2>Matching summary</h2>
+  <p class="admin-muted">Review proposed and needs-review matches before generating client queries. Client queries should only be generated after obvious matches are accepted/rejected and internal review items are resolved.</p>
+  <% if !@job.locked? && (@summary[:proposed_matches].positive? || @summary[:needs_review_matches].positive?) %>
+    <p class="text-danger">Generate client queries is locked until all proposed/needs-review matches are accepted, rejected, or resolved.</p>
+  <% end %>
   <div class="admin-table-wrap">
     <table class="admin-table">
       <tbody>
