@@ -6,8 +6,10 @@ module Admin
         :show,
         :approve,
         :lock,
+        :breakdown,
         :download_summary_csv,
         :download_gst_detail_csv,
+        :download_breakdown_csv,
         :download_matches_csv,
         :download_queries_csv,
         :download_adjustments_csv,
@@ -56,12 +58,30 @@ module Admin
         redirect_to admin_bas_job_report_snapshot_path(@job, @snapshot), alert: e.message
       end
 
+      def breakdown
+        @breakdown = BasReports::Breakdown.new(snapshot: @snapshot, label: params[:label]).call
+      rescue BasReports::Breakdown::UnknownLabelError
+        redirect_to admin_bas_job_report_snapshot_path(@job, @snapshot), alert: "Unknown BAS breakdown label."
+      end
+
       def download_summary_csv
         send_csv(:summary_csv, "bas-summary")
       end
 
       def download_gst_detail_csv
         send_csv(:gst_detail_csv, "bas-gst-detail")
+      end
+
+      def download_breakdown_csv
+        csv = BasReports::CsvExporter.new(snapshot: @snapshot).breakdown_csv(label: params[:label])
+        send_data(
+          csv,
+          filename: "bas-breakdown-#{params[:label]}-job-#{@job.id}-snapshot-#{@snapshot.id}.csv",
+          type: "text/csv; charset=utf-8",
+          disposition: "attachment"
+        )
+      rescue BasReports::Breakdown::UnknownLabelError
+        redirect_to admin_bas_job_report_snapshot_path(@job, @snapshot), alert: "Unknown BAS breakdown label."
       end
 
       def download_matches_csv

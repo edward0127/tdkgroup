@@ -266,6 +266,49 @@ class BasReportsTest < ActiveSupport::TestCase
     assert_includes csv, "'@reason"
   end
 
+  test "breakdown separates included records ignored records and manual adjustments" do
+    job = bas_job
+    included_invoice = invoice(job, direction: "sale", invoice_number: "INV-INCLUDED", total_amount: "110.00", gst_amount: "10.00")
+    ignored_invoice = invoice(job, direction: "sale", invoice_number: "INV-IGNORED", total_amount: "220.00", gst_amount: "20.00", status: "ignored")
+    adjustment(job, adjustment_type: "total_sales", amount: "15.00", label: "G1 manual adjustment")
+    snapshot = BasReports::SnapshotBuilder.new(bas_job: job, actor_username: "phase4").create_draft!
+
+    breakdown = BasReports::Breakdown.new(snapshot: snapshot, label: "g1").call
+
+    assert_equal "125.00", breakdown.exact_amount
+    assert_equal [ included_invoice.id ], breakdown.included_records.map { |row| row["source_id"] }
+    assert_equal [ ignored_invoice.id ], breakdown.excluded_records.map { |row| row["source_id"] }
+    assert_equal [ "G1 manual adjustment" ], breakdown.manual_adjustments.map { |row| row["label"] }
+  end
+
+  test "net GST breakdown exposes formula without changing totals" do
+    job = bas_job
+    invoice(job, direction: "sale", total_amount: "110.00", gst_amount: "10.00")
+    invoice(job, direction: "purchase", total_amount: "55.00", gst_amount: "5.00")
+    snapshot = BasReports::SnapshotBuilder.new(bas_job: job, actor_username: "phase4").create_draft!
+
+    breakdown = BasReports::Breakdown.new(snapshot: snapshot, label: "net_gst").call
+
+    assert_equal "5.00", breakdown.exact_amount
+    assert_equal "10.00", breakdown.formula.fetch("left_amount")
+    assert_equal "5.00", breakdown.formula.fetch("right_amount")
+    assert_equal "5.00", breakdown.formula.fetch("result_amount")
+  end
+
+  test "breakdown CSV includes label specific included and excluded sections" do
+    job = bas_job
+    invoice(job, direction: "sale", invoice_number: "INV-INCLUDED", total_amount: "110.00", gst_amount: "10.00")
+    invoice(job, direction: "sale", invoice_number: "INV-IGNORED", total_amount: "220.00", gst_amount: "20.00", status: "ignored")
+    snapshot = BasReports::SnapshotBuilder.new(bas_job: job, actor_username: "phase4").create_draft!
+
+    csv = BasReports::CsvExporter.new(snapshot: snapshot).breakdown_csv(label: "g1")
+
+    assert_includes csv, "Included in this BAS figure"
+    assert_includes csv, "Excluded / ignored"
+    assert_includes csv, "INV-INCLUDED"
+    assert_includes csv, "INV-IGNORED"
+  end
+
   private
 
   def calculate(job)

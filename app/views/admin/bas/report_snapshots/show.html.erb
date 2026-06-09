@@ -62,6 +62,7 @@
           <th>Label</th>
           <th>Exact amount</th>
           <th>BAS whole-dollar suggestion</th>
+          <th>Breakdown</th>
         </tr>
       </thead>
       <tbody>
@@ -69,21 +70,25 @@
           <td>G1 total sales</td>
           <td><%= number_to_currency(summary["g1_total_sales"]) %></td>
           <td><%= labels["G1"] %></td>
+          <td><%= link_to "View breakdown", breakdown_admin_bas_job_report_snapshot_path(@job, @snapshot, "g1"), class: "text-link" %></td>
         </tr>
         <tr>
           <td>1A GST on sales</td>
           <td><%= number_to_currency(summary["gst_on_sales_1a"]) %></td>
           <td><%= labels["1A"] %></td>
+          <td><%= link_to "View breakdown", breakdown_admin_bas_job_report_snapshot_path(@job, @snapshot, "1a"), class: "text-link" %></td>
         </tr>
         <tr>
           <td>1B GST on purchases</td>
           <td><%= number_to_currency(summary["gst_on_purchases_1b"]) %></td>
           <td><%= labels["1B"] %></td>
+          <td><%= link_to "View breakdown", breakdown_admin_bas_job_report_snapshot_path(@job, @snapshot, "1b"), class: "text-link" %></td>
         </tr>
         <tr>
           <td>Net GST payable/refundable</td>
           <td><%= number_to_currency(summary["net_gst_payable"]) %></td>
           <td><%= labels["net_gst_payable"] %></td>
+          <td><%= link_to "View formula", breakdown_admin_bas_job_report_snapshot_path(@job, @snapshot, "net_gst"), class: "text-link" %></td>
         </tr>
       </tbody>
     </table>
@@ -130,6 +135,10 @@
   <div class="admin-actions">
     <%= link_to "Summary CSV", download_summary_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
     <%= link_to "GST detail CSV", download_gst_detail_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+    <%= link_to "G1 breakdown CSV", download_breakdown_csv_admin_bas_job_report_snapshot_path(@job, @snapshot, label: "g1"), class: "btn-secondary" %>
+    <%= link_to "1A breakdown CSV", download_breakdown_csv_admin_bas_job_report_snapshot_path(@job, @snapshot, label: "1a"), class: "btn-secondary" %>
+    <%= link_to "1B breakdown CSV", download_breakdown_csv_admin_bas_job_report_snapshot_path(@job, @snapshot, label: "1b"), class: "btn-secondary" %>
+    <%= link_to "Net GST breakdown CSV", download_breakdown_csv_admin_bas_job_report_snapshot_path(@job, @snapshot, label: "net_gst"), class: "btn-secondary" %>
     <%= link_to "Matches CSV", download_matches_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
     <%= link_to "Queries CSV", download_queries_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
     <%= link_to "Adjustments CSV", download_adjustments_csv_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>

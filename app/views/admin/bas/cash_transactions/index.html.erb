@@ -64,6 +64,7 @@
           <td><%= transaction.status.humanize %></td>
           <td><%= transaction.matches.proposed.count %> proposed</td>
           <td>
+            <%= link_to "Open", admin_bas_job_cash_transaction_path(@job, transaction), class: "text-link" %>
             <% unless @job.locked? %>
               <% if transaction.status == "ignored" %>
                 <%= button_to "Restore",

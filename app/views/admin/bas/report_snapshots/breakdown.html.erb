@@ -1,0 +1,215 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS calculation breakdown</p>
+    <h1><%= @breakdown.heading %></h1>
+    <p>Client: <%= bas_client_heading_name(@job.bas_client) %></p>
+    <%= bas_job_heading_metadata(@job) %>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "Download CSV", download_breakdown_csv_admin_bas_job_report_snapshot_path(@job, @snapshot, label: @breakdown.key), class: "btn-secondary" %>
+    <%= link_to "Back to snapshot", admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Calculation basis</h2>
+  <p><%= @breakdown.basis_note %></p>
+  <p class="admin-muted">This page explains the saved snapshot totals. It does not recalculate BAS amounts.</p>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Snapshot exact amount</dt>
+      <dd><%= number_to_currency(@breakdown.exact_amount) %></dd>
+    </div>
+    <div>
+      <dt>BAS whole-dollar suggestion</dt>
+      <dd><%= @breakdown.bas_label.presence || "Not recorded" %></dd>
+    </div>
+  </dl>
+</section>
+
+<% if @breakdown.formula.present? %>
+  <section class="admin-card-panel" id="net-gst-formula">
+    <h2>Formula</h2>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <tbody>
+          <tr>
+            <th><%= @breakdown.formula["left_label"] %></th>
+            <td><%= number_to_currency(@breakdown.formula["left_amount"]) %></td>
+          </tr>
+          <tr>
+            <th><%= @breakdown.formula["right_label"] %></th>
+            <td><%= number_to_currency(@breakdown.formula["right_amount"]) %></td>
+          </tr>
+          <tr>
+            <th><%= @breakdown.formula["result_label"] %></th>
+            <td><%= number_to_currency(@breakdown.formula["result_amount"]) %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Net GST = 1A GST on sales - 1B GST on purchases</p>
+  </section>
+<% end %>
+
+<section class="admin-card-panel" id="included-records">
+  <h2>Included in this BAS figure</h2>
+  <% if @breakdown.included_records.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Date used</th>
+            <th>Reference</th>
+            <th>Party</th>
+            <th>Description</th>
+            <th>Total amount</th>
+            <th>GST amount</th>
+            <th>Match status</th>
+            <th>Linked bank/cash transaction</th>
+            <th>Included amount</th>
+            <th>Reason included</th>
+            <th>Queries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @breakdown.included_records.each do |row| %>
+            <tr>
+              <td><%= bas_breakdown_source_link(@job, row) %><br><span class="admin-muted"><%= row["source_type_label"] %></span></td>
+              <td><%= row["date"].presence || "Not recorded" %></td>
+              <td><%= row["reference"].presence || "Not recorded" %></td>
+              <td><%= row["party"].presence || "Not recorded" %></td>
+              <td><%= row["description"].presence || "Not recorded" %></td>
+              <td><%= number_to_currency(row["total_amount"]) %></td>
+              <td><%= number_to_currency(row["gst_amount"]) %></td>
+              <td><%= row["match_status"].presence || "Not recorded" %></td>
+              <td><%= bas_breakdown_linked_records(@job, row) %></td>
+              <td><%= number_to_currency(row["included_amount"]) %></td>
+              <td><%= row["reason"] %></td>
+              <td><%= bas_breakdown_related_queries(@job, row) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No source records are directly included for this figure.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel" id="manual-adjustments">
+  <h2>Manual adjustments included</h2>
+  <% if @breakdown.manual_adjustments.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Label</th>
+            <th>Amount</th>
+            <th>Reason</th>
+            <th>Created by</th>
+            <th>Reason included</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @breakdown.manual_adjustments.each do |adjustment| %>
+            <tr>
+              <td><%= adjustment["adjustment_type_label"] %></td>
+              <td><%= adjustment["label"] %></td>
+              <td><%= number_to_currency(adjustment["included_amount"]) %></td>
+              <td><%= adjustment["reason"] %></td>
+              <td><%= adjustment["created_by"].presence || "Not recorded" %></td>
+              <td><%= adjustment["reason_included"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No manual adjustments are included in this figure.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel" id="excluded-records">
+  <h2>Excluded / ignored</h2>
+  <% if @breakdown.excluded_records.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Party</th>
+            <th>Total</th>
+            <th>GST</th>
+            <th>GST code</th>
+            <th>Status</th>
+            <th>Reason excluded</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @breakdown.excluded_records.each do |row| %>
+            <tr>
+              <td><%= bas_breakdown_source_link(@job, row) %><br><span class="admin-muted"><%= row["source_type_label"] %></span></td>
+              <td><%= row["date"].presence || "Not recorded" %></td>
+              <td><%= row["reference"].presence || "Not recorded" %></td>
+              <td><%= row["party"].presence || "Not recorded" %></td>
+              <td><%= number_to_currency(row["total_amount"]) if row["total_amount"].present? %></td>
+              <td><%= number_to_currency(row["gst_amount"]) if row["gst_amount"].present? %></td>
+              <td><%= row["gst_code"].to_s.humanize %></td>
+              <td><%= row["status"].to_s.humanize %></td>
+              <td><%= row["reason"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No ignored or BAS-excluded records were captured for this figure.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel" id="unresolved-records">
+  <h2>Unmatched or unresolved records not included</h2>
+  <% if @breakdown.unresolved_records.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Party</th>
+            <th>Total</th>
+            <th>GST</th>
+            <th>GST code</th>
+            <th>Status</th>
+            <th>Related query</th>
+            <th>Reason not included</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @breakdown.unresolved_records.each do |row| %>
+            <tr>
+              <td><%= bas_breakdown_source_link(@job, row) %><br><span class="admin-muted"><%= row["source_type_label"] %></span></td>
+              <td><%= row["date"].presence || "Not recorded" %></td>
+              <td><%= row["reference"].presence || "Not recorded" %></td>
+              <td><%= row["party"].presence || "Not recorded" %></td>
+              <td><%= number_to_currency(row["total_amount"]) if row["total_amount"].present? %></td>
+              <td><%= number_to_currency(row["gst_amount"]) if row["gst_amount"].present? %></td>
+              <td><%= row["gst_code"].to_s.humanize %></td>
+              <td><%= row["status"].to_s.humanize %></td>
+              <td><%= bas_breakdown_related_queries(@job, row) %></td>
+              <td><%= row["reason"] %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No unmatched or unresolved records are listed for this figure.</p>
+  <% end %>
+</section>

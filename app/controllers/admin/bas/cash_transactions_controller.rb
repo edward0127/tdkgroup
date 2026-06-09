@@ -2,12 +2,17 @@ module Admin
   module Bas
     class CashTransactionsController < Admin::BaseController
       before_action :set_job
-      before_action :set_cash_transaction, only: [ :ignore, :mark_needs_review, :restore ]
+      before_action :set_cash_transaction, only: [ :show, :ignore, :mark_needs_review, :restore ]
       before_action :block_locked_job, only: [ :ignore, :mark_needs_review, :restore ]
 
       def index
         @import_runs = @job.import_runs.recent
         @cash_transactions = filtered_scope.limit(250)
+      end
+
+      def show
+        @matches = @cash_transaction.matches.includes(items: :matchable).recent
+        @queries = @job.queries.where(source_type: "BasCashTransaction", source_id: @cash_transaction.id).recent
       end
 
       def ignore

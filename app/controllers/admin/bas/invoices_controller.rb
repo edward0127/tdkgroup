@@ -2,12 +2,17 @@ module Admin
   module Bas
     class InvoicesController < Admin::BaseController
       before_action :set_job
-      before_action :set_invoice, only: [ :ignore, :mark_needs_review, :restore ]
+      before_action :set_invoice, only: [ :show, :ignore, :mark_needs_review, :restore ]
       before_action :block_locked_job, only: [ :ignore, :mark_needs_review, :restore ]
 
       def index
         @import_runs = @job.import_runs.recent
         @invoices = filtered_scope.limit(250)
+      end
+
+      def show
+        @matches = @invoice.matches.includes(items: :matchable).recent
+        @queries = @job.queries.where(source_type: "BasInvoice", source_id: @invoice.id).recent
       end
 
       def ignore

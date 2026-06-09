@@ -78,21 +78,21 @@ Rails.application.routes.draw do
             post :revert
           end
         end
-        resources :bank_transactions, only: [ :index ] do
+        resources :bank_transactions, only: [ :index, :show ] do
           member do
             post :ignore
             post :mark_needs_review
             post :restore
           end
         end
-        resources :invoices, only: [ :index ] do
+        resources :invoices, only: [ :index, :show ] do
           member do
             post :ignore
             post :mark_needs_review
             post :restore
           end
         end
-        resources :cash_transactions, only: [ :index ] do
+        resources :cash_transactions, only: [ :index, :show ] do
           member do
             post :ignore
             post :mark_needs_review
@@ -105,8 +105,10 @@ Rails.application.routes.draw do
           member do
             patch :approve
             patch :lock
+            get "breakdown/:label", action: :breakdown, as: :breakdown
             get :download_summary_csv
             get :download_gst_detail_csv
+            get :download_breakdown_csv
             get :download_matches_csv
             get :download_queries_csv
             get :download_adjustments_csv

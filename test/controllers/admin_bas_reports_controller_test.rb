@@ -19,6 +19,9 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
 
     get download_summary_csv_admin_bas_job_report_snapshot_path(job, snapshot)
     assert_redirected_to admin_login_path
+
+    get breakdown_admin_bas_job_report_snapshot_path(job, snapshot, "g1")
+    assert_redirected_to admin_login_path
   end
 
   test "admin can view report page and calculate draft report" do
@@ -164,6 +167,11 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal "text/csv", response.media_type
     assert_includes response.body, "Synthetic Customer"
+
+    get download_breakdown_csv_admin_bas_job_report_snapshot_path(job, snapshot, label: "g1")
+    assert_response :success
+    assert_equal "text/csv", response.media_type
+    assert_includes response.body, "G1 total sales"
 
     get download_matches_csv_admin_bas_job_report_snapshot_path(job, snapshot)
     assert_response :success

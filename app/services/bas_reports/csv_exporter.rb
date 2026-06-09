@@ -55,6 +55,66 @@ module BasReports
       end
     end
 
+    def breakdown_csv(label:)
+      breakdown = BasReports::Breakdown.new(snapshot: snapshot, label: label).call
+
+      generate(headers: [ "BAS label", "Section", "Source", "Source ID", "Date", "Reference", "Party", "Description", "Total amount", "GST amount", "Included amount", "GST code", "Status", "Linked records", "Related queries", "Reason" ]) do |csv|
+        if breakdown.formula.present?
+          csv << [
+            breakdown.heading,
+            "Formula",
+            nil,
+            nil,
+            nil,
+            nil,
+            nil,
+            "#{breakdown.formula['left_label']} #{breakdown.formula['operator']} #{breakdown.formula['right_label']}",
+            breakdown.formula["left_amount"],
+            breakdown.formula["right_amount"],
+            breakdown.formula["result_amount"],
+            nil,
+            nil,
+            nil,
+            nil,
+            "Net GST = 1A GST on sales - 1B GST on purchases"
+          ]
+        end
+
+        breakdown.included_records.each do |row|
+          csv << breakdown_row(breakdown.heading, "Included in this BAS figure", row)
+        end
+
+        breakdown.manual_adjustments.each do |row|
+          csv << [
+            breakdown.heading,
+            "Manual adjustments included",
+            "BasAdjustment",
+            row["id"],
+            nil,
+            row["label"],
+            row["created_by"],
+            row["reason"],
+            nil,
+            nil,
+            row["included_amount"],
+            nil,
+            row["adjustment_type"],
+            nil,
+            nil,
+            row["reason_included"]
+          ]
+        end
+
+        breakdown.excluded_records.each do |row|
+          csv << breakdown_row(breakdown.heading, "Excluded / ignored", row)
+        end
+
+        breakdown.unresolved_records.each do |row|
+          csv << breakdown_row(breakdown.heading, "Unmatched or unresolved records not included", row)
+        end
+      end
+    end
+
     def matches_csv
       generate(headers: [ "Match ID", "Type", "Matched amount", "Accepted by", "Accepted at", "Items" ]) do |csv|
         Array(totals["accepted_matches"]).each do |match|
@@ -119,6 +179,27 @@ module BasReports
         row["total_amount"],
         row["gst_amount"],
         row["calculation_source"]
+      ]
+    end
+
+    def breakdown_row(label, section, row)
+      [
+        label,
+        section,
+        row["source"],
+        row["source_id"],
+        row["date"],
+        row["reference"],
+        row["party"],
+        row["description"],
+        row["total_amount"],
+        row["gst_amount"],
+        row["included_amount"],
+        row["gst_code"],
+        row["match_status"] || row["status"],
+        Array(row["linked_records"]).map { |record| "#{record['source']}##{record['source_id']} via match ##{record['match_id']}" }.join("; "),
+        Array(row["related_queries"]).map { |query| "Query ##{query['id']} #{query['status']}" }.join("; "),
+        row["reason"]
       ]
     end
 

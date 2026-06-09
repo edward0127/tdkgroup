@@ -1,0 +1,57 @@
+<section class="admin-card-panel">
+  <h2>Related matches</h2>
+  <% if matches.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Match</th>
+            <th>Status</th>
+            <th>Matched amount</th>
+            <th>Items</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% matches.each do |match| %>
+            <tr>
+              <td><%= link_to "Match ##{match.id}", admin_bas_job_match_path(job, match), class: "text-link" %></td>
+              <td><%= match.status.humanize %></td>
+              <td><%= number_to_currency(match.matched_amount) if match.matched_amount.present? %></td>
+              <td><%= match.items.map { |item| match_item_summary(item.matchable) }.join("; ") %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No related matches.</p>
+  <% end %>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Related queries</h2>
+  <% if queries.any? %>
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Query</th>
+            <th>Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% queries.each do |query| %>
+            <tr>
+              <td><%= link_to query.display_title, admin_bas_job_query_path(job, query), class: "text-link" %></td>
+              <td><%= query.query_type.humanize %></td>
+              <td><%= query.status.humanize %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <p class="admin-muted">No related queries.</p>
+  <% end %>
+</section>

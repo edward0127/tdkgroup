@@ -1,0 +1,51 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS cash transaction</p>
+    <h1><%= @cash_transaction.party_name.presence || "Cash transaction ##{@cash_transaction.id}" %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "All cash transactions", admin_bas_job_cash_transactions_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Cash transaction details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Date</dt>
+      <dd><%= @cash_transaction.transaction_date || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Direction</dt>
+      <dd><%= @cash_transaction.direction.humanize %></dd>
+    </div>
+    <div>
+      <dt>Party</dt>
+      <dd><%= @cash_transaction.party_name.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Description</dt>
+      <dd><%= @cash_transaction.description.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Total amount</dt>
+      <dd><%= number_to_currency(@cash_transaction.total_amount) if @cash_transaction.total_amount.present? %></dd>
+    </div>
+    <div>
+      <dt>GST amount</dt>
+      <dd><%= number_to_currency(@cash_transaction.gst_amount) if @cash_transaction.gst_amount.present? %></dd>
+    </div>
+    <div>
+      <dt>GST code</dt>
+      <dd><%= @cash_transaction.gst_code.humanize %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @cash_transaction.status.humanize %></dd>
+    </div>
+  </dl>
+</section>
+
+<%= render "admin/bas/shared/source_matches_and_queries", job: @job, matches: @matches, queries: @queries %>

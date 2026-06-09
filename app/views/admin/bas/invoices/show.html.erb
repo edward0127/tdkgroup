@@ -1,0 +1,51 @@
+<section class="admin-page-heading">
+  <div>
+    <p class="eyebrow">BAS invoice</p>
+    <h1><%= @invoice.invoice_number.presence || "Invoice ##{@invoice.id}" %></h1>
+    <p><%= @job.bas_client.display_name %> - <%= @job.period_label %></p>
+  </div>
+  <div class="admin-actions">
+    <%= link_to "All invoices", admin_bas_job_invoices_path(@job), class: "btn-secondary" %>
+    <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
+  </div>
+</section>
+
+<section class="admin-card-panel">
+  <h2>Invoice details</h2>
+  <dl class="admin-asset-details">
+    <div>
+      <dt>Issue date</dt>
+      <dd><%= @invoice.issue_date || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Direction</dt>
+      <dd><%= @invoice.direction.humanize %></dd>
+    </div>
+    <div>
+      <dt>Party</dt>
+      <dd><%= @invoice.party_name.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Description</dt>
+      <dd><%= @invoice.description.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Total amount</dt>
+      <dd><%= number_to_currency(@invoice.total_amount) if @invoice.total_amount.present? %></dd>
+    </div>
+    <div>
+      <dt>GST amount</dt>
+      <dd><%= number_to_currency(@invoice.gst_amount) if @invoice.gst_amount.present? %></dd>
+    </div>
+    <div>
+      <dt>GST code</dt>
+      <dd><%= @invoice.gst_code.humanize %></dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><%= @invoice.status.humanize %></dd>
+    </div>
+  </dl>
+</section>
+
+<%= render "admin/bas/shared/source_matches_and_queries", job: @job, matches: @matches, queries: @queries %>

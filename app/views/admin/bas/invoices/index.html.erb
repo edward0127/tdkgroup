@@ -64,6 +64,7 @@
           <td><%= invoice.status.humanize %></td>
           <td><%= invoice.matches.proposed.count %> proposed</td>
           <td>
+            <%= link_to "Open", admin_bas_job_invoice_path(@job, invoice), class: "text-link" %>
             <% unless @job.locked? %>
               <% if invoice.status == "ignored" %>
                 <%= button_to "Restore",
