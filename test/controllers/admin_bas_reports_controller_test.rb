@@ -43,6 +43,32 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "phase4-admin", snapshot.generated_by
   end
 
+  test "report mutation forms include visible submit guard loading text" do
+    job = clean_matched_job
+
+    get admin_bas_job_report_path(job)
+
+    assert_response :success
+    assert_guarded_form calculate_admin_bas_job_report_path(job), "Calculating"
+
+    snapshot = BasReports::SnapshotBuilder.new(bas_job: job, actor_username: "phase4-admin").create_draft!
+
+    get admin_bas_job_report_snapshot_path(job, snapshot)
+
+    assert_response :success
+    assert_guarded_form approve_admin_bas_job_report_snapshot_path(job, snapshot), "Approving"
+    assert_select "form[action='#{approve_admin_bas_job_report_snapshot_path(job, snapshot)}'][data-turbo-confirm]"
+
+    snapshot.update!(status: "final", approved_at: Time.current, approved_by: "phase4-admin")
+    job.update!(status: "approved")
+
+    get admin_bas_job_report_snapshot_path(job, snapshot)
+
+    assert_response :success
+    assert_guarded_form lock_admin_bas_job_report_snapshot_path(job, snapshot), "Locking"
+    assert_select "form[action='#{lock_admin_bas_job_report_snapshot_path(job, snapshot)}'][data-turbo-confirm]"
+  end
+
   test "admin can add adjustment with audit actor" do
     job = bas_job
 
@@ -205,5 +231,13 @@ class AdminBasReportsControllerTest < ActionDispatch::IntegrationTest
     match.items.create!(matchable: invoice_record, amount: invoice_record.total_amount)
     match.items.create!(matchable: bank_record, amount: bank_record.amount)
     job
+  end
+
+  def assert_guarded_form(action, loading_text)
+    form = Nokogiri::HTML(response.body).at_css("form[action='#{action}'][data-controller='submit-guard'][data-submit-guard-loading-text-value='#{loading_text}']")
+
+    assert form, "Expected guarded form #{action} with loading text #{loading_text.inspect}"
+    assert_includes form["data-action"], "turbo:submit-start->submit-guard#submitStart"
+    assert_includes form["data-action"], "turbo:submit-end->submit-guard#submitEnd"
   end
 end

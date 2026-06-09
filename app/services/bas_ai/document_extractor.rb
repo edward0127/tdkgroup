@@ -17,8 +17,13 @@ module BasAi
       end
 
       response = provider.extract_document(document_summary)
+      return failure_result(response.error_message) unless response.ok?
+
       validation = BasAi::ResponseValidator.validate(response)
-      return failure_result(response.error_message.presence || validation.errors.to_sentence) unless response.ok? && validation.valid?
+      unless validation.valid?
+        record_validation_errors(validation.errors)
+        return failure_result(invalid_format_message)
+      end
 
       suggestions = BasAi::SuggestionBuilder.new(
         run: run,
@@ -65,6 +70,19 @@ module BasAi
         summary: nil,
         suggestions: [],
         error_message: message
+      )
+    end
+
+    def invalid_format_message
+      run.provider == "openai" ? BasAi::ResponseValidator::INVALID_OPENAI_FORMAT_MESSAGE : BasAi::ResponseValidator::INVALID_PROVIDER_FORMAT_MESSAGE
+    end
+
+    def record_validation_errors(validation_errors)
+      run.update!(
+        metadata: run.metadata.merge(
+          "validation_error_type" => "invalid_suggestion_format",
+          "validation_errors" => Array(validation_errors)
+        )
       )
     end
   end

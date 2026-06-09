@@ -5,14 +5,18 @@
     <p><%= @job.period_label %></p>
   </div>
   <div class="admin-actions">
-    <%= link_to "AI suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
+    <% if @config.ui_enabled? %>
+      <%= link_to "AI suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
+    <% end %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
   </div>
 </section>
 
 <section class="admin-card-panel">
   <h2>AI configuration</h2>
-  <% if @config.disabled? %>
+  <% if !@config.ui_enabled? %>
+    <p class="admin-muted">AI review is currently disabled.</p>
+  <% elsif @config.disabled? %>
     <p class="admin-muted">AI suggestions are not enabled.</p>
   <% else %>
     <p class="admin-muted">AI suggestions require accountant review. They do not change final BAS figures unless accepted by an admin.</p>
@@ -39,32 +43,65 @@
   <% end %>
 </section>
 
-<% if @config.enabled? && !@job.locked? %>
+<% if @config.ui_enabled? && @config.enabled? && !@job.locked? %>
   <section class="admin-card-panel">
     <h2>Run AI review</h2>
+    <p class="admin-muted">Job review uses imported BAS records, matches, queries, and report state. It does not read uploaded PDFs or receipts.</p>
     <% if @config.openai_provider? %>
       <p class="admin-muted"><%= BasAi::OpenaiProvider::DOCUMENT_TEXT_DISABLED_MESSAGE %></p>
     <% end %>
-    <%= form_with url: admin_bas_job_ai_runs_path(@job), method: :post, class: "admin-form" do %>
-      <div class="admin-form-grid">
-        <div class="field">
-          <%= label_tag "bas_ai_extraction_run_input_kind", "Input kind" %>
-          <% input_kind_options = [
-            [ "Job review", "job_review" ],
-            [ "Matching review", "matching_review" ],
-            [ "GST review", "gst_review" ]
-          ] %>
-          <% input_kind_options << [ "Selected document extraction", "document_text" ] unless @config.openai_provider? %>
-          <%= select_tag "bas_ai_extraction_run[input_kind]",
-                options_for_select(input_kind_options) %>
-        </div>
-        <div class="field">
-          <%= label_tag "bas_ai_extraction_run_bas_document_id", "Document" %>
-          <%= select_tag "bas_ai_extraction_run[bas_document_id]",
-                options_for_select([ [ "No document", "" ] ] + @documents.map { |document| [ document.title, document.id ] }) %>
-        </div>
+
+    <dl class="admin-asset-details">
+      <div>
+        <dt>Input kind</dt>
+        <dd>Job review</dd>
       </div>
-      <button type="submit" class="btn-primary">Run AI</button>
+      <div>
+        <dt>Document</dt>
+        <dd>Not used</dd>
+      </div>
+    </dl>
+
+    <% unless @ai_readiness.ready? %>
+      <div class="bas-readiness-box">
+        <h3>AI Job review is available after the main BAS workflow has enough structured data.</h3>
+        <ul>
+          <li>Import bank/invoice/payroll data</li>
+          <li>Create and review match suggestions</li>
+          <li>Accept/reject/resolve proposed matches</li>
+          <li>Generate client queries if unresolved items remain</li>
+          <li>Then run AI Job review</li>
+        </ul>
+        <h3>Current blockers</h3>
+        <ul>
+          <% @ai_readiness.blockers.each do |blocker| %>
+            <li><%= blocker %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <% if @ai_readiness.warnings.any? %>
+      <div class="bas-readiness-box bas-readiness-box--muted">
+        <h3>AI readiness warnings</h3>
+        <ul>
+          <% @ai_readiness.warnings.each do |warning| %>
+            <li><%= warning %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <% if @ai_readiness.ready? %>
+      <%= form_with url: admin_bas_job_ai_runs_path(@job),
+            method: :post,
+            class: "admin-form",
+            data: bas_submit_guard_data("Running AI") do %>
+        <%= hidden_field_tag "bas_ai_extraction_run[input_kind]", "job_review" %>
+        <button type="submit" class="btn-primary" data-submit-guard-loading-text="Running AI">Run AI</button>
+      <% end %>
+    <% else %>
+      <button type="button" class="btn-secondary" disabled data-submit-guard-loading-text="Running AI">Run AI</button>
     <% end %>
   </section>
 <% end %>
@@ -88,12 +125,12 @@
         </thead>
         <tbody>
           <% @runs.each do |run| %>
-            <tr>
-              <td><%= run.status.humanize %></td>
+            <tr class="<%= "bas-ai-run-row--failed" if run.status == "failed" %>">
+              <td><span class="bas-ai-status-pill bas-ai-status-pill--<%= run.status %>"><%= run.status.humanize %></span></td>
               <td><%= run.provider.presence || "Not recorded" %></td>
               <td><%= run.ai_model_name.presence || "Not configured" %></td>
               <td><%= run.input_kind.to_s.humanize %></td>
-              <td><%= run.bas_document&.title || "None" %></td>
+              <td><%= run.document_input_kind? ? run.bas_document&.title || "None" : "Not used" %></td>
               <td><%= run.started_at ? l(run.started_at, format: :short) : "Not started" %></td>
               <td><%= run.completed_at ? l(run.completed_at, format: :short) : "Not completed" %></td>
               <td><%= link_to "Open", admin_bas_job_ai_run_path(@job, run), class: "text-link" %></td>

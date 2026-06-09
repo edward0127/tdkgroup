@@ -6,9 +6,21 @@
   </div>
   <div class="admin-actions">
     <% if @suggestion.status == "proposed" && !@job.locked? %>
-      <%= button_to "Accept", accept_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-primary" %>
-      <%= button_to "Reject", reject_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-secondary" %>
-      <%= button_to "Needs review", mark_needs_review_admin_bas_job_ai_suggestion_path(@job, @suggestion), method: :post, class: "btn-secondary" %>
+      <%= button_to "Accept",
+            accept_admin_bas_job_ai_suggestion_path(@job, @suggestion),
+            method: :post,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Accepting") %>
+      <%= button_to "Reject",
+            reject_admin_bas_job_ai_suggestion_path(@job, @suggestion),
+            method: :post,
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Rejecting") %>
+      <%= button_to "Needs review",
+            mark_needs_review_admin_bas_job_ai_suggestion_path(@job, @suggestion),
+            method: :post,
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Marking review") %>
     <% end %>
     <%= link_to "All suggestions", admin_bas_job_ai_suggestions_path(@job), class: "btn-secondary" %>
     <%= link_to "AI run", admin_bas_job_ai_run_path(@job, @suggestion.bas_ai_extraction_run), class: "btn-secondary" %>

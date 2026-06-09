@@ -11,6 +11,31 @@
   </div>
 </section>
 
+<% if @run.status == "failed" %>
+  <section class="bas-ai-status-block bas-ai-status-block--failed">
+    <h2>AI review failed</h2>
+    <p><%= @run.error_message.presence || "AI review failed. No AI suggestions were created." %></p>
+    <% validation_errors = Array(@run.metadata["validation_errors"]) %>
+    <% if validation_errors.any? %>
+      <h3>Validation details</h3>
+      <ul>
+        <% validation_errors.each do |error| %>
+          <li><%= error %></li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+<% elsif @run.status == "completed" %>
+  <section class="bas-ai-status-block bas-ai-status-block--completed">
+    <h2>AI review completed</h2>
+    <% if @suggestions.any? %>
+      <p><%= @suggestions.size %> <%= "suggestion".pluralize(@suggestions.size) %> created for accountant review.</p>
+    <% else %>
+      <p>No AI suggestions were created by this run.</p>
+    <% end %>
+  </section>
+<% end %>
+
 <section class="admin-card-panel">
   <h2>Run details</h2>
   <% if @config.openai_warning_message.present? %>
@@ -31,7 +56,15 @@
     </div>
     <div>
       <dt>Document</dt>
-      <dd><%= @run.bas_document ? link_to(@run.bas_document.title, admin_bas_job_document_path(@job, @run.bas_document), class: "text-link") : "None" %></dd>
+      <dd>
+        <% if @run.document_input_kind? && @run.bas_document.present? %>
+          <%= link_to @run.bas_document.title, admin_bas_job_document_path(@job, @run.bas_document), class: "text-link" %>
+        <% elsif @run.document_input_kind? %>
+          None
+        <% else %>
+          Not used
+        <% end %>
+      </dd>
     </div>
     <div>
       <dt>Started</dt>
@@ -45,7 +78,7 @@
   <% if @run.summary.present? %>
     <p><%= @run.summary %></p>
   <% end %>
-  <% if @run.error_message.present? %>
+  <% if @run.error_message.present? && @run.status != "failed" %>
     <p class="text-danger"><%= @run.error_message %></p>
   <% end %>
 </section>

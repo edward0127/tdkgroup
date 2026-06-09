@@ -22,11 +22,19 @@
     <% elsif @open_queries_count.positive? %>
       <p class="admin-muted">Client queries generated.</p>
       <div class="admin-actions">
-        <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "btn-secondary" %>
-        <%= button_to "Generate/re-run client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+        <%= link_to "View open queries", admin_bas_job_path(@job, tab: "matching", anchor: "open-queries"), class: "btn-secondary" %>
+        <%= button_to "Generate/re-run client queries",
+              generate_queries_admin_bas_job_matching_path(@job),
+              method: :post,
+              class: "btn-secondary",
+              form: bas_submit_guard_form("Generating queries") %>
       </div>
     <% else %>
-      <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      <%= button_to "Generate client queries",
+            generate_queries_admin_bas_job_matching_path(@job),
+            method: :post,
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Generating queries") %>
     <% end %>
   <% end %>
 </section>

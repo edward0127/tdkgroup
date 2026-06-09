@@ -40,7 +40,11 @@
             <%= link_to "View", admin_bas_job_import_run_path(@job, import_run), class: "text-link" %>
             <% if import_run.status == "imported" && !@job.locked? %>
               <br>
-              <%= button_to "Revert", revert_admin_bas_job_import_run_path(@job, import_run), method: :post, class: "text-danger", form: { data: { turbo_confirm: "Revert this import run?" } } %>
+              <%= button_to "Revert",
+                    revert_admin_bas_job_import_run_path(@job, import_run),
+                    method: :post,
+                    class: "text-danger",
+                    form: bas_submit_guard_form("Reverting", data: { turbo_confirm: "Revert this import run?" }) %>
             <% end %>
           </td>
         </tr>

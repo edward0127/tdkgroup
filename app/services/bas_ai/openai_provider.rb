@@ -124,8 +124,8 @@ module BasAi
           format: {
             type: "json_schema",
             name: "bas_ai_suggestions",
-            strict: false,
-            schema: response_schema
+            strict: true,
+            schema: BasAi::ResponseValidator.openai_response_schema
           }
         }
       }
@@ -137,38 +137,13 @@ module BasAi
         Suggest review actions only. Do not approve BAS figures, lodge BAS, lock jobs,
         override deterministic calculations, or treat suggestions as final.
         Use only the structured fields provided. Do not request or include raw document text.
+        If no admin action is required, return a useful review_summary, overall_status
+        "no_action_needed", and an empty suggestions array. Do not create placeholder
+        suggestions. Every suggestion must include suggestion_type, confidence,
+        explanation, suggested_data, and every required suggested_data field for that
+        suggestion type. Do not include final BAS approval. Do not say to lodge BAS.
+        Admin/accountant review remains required.
       PROMPT
-    end
-
-    def response_schema
-      {
-        type: "object",
-        additionalProperties: false,
-        required: [ "summary", "suggestions" ],
-        properties: {
-          summary: { type: "string" },
-          suggestions: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: true,
-              required: [ "suggestion_type", "confidence", "explanation", "suggested_data" ],
-              properties: {
-                suggestion_type: { type: "string", enum: BasAiSuggestion::SUGGESTION_TYPE_VALUES },
-                status: { type: "string" },
-                confidence: { type: "number" },
-                source_type: { type: [ "string", "null" ] },
-                source_id: { type: [ "integer", "null" ] },
-                explanation: { type: "string" },
-                suggested_data: {
-                  type: "object",
-                  additionalProperties: true
-                }
-              }
-            }
-          }
-        }
-      }
     end
 
     def parse_response(body)
@@ -177,10 +152,14 @@ module BasAi
       return Provider::Result.new(ok?: false, summary: nil, suggestions: [], error_message: "OpenAI response did not include suggestion JSON.") if output_text.blank?
 
       suggestion_body = JSON.parse(output_text)
+      unless suggestion_body.is_a?(Hash) && suggestion_body["suggestions"].is_a?(Array)
+        return Provider::Result.new(ok?: false, summary: nil, suggestions: [], error_message: "OpenAI response did not include suggestion JSON.")
+      end
+
       Provider::Result.new(
         ok?: true,
-        summary: suggestion_body["summary"],
-        suggestions: Array(suggestion_body["suggestions"]),
+        summary: suggestion_body["review_summary"].presence || suggestion_body["summary"],
+        suggestions: suggestion_body["suggestions"],
         error_message: nil
       )
     rescue JSON::ParserError

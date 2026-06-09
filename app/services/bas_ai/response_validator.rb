@@ -2,6 +2,10 @@ module BasAi
   class ResponseValidator
     Result = Data.define(:valid?, :suggestions, :errors)
 
+    INVALID_OPENAI_FORMAT_MESSAGE = "OpenAI returned an invalid suggestion format. No suggestions were applied. Please retry or contact support.".freeze
+    INVALID_PROVIDER_FORMAT_MESSAGE = "AI provider returned an invalid suggestion format. No suggestions were applied. Please retry or contact support.".freeze
+    OVERALL_STATUS_VALUES = %w[no_action_needed needs_admin_review].freeze
+
     REQUIRED_DATA_KEYS = {
       "invoice_extraction" => %w[
         document_type
@@ -51,8 +55,72 @@ module BasAi
       ]
     }.freeze
 
+    COMMON_SUGGESTION_KEYS = %w[
+      suggestion_type
+      confidence
+      explanation
+      suggested_data
+    ].freeze
+
+    FIELD_SCHEMAS = {
+      "abn_if_found" => { type: "string" },
+      "confidence" => { type: "number" },
+      "currency" => { type: "string" },
+      "details" => { type: "string" },
+      "document_type" => { type: "string" },
+      "explanation" => { type: "string" },
+      "gst_amount" => { type: "string" },
+      "invoice_number" => { type: "string" },
+      "issue_date" => { type: "string" },
+      "matched_amount" => { type: "string" },
+      "missing_fields" => { type: "array", items: { type: "string" } },
+      "needs_review" => { type: "boolean" },
+      "payment_method" => { type: "string" },
+      "query_type" => { type: "string" },
+      "related_source_id" => { type: [ "integer", "null" ] },
+      "related_source_type" => { type: [ "string", "null" ] },
+      "source_id" => { type: [ "integer", "null" ] },
+      "source_ids" => {
+        type: "object",
+        additionalProperties: false,
+        required: %w[invoice_ids bank_transaction_id cash_transaction_id],
+        properties: {
+          invoice_ids: { type: "array", items: { type: "integer" } },
+          bank_transaction_id: { type: [ "integer", "null" ] },
+          cash_transaction_id: { type: [ "integer", "null" ] }
+        }
+      },
+      "source_type" => { type: [ "string", "null" ] },
+      "suggested_admin_actions" => { type: "array", items: { type: "string" } },
+      "suggested_gst_code" => { type: "string" },
+      "suggested_match_type" => { type: "string" },
+      "summary" => { type: "string" },
+      "supplier_or_customer_name" => { type: "string" },
+      "title" => { type: "string" },
+      "total_amount" => { type: "string" },
+      "unresolved_risks" => { type: "array", items: { type: "string" } }
+    }.freeze
+
     def self.validate(response)
       new(response).validate
+    end
+
+    def self.openai_response_schema
+      {
+        type: "object",
+        additionalProperties: false,
+        required: %w[review_summary overall_status suggestions],
+        properties: {
+          review_summary: { type: "string" },
+          overall_status: { type: "string", enum: OVERALL_STATUS_VALUES },
+          suggestions: {
+            type: "array",
+            items: {
+              anyOf: REQUIRED_DATA_KEYS.keys.map { |suggestion_type| openai_suggestion_schema(suggestion_type) }
+            }
+          }
+        }
+      }
     end
 
     def initialize(response)
@@ -108,6 +176,33 @@ module BasAi
         "confidence" => suggestion["confidence"].presence || data["confidence"],
         "explanation" => suggestion["explanation"].presence || data["explanation"],
         "suggested_data" => data.slice(*REQUIRED_DATA_KEYS.fetch(type))
+      }
+    end
+
+    def self.openai_suggestion_schema(suggestion_type)
+      {
+        type: "object",
+        additionalProperties: false,
+        required: COMMON_SUGGESTION_KEYS + %w[source_type source_id],
+        properties: {
+          suggestion_type: { type: "string", enum: [ suggestion_type ] },
+          source_type: { type: [ "string", "null" ] },
+          source_id: { type: [ "integer", "null" ] },
+          confidence: { type: "number" },
+          explanation: { type: "string" },
+          suggested_data: openai_suggested_data_schema(suggestion_type)
+        }
+      }
+    end
+
+    def self.openai_suggested_data_schema(suggestion_type)
+      required_keys = REQUIRED_DATA_KEYS.fetch(suggestion_type)
+
+      {
+        type: "object",
+        additionalProperties: false,
+        required: required_keys,
+        properties: required_keys.index_with { |key| FIELD_SCHEMAS.fetch(key) }
       }
     end
   end

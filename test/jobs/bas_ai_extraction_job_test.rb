@@ -105,6 +105,113 @@ class BasAiExtractionJobTest < ActiveJob::TestCase
     assert_equal BasAi::OpenaiProvider::DOCUMENT_TEXT_DISABLED_MESSAGE, run.error_message
   end
 
+  test "openai no-suggestion job review completes and stores summary" do
+    job = bas_job
+    provider = StaticReviewProvider.new(
+      BasAi::Provider::Result.new(
+        ok?: true,
+        summary: "No admin action was identified.",
+        suggestions: [],
+        error_message: nil
+      )
+    )
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_PROVIDER" => "openai", "BAS_AI_MODEL" => "gpt-test", "BAS_AI_API_KEY" => "sk-test-secret") do
+      with_provider_factory(provider) do
+        assert_difference "BasAiExtractionRun.count", 1 do
+          assert_no_difference "BasAiSuggestion.count" do
+            BasAiExtractionJob.perform_now(bas_job_id: job.id, input_kind: "job_review", actor_username: "phase6")
+          end
+        end
+      end
+    end
+
+    run = BasAiExtractionRun.last
+    assert_equal "completed", run.status
+    assert_equal "No admin action was identified.", run.summary
+    assert_nil run.bas_document_id
+  end
+
+  test "openai complete suggestion creates proposed suggestion" do
+    job = bas_job
+    provider = StaticReviewProvider.new(
+      BasAi::Provider::Result.new(
+        ok?: true,
+        summary: "Admin review item found.",
+        suggestions: [ summary_payload ],
+        error_message: nil
+      )
+    )
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_PROVIDER" => "openai", "BAS_AI_MODEL" => "gpt-test", "BAS_AI_API_KEY" => "sk-test-secret") do
+      with_provider_factory(provider) do
+        assert_difference "BasAiSuggestion.where(status: 'proposed').count", 1 do
+          BasAiExtractionJob.perform_now(bas_job_id: job.id, input_kind: "job_review", actor_username: "phase6")
+        end
+      end
+    end
+
+    run = BasAiExtractionRun.last
+    suggestion = BasAiSuggestion.last
+    assert_equal "completed", run.status
+    assert_equal run, suggestion.bas_ai_extraction_run
+    assert_equal "summary", suggestion.suggestion_type
+  end
+
+  test "openai incomplete suggestion fails safely without creating suggestions" do
+    job = bas_job
+    provider = StaticReviewProvider.new(
+      BasAi::Provider::Result.new(
+        ok?: true,
+        summary: "Invalid response.",
+        suggestions: [
+          {
+            "suggestion_type" => "summary",
+            "confidence" => 70,
+            "explanation" => "Incomplete summary suggestion.",
+            "suggested_data" => {}
+          }
+        ],
+        error_message: nil
+      )
+    )
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_PROVIDER" => "openai", "BAS_AI_MODEL" => "gpt-test", "BAS_AI_API_KEY" => "sk-test-secret") do
+      with_provider_factory(provider) do
+        assert_difference "BasAiExtractionRun.count", 1 do
+          assert_no_difference "BasAiSuggestion.count" do
+            BasAiExtractionJob.perform_now(bas_job_id: job.id, input_kind: "job_review", actor_username: "phase6")
+          end
+        end
+      end
+    end
+
+    run = BasAiExtractionRun.last
+    assert_equal "failed", run.status
+    assert_equal BasAi::ResponseValidator::INVALID_OPENAI_FORMAT_MESSAGE, run.error_message
+    assert_equal "invalid_suggestion_format", run.metadata.fetch("validation_error_type")
+    assert run.metadata.fetch("validation_errors").any? { |error| error.include?("missing required fields") }
+  end
+
+  test "job review ignores document id" do
+    job = bas_job
+    document = bas_document(job)
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_PROVIDER" => "stub", "BAS_AI_MODEL" => "synthetic-model") do
+      BasAiExtractionJob.perform_now(
+        bas_job_id: job.id,
+        bas_document_id: document.id,
+        input_kind: "job_review",
+        actor_username: "phase6"
+      )
+    end
+
+    run = BasAiExtractionRun.last
+    assert_equal "completed", run.status
+    assert_nil run.bas_document_id
+    assert_not run.metadata.key?("bas_document_id")
+  end
+
   test "invalid provider response fails safely" do
     job = bas_job
     run = BasAiExtractionRun.create!(bas_job: job, status: "running", input_kind: "job_review", provider: "stub")
@@ -117,7 +224,8 @@ class BasAiExtractionJobTest < ActiveJob::TestCase
     result = BasAi::JobReviewer.new(run: run, provider: provider, actor_username: "phase5").call
 
     assert_not result.ok?
-    assert_includes result.error_message, "missing required fields"
+    assert_equal BasAi::ResponseValidator::INVALID_PROVIDER_FORMAT_MESSAGE, result.error_message
+    assert run.reload.metadata.fetch("validation_errors").any? { |error| error.include?("missing required fields") }
   end
 
   private
@@ -141,5 +249,42 @@ class BasAiExtractionJobTest < ActiveJob::TestCase
     )
     document.save!
     document
+  end
+
+  def with_provider_factory(provider)
+    original_build = BasAi::ProviderFactory.method(:build)
+    BasAi::ProviderFactory.define_singleton_method(:build) { |config: BasAi::Config.current| provider }
+    yield
+  ensure
+    BasAi::ProviderFactory.define_singleton_method(:build) { |config: BasAi::Config.current| original_build.call(config: config) }
+  end
+
+  def summary_payload
+    {
+      "suggestion_type" => "summary",
+      "confidence" => 75,
+      "explanation" => "Review the imported BAS records.",
+      "suggested_data" => {
+        "summary" => "Imported records need accountant review.",
+        "unresolved_risks" => [ "One imported item still needs review." ],
+        "suggested_admin_actions" => [ "Review the imported item before accountant review is marked complete." ],
+        "confidence" => 75
+      }
+    }
+  end
+
+  class StaticReviewProvider < BasAi::Provider
+    def initialize(result)
+      super()
+      @result = result
+    end
+
+    def review_job(_job_summary)
+      @result
+    end
+
+    def extract_document(_document_summary)
+      @result
+    end
   end
 end

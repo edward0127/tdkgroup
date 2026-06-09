@@ -12,7 +12,11 @@
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
-      <%= button_to "Calculate draft", calculate_admin_bas_job_report_path(@job), method: :post, class: "btn-primary" %>
+      <%= button_to "Calculate draft",
+            calculate_admin_bas_job_report_path(@job),
+            method: :post,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Calculating") %>
       <%= link_to "Add adjustment", new_admin_bas_job_adjustment_path(@job), class: "btn-secondary" %>
     <% end %>
     <%= link_to "Snapshots", admin_bas_job_report_snapshots_path(@job), class: "btn-secondary" %>

@@ -10,6 +10,23 @@ class BasAiTest < ActiveSupport::TestCase
       assert_equal "", config.model_name
       assert_equal 2000, config.max_output_tokens
       assert_not config.api_key_configured?
+      assert_not config.ui_enabled?
+    end
+  end
+
+  test "config UI gate is controlled separately from backend enablement" do
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_UI_ENABLED" => "true", "BAS_AI_PROVIDER" => "stub") do
+      config = BasAi::Config.current
+
+      assert config.enabled?
+      assert config.ui_enabled?
+    end
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_UI_ENABLED" => nil, "BAS_AI_PROVIDER" => "stub") do
+      config = BasAi::Config.current
+
+      assert config.enabled?
+      assert_not config.ui_enabled?
     end
   end
 
@@ -57,7 +74,8 @@ class BasAiTest < ActiveSupport::TestCase
 
   test "openai provider handles valid structured response" do
     payload = {
-      "summary" => "Synthetic OpenAI review.",
+      "review_summary" => "Synthetic OpenAI review.",
+      "overall_status" => "needs_admin_review",
       "suggestions" => [ query_payload(bas_job) ]
     }
     response = openai_response(JSON.generate(payload))
@@ -76,11 +94,34 @@ class BasAiTest < ActiveSupport::TestCase
       request_body = JSON.parse(http.request_body)
       assert_equal false, request_body.fetch("store")
       assert_equal 1234, request_body.fetch("max_output_tokens")
+      assert_equal true, request_body.dig("text", "format", "strict")
+      schema = request_body.dig("text", "format", "schema")
+      assert_includes schema.fetch("required"), "review_summary"
+      assert_includes schema.fetch("required"), "overall_status"
+      assert_includes schema.fetch("required"), "suggestions"
       assert_equal 10, http.start_options.fetch(:open_timeout)
       assert_equal 60, http.start_options.fetch(:read_timeout)
       assert_equal 10, http.open_timeout
       assert_equal 60, http.read_timeout
       assert_equal 10, http.write_timeout
+    end
+  end
+
+  test "openai provider handles no-suggestion structured response" do
+    payload = {
+      "review_summary" => "No admin action was identified.",
+      "overall_status" => "no_action_needed",
+      "suggestions" => []
+    }
+    response = openai_response(JSON.generate(payload))
+
+    with_modified_env("BAS_AI_ENABLED" => "true", "BAS_AI_PROVIDER" => "openai", "BAS_AI_MODEL" => "gpt-test", "BAS_AI_API_KEY" => "sk-test-secret") do
+      result = BasAi::OpenaiProvider.new(http_client: FakeHttpClient.new(response)).review_job({ "bas_job_id" => 1 })
+
+      assert result.ok?
+      assert_equal "No admin action was identified.", result.summary
+      assert_equal [], result.suggestions
+      assert BasAi::ResponseValidator.validate(result).valid?
     end
   end
 
@@ -133,6 +174,67 @@ class BasAiTest < ActiveSupport::TestCase
     assert validation.valid?, validation.errors.to_sentence
     assert validation.suggestions.any? { |suggestion| suggestion["suggestion_type"] == "summary" }
     assert validation.suggestions.any? { |suggestion| suggestion["suggestion_type"] == "query" }
+  end
+
+  test "readiness checker blocks job review before structured records exist" do
+    readiness = BasAi::ReadinessChecker.new(bas_job: bas_job)
+
+    assert_not readiness.ready?
+    assert_includes readiness.blockers, "Import structured BAS records before running AI review."
+  end
+
+  test "readiness checker blocks unknown GST and reporting settings" do
+    job = bas_job
+    job.update!(gst_basis: "unknown", reporting_method: "unknown")
+    BasBankTransaction.create!(
+      bas_job: job,
+      transaction_date: Date.new(2026, 1, 2),
+      description: "Synthetic ready record",
+      amount: BigDecimal("110.00"),
+      status: "ignored"
+    )
+
+    readiness = BasAi::ReadinessChecker.new(bas_job: job)
+
+    assert_not readiness.ready?
+    assert_includes readiness.blockers, "GST basis is unknown."
+    assert_includes readiness.blockers, "Reporting method is unknown."
+  end
+
+  test "readiness checker blocks proposed and needs-review matches" do
+    job = bas_job
+    BasBankTransaction.create!(
+      bas_job: job,
+      transaction_date: Date.new(2026, 1, 2),
+      description: "Synthetic ready record",
+      amount: BigDecimal("110.00"),
+      status: "ignored"
+    )
+    BasMatch.create!(bas_job: job, match_type: "manual", status: "proposed", matched_amount: BigDecimal("110.00"))
+    BasMatch.create!(bas_job: job, match_type: "manual", status: "needs_review", matched_amount: BigDecimal("55.00"))
+
+    readiness = BasAi::ReadinessChecker.new(bas_job: job)
+
+    assert_not readiness.ready?
+    assert_includes readiness.blockers, "Review proposed match suggestions before running AI review."
+    assert_includes readiness.blockers, "Resolve needs-review matches before running AI review."
+  end
+
+  test "readiness checker allows imported records with matching review complete" do
+    job = bas_job
+    BasBankTransaction.create!(
+      bas_job: job,
+      transaction_date: Date.new(2026, 1, 2),
+      description: "Synthetic ready record",
+      amount: BigDecimal("110.00"),
+      status: "ignored"
+    )
+
+    readiness = BasAi::ReadinessChecker.new(bas_job: job)
+
+    assert readiness.ready?
+    assert_includes readiness.warnings, "No client/internal queries have been generated yet."
+    assert_includes readiness.warnings, "No report snapshot exists yet."
   end
 
   test "response validator accepts valid invoice extraction json and rejects missing fields" do

@@ -7,9 +7,24 @@
   </div>
   <div class="admin-actions">
     <% if @match.status == "proposed" && !@job.locked? %>
-      <%= button_to "Accept", accept_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-primary" %>
-      <%= button_to "Reject", reject_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-secondary" %>
-      <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(@job, @match), method: :post, params: { return_to: "workflow" }, class: "btn-secondary" %>
+      <%= button_to "Accept",
+            accept_admin_bas_job_match_path(@job, @match),
+            method: :post,
+            params: { return_to: "workflow" },
+            class: "btn-primary",
+            form: bas_submit_guard_form("Accepting") %>
+      <%= button_to "Reject",
+            reject_admin_bas_job_match_path(@job, @match),
+            method: :post,
+            params: { return_to: "workflow" },
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Rejecting") %>
+      <%= button_to "Needs review",
+            mark_needs_review_admin_bas_job_match_path(@job, @match),
+            method: :post,
+            params: { return_to: "workflow" },
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Marking review") %>
     <% end %>
     <%= link_to "All matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to matching workflow", admin_bas_job_matching_path(@job), class: "btn-secondary" %>

@@ -1,7 +1,7 @@
 require "test_helper"
 
 class BasAiRecordsTest < ActiveSupport::TestCase
-  test "ai extraction run validates allowlists document ownership and safe metadata" do
+  test "job review ai extraction run ignores selected documents" do
     job = bas_job
     other_job = bas_job(legal_name: "Other Synthetic AI Client Pty Ltd")
     run = BasAiExtractionRun.new(
@@ -9,6 +9,21 @@ class BasAiRecordsTest < ActiveSupport::TestCase
       bas_document: bas_document(other_job),
       status: "completed",
       input_kind: "job_review",
+      metadata: { safe_id: 1 }
+    )
+
+    assert run.valid?
+    assert_nil run.bas_document
+  end
+
+  test "document ai extraction run validates allowlists document ownership and safe metadata" do
+    job = bas_job
+    other_job = bas_job(legal_name: "Other Synthetic AI Client Pty Ltd")
+    run = BasAiExtractionRun.new(
+      bas_job: job,
+      bas_document: bas_document(other_job),
+      status: "completed",
+      input_kind: "document_text",
       metadata: { safe_id: 1 }
     )
 

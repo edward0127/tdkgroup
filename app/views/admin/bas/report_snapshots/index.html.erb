@@ -7,7 +7,11 @@
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
-      <%= button_to "Generate draft", admin_bas_job_report_snapshots_path(@job), method: :post, class: "btn-primary" %>
+      <%= button_to "Generate draft",
+            admin_bas_job_report_snapshots_path(@job),
+            method: :post,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Generating draft") %>
     <% end %>
     <%= link_to "Report & snapshots", admin_bas_job_report_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>

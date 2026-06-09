@@ -37,21 +37,21 @@ module Admin
             title: "Step 1: Upload files",
             description: "Upload bank statements, invoice summaries, cash transaction lists, payroll summaries, and supporting receipts.",
             status: bas_workflow_status(locked: locked, completed: documents_count.positive?, action_required: documents_count.zero?),
-            action_label: locked ? nil : "Upload source/supporting file",
+            action_label: locked ? nil : "Upload source file",
             action_path: locked ? nil : new_admin_bas_job_document_path(job)
           },
           {
             title: "Step 2: Import / convert",
             description: "Import CSV/XLSX files into BAS records, or convert standard bank PDF statements to a reviewable import preview.",
             status: bas_workflow_status(locked: locked, completed: imported_records_count.positive?, action_required: documents_count.positive? && imported_records_count.zero?),
-            action_label: locked ? nil : "CSV/XLSX imports",
+            action_label: locked ? nil : "Import uploaded files",
             action_path: locked ? nil : admin_bas_job_import_runs_path(job)
           },
           {
             title: "Step 3: Match records",
             description: "Create match suggestions and review them before generating client queries.",
             status: bas_workflow_status(locked: locked, completed: imported_records_count.positive? && matching_review_count.zero?, action_required: matching_review_count.positive? || imported_records_count.positive?),
-            action_label: locked ? nil : "Matching & review",
+            action_label: locked ? nil : "Review matching",
             action_path: locked ? nil : admin_bas_job_matching_path(job)
           },
           {
@@ -65,7 +65,7 @@ module Admin
             title: "Step 5: Review BAS report",
             description: "Calculate draft BAS figures and review approval blockers.",
             status: bas_workflow_status(locked: locked, completed: latest_report_snapshot.present? && approval_blockers_count.zero?, action_required: approval_blockers_count.positive? || (imported_records_count.positive? && latest_report_snapshot.blank?)),
-            action_label: locked ? nil : "Report & snapshots",
+            action_label: locked ? nil : "Calculate BAS report",
             action_path: locked ? nil : admin_bas_job_report_path(job)
           },
           {
@@ -80,7 +80,7 @@ module Admin
             else
               "Waiting"
             end,
-            action_label: latest_report_snapshot.present? ? "Open latest snapshot" : "Report & snapshots",
+            action_label: latest_report_snapshot.present? ? "Open latest snapshot" : "Calculate BAS report",
             action_path: latest_report_snapshot.present? ? admin_bas_job_report_snapshot_path(job, latest_report_snapshot) : admin_bas_job_report_path(job)
           }
         ]
@@ -179,6 +179,19 @@ module Admin
 
       def bas_pdf_bank_statement_document?(document)
         document.document_type == "bank_statement" && bas_pdf_document?(document)
+      end
+
+      def bas_submit_guard_data(loading_text = nil)
+        {
+          controller: "submit-guard",
+          action: "click->submit-guard#rememberSubmitter submit->submit-guard#submit turbo:submit-start->submit-guard#submitStart turbo:submit-end->submit-guard#submitEnd turbo:before-cache@document->submit-guard#reset"
+        }.tap do |data|
+          data[:submit_guard_loading_text_value] = loading_text if loading_text.present?
+        end
+      end
+
+      def bas_submit_guard_form(loading_text = nil, data: {}, **options)
+        options.merge(data: data.merge(bas_submit_guard_data(loading_text)))
       end
 
       def bas_document_status_label(document)

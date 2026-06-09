@@ -36,6 +36,26 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
     assert_equal "bas_matching_run", BasAuditEvent.last.event_type
   end
 
+  test "matching mutation forms include visible submit guard loading text" do
+    job = create_job_with_bank_match_candidate
+
+    get admin_bas_job_matching_path(job)
+
+    assert_response :success
+    assert_guarded_form run_admin_bas_job_matching_path(job), "Creating suggestions"
+    assert_guarded_form generate_queries_admin_bas_job_matching_path(job), "Generating queries"
+
+    BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
+    match = BasMatch.last
+
+    get admin_bas_job_matches_path(job)
+
+    assert_response :success
+    assert_guarded_form accept_admin_bas_job_match_path(job, match), "Accepting"
+    assert_guarded_form reject_admin_bas_job_match_path(job, match), "Rejecting"
+    assert_guarded_form mark_needs_review_admin_bas_job_match_path(job, match), "Marking review"
+  end
+
   test "admin can accept and reject proposed matches" do
     job = create_job_with_bank_match_candidate
     BasMatching::Matcher.new(bas_job: job, actor_username: "bas-matching-admin").call
@@ -140,7 +160,7 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
     follow_redirect!
     assert_response :success
     assert_select "h2", "Open client queries"
-    assert_select "a[href='#{admin_bas_job_path(job, anchor: 'open-queries')}']", text: "View open queries"
+    assert_select "a[href='#{admin_bas_job_path(job, tab: 'matching', anchor: 'open-queries')}']", text: "View open queries"
 
     assert_no_difference "BasQuery.count" do
       post generate_queries_admin_bas_job_matching_path(job)
@@ -341,5 +361,13 @@ class AdminBasMatchingControllerTest < ActionDispatch::IntegrationTest
       created_by: "bas-matching-admin",
       updated_by: "bas-matching-admin"
     }.merge(attributes))
+  end
+
+  def assert_guarded_form(action, loading_text)
+    form = Nokogiri::HTML(response.body).at_css("form[action='#{action}'][data-controller='submit-guard'][data-submit-guard-loading-text-value='#{loading_text}']")
+
+    assert form, "Expected guarded form #{action} with loading text #{loading_text.inspect}"
+    assert_includes form["data-action"], "click->submit-guard#rememberSubmitter"
+    assert_includes form["data-action"], "turbo:submit-start->submit-guard#submitStart"
   end
 end

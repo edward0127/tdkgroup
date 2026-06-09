@@ -1,6 +1,6 @@
 <% adjustment_form_url = @adjustment.persisted? ? admin_bas_job_adjustment_path(@job, @adjustment) : admin_bas_job_adjustments_path(@job) %>
 
-<%= form_with model: @adjustment, url: adjustment_form_url, class: "admin-form" do |form| %>
+<%= form_with model: @adjustment, url: adjustment_form_url, class: "admin-form", data: bas_submit_guard_data("Saving adjustment") do |form| %>
   <% if @adjustment.errors.any? %>
     <div class="form-errors">
       <h2><%= pluralize(@adjustment.errors.count, "error") %> prevented this adjustment from being saved</h2>
@@ -32,5 +32,5 @@
     <%= form.text_area :reason, rows: 4 %>
   </div>
 
-  <button type="submit" class="btn-primary">Save adjustment</button>
+  <button type="submit" class="btn-primary" data-submit-guard-loading-text="Saving adjustment">Save adjustment</button>
 <% end %>

@@ -46,7 +46,8 @@
       <%= button_to "Mark included open queries as waiting for client",
             mark_waiting_for_client_admin_bas_job_query_email_draft_path(@job),
             method: :post,
-            class: "btn-primary" %>
+            class: "btn-primary",
+            form: bas_submit_guard_form("Updating queries") %>
     <% end %>
   <% end %>
 </section>

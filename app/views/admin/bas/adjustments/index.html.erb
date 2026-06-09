@@ -39,7 +39,11 @@
               <td>
                 <% unless @job.locked? %>
                   <%= link_to "Edit", edit_admin_bas_job_adjustment_path(@job, adjustment), class: "text-link" %><br>
-                  <%= button_to "Delete", admin_bas_job_adjustment_path(@job, adjustment), method: :delete, class: "text-danger", form: { data: { turbo_confirm: "Delete this adjustment?" } } %>
+                  <%= button_to "Delete",
+                        admin_bas_job_adjustment_path(@job, adjustment),
+                        method: :delete,
+                        class: "text-danger",
+                        form: bas_submit_guard_form("Deleting", data: { turbo_confirm: "Delete this adjustment?" }) %>
                 <% end %>
               </td>
             </tr>

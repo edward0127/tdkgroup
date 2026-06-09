@@ -12,10 +12,18 @@
   </div>
   <div class="admin-actions">
     <% if @snapshot.status == "draft" && @snapshot.validation_errors.blank? && !@job.locked? %>
-      <%= button_to "Approve final", approve_admin_bas_job_report_snapshot_path(@job, @snapshot), method: :patch, class: "btn-primary", form: { data: { turbo_confirm: "Approve this BAS report snapshot?" } } %>
+      <%= button_to "Approve final",
+            approve_admin_bas_job_report_snapshot_path(@job, @snapshot),
+            method: :patch,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Approving", data: { turbo_confirm: "Approve this BAS report snapshot?" }) %>
     <% end %>
     <% if @snapshot.final? && @job.status == "approved" %>
-      <%= button_to "Lock job", lock_admin_bas_job_report_snapshot_path(@job, @snapshot), method: :patch, class: "btn-primary", form: { data: { turbo_confirm: "Lock this BAS job? This cannot be edited afterward." } } %>
+      <%= button_to "Lock job",
+            lock_admin_bas_job_report_snapshot_path(@job, @snapshot),
+            method: :patch,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Locking", data: { turbo_confirm: "Lock this BAS job? This cannot be edited afterward." }) %>
     <% end %>
     <%= link_to "Print", print_admin_bas_job_report_snapshot_path(@job, @snapshot), class: "btn-secondary" %>
     <%= link_to "All snapshots", admin_bas_job_report_snapshots_path(@job), class: "btn-secondary" %>

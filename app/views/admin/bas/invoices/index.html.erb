@@ -66,10 +66,22 @@
           <td>
             <% unless @job.locked? %>
               <% if invoice.status == "ignored" %>
-                <%= button_to "Restore", restore_admin_bas_job_invoice_path(@job, invoice), method: :post, class: "text-link" %>
+                <%= button_to "Restore",
+                      restore_admin_bas_job_invoice_path(@job, invoice),
+                      method: :post,
+                      class: "text-link",
+                      form: bas_submit_guard_form("Restoring") %>
               <% else %>
-                <%= button_to "Ignore", ignore_admin_bas_job_invoice_path(@job, invoice), method: :post, class: "text-danger" %>
-                <%= button_to "Needs review", mark_needs_review_admin_bas_job_invoice_path(@job, invoice), method: :post, class: "text-link" %>
+                <%= button_to "Ignore",
+                      ignore_admin_bas_job_invoice_path(@job, invoice),
+                      method: :post,
+                      class: "text-danger",
+                      form: bas_submit_guard_form("Ignoring") %>
+                <%= button_to "Needs review",
+                      mark_needs_review_admin_bas_job_invoice_path(@job, invoice),
+                      method: :post,
+                      class: "text-link",
+                      form: bas_submit_guard_form("Marking review") %>
               <% end %>
             <% end %>
           </td>

@@ -16,6 +16,10 @@ module BasAi
       !enabled?
     end
 
+    def ui_enabled?
+      TRUE_VALUES.include?(ENV.fetch("BAS_AI_UI_ENABLED", "false").to_s.downcase)
+    end
+
     def provider
       ENV.fetch("BAS_AI_PROVIDER", "disabled").presence || "disabled"
     end
@@ -59,6 +63,7 @@ module BasAi
     def public_settings
       {
         enabled: enabled?,
+        ui_enabled: ui_enabled?,
         provider: provider,
         model_name: model_name.presence,
         max_output_tokens: max_output_tokens,

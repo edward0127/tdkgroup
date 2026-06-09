@@ -114,7 +114,7 @@
           admin_bas_client_path(@client),
           method: :delete,
           class: "text-danger",
-          form: { data: { turbo_confirm: "Delete this BAS client? This cannot be undone." } } %>
+          form: bas_submit_guard_form("Deleting", data: { turbo_confirm: "Delete this BAS client? This cannot be undone." }) %>
   <% else %>
     <p class="admin-muted"><%= BasClient::CLEANUP_DELETE_BLOCKED_MESSAGE %></p>
   <% end %>

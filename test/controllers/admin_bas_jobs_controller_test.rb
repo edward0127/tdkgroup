@@ -64,7 +64,7 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
   test "draft job page shows delete draft test job action" do
     job = create_job
 
-    get admin_bas_job_path(job)
+    get admin_bas_job_path(job, tab: "audit")
 
     assert_response :success
     assert_select "h2", "Danger zone"
@@ -74,7 +74,7 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
   test "locked job page shows deletion blocked explanation" do
     job = create_job(status: "locked")
 
-    get admin_bas_job_path(job)
+    get admin_bas_job_path(job, tab: "audit")
 
     assert_response :success
     assert_select "button", text: "Delete draft/test job", count: 0

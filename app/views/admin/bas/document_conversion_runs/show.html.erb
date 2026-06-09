@@ -62,7 +62,8 @@
       <%= button_to "Confirm import",
             confirm_import_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
             method: :post,
-            class: "btn-primary" %>
+            class: "btn-primary",
+            form: bas_submit_guard_form("Importing") %>
     </div>
   <% elsif @conversion_run.status == "previewed" && @conversion_run.row_errors.any? %>
     <p class="text-danger">Resolve PDF conversion row errors before importing.</p>
@@ -75,7 +76,7 @@
           abandon_admin_bas_job_document_conversion_run_path(@job, @conversion_run),
           method: :post,
           class: "text-danger",
-          form: { data: { turbo_confirm: "Abandon this PDF conversion?" } } %>
+          form: bas_submit_guard_form("Abandoning", data: { turbo_confirm: "Abandon this PDF conversion?" }) %>
   <% end %>
 </section>
 

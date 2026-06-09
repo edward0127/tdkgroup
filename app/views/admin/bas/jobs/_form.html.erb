@@ -10,7 +10,7 @@
 
 <% job_form_url = job.persisted? ? admin_bas_job_path(job) : admin_bas_jobs_path %>
 
-<%= form_with model: job, url: job_form_url, class: "admin-form" do |form| %>
+<%= form_with model: job, url: job_form_url, class: "admin-form", data: bas_submit_guard_data("Saving BAS job") do |form| %>
   <section class="admin-card-panel">
     <h2>Job details</h2>
     <div class="admin-form-grid">
@@ -58,6 +58,6 @@
   </section>
 
   <div class="admin-submit-row">
-    <button type="submit" class="btn-primary">Save BAS job</button>
+    <button type="submit" class="btn-primary" data-submit-guard-loading-text="Saving BAS job">Save BAS job</button>
   </div>
 <% end %>

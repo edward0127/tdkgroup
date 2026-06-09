@@ -7,7 +7,11 @@
   </div>
   <div class="admin-actions">
     <% unless @job.locked? %>
-      <%= button_to "Create match suggestions", run_admin_bas_job_matching_path(@job), method: :post, class: "btn-primary" %>
+      <%= button_to "Create match suggestions",
+            run_admin_bas_job_matching_path(@job),
+            method: :post,
+            class: "btn-primary",
+            form: bas_submit_guard_form("Creating suggestions") %>
       <%= link_to "Manual match", new_admin_bas_job_match_path(@job), class: "btn-secondary" %>
     <% end %>
     <%= link_to "View all matches", admin_bas_job_matches_path(@job), class: "btn-secondary" %>
@@ -38,7 +42,7 @@
   <div class="admin-panel-heading">
     <h2>Generate client queries</h2>
     <% if @summary[:open_queries].positive? %>
-      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "text-link" %>
+      <%= link_to "View open queries", admin_bas_job_path(@job, tab: "matching", anchor: "open-queries"), class: "text-link" %>
     <% end %>
   </div>
 
@@ -51,12 +55,20 @@
   <% elsif @summary[:open_queries].positive? %>
     <p class="admin-muted">Client queries generated.</p>
     <div class="admin-actions">
-      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "btn-secondary" %>
-      <%= button_to "Generate/re-run client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+      <%= link_to "View open queries", admin_bas_job_path(@job, tab: "matching", anchor: "open-queries"), class: "btn-secondary" %>
+      <%= button_to "Generate/re-run client queries",
+            generate_queries_admin_bas_job_matching_path(@job),
+            method: :post,
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Generating queries") %>
     </div>
   <% else %>
     <p class="admin-muted">No proposed/needs-review matches remain. Generate client queries for unresolved source items.</p>
-    <%= button_to "Generate client queries", generate_queries_admin_bas_job_matching_path(@job), method: :post, class: "btn-secondary" %>
+    <%= button_to "Generate client queries",
+          generate_queries_admin_bas_job_matching_path(@job),
+          method: :post,
+          class: "btn-secondary",
+          form: bas_submit_guard_form("Generating queries") %>
   <% end %>
 </section>
 
@@ -64,7 +76,7 @@
   <section class="admin-card-panel" id="open-client-queries">
     <div class="admin-panel-heading">
       <h2>Open client queries</h2>
-      <%= link_to "View open queries", admin_bas_job_path(@job, anchor: "open-queries"), class: "text-link" %>
+      <%= link_to "View open queries", admin_bas_job_path(@job, tab: "matching", anchor: "open-queries"), class: "text-link" %>
     </div>
     <p class="admin-muted"><%= @summary[:open_queries] %> open client/internal <%= "query".pluralize(@summary[:open_queries]) %> currently need review.</p>
   </section>

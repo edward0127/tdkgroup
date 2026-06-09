@@ -3,7 +3,8 @@ class BasAiExtractionJob < ApplicationJob
 
   def perform(bas_job_id:, bas_document_id: nil, input_kind: "job_review", actor_username: "admin")
     bas_job = BasJob.find(bas_job_id)
-    bas_document = bas_document_id.present? ? bas_job.documents.find(bas_document_id) : nil
+    input_kind = normalized_input_kind(input_kind)
+    bas_document = document_input_kind?(input_kind) && bas_document_id.present? ? bas_job.documents.find(bas_document_id) : nil
     config = BasAi::Config.current
     provider = BasAi::ProviderFactory.build(config: config)
     run = create_run!(bas_job, bas_document, input_kind, config)
@@ -32,7 +33,7 @@ class BasAiExtractionJob < ApplicationJob
       ai_model_name: config.model_name,
       input_kind: input_kind,
       metadata: {
-        bas_document_id: bas_document&.id,
+        bas_document_id: document_input_kind?(input_kind) ? bas_document&.id : nil,
         input_kind: input_kind
       }.compact
     )
@@ -67,6 +68,14 @@ class BasAiExtractionJob < ApplicationJob
     else
       BasAi::JobReviewer.new(run: run, provider: provider, actor_username: actor_username)
     end
+  end
+
+  def normalized_input_kind(input_kind)
+    input_kind.presence || "job_review"
+  end
+
+  def document_input_kind?(input_kind)
+    input_kind.in?(BasAiExtractionRun::DOCUMENT_INPUT_KIND_VALUES)
   end
 
   def create_audit_event(run, event_type, actor_username)

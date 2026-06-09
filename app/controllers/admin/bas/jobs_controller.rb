@@ -3,6 +3,7 @@ module Admin
     class JobsController < Admin::BaseController
       before_action :set_job, only: [ :show, :edit, :update, :destroy ]
       before_action :set_clients, only: [ :new, :create, :edit, :update ]
+      BAS_WORKSPACE_TABS = %w[overview documents matching report audit ai].freeze
 
       def index
         @jobs = BasJob.includes(:bas_client, :report_snapshots).order(period_end: :desc, id: :desc)
@@ -19,16 +20,28 @@ module Admin
         @proposed_matches_count = @job.matches.proposed.count
         @needs_review_matches_count = @job.matches.needs_review.count
         @accepted_matches_count = @job.matches.accepted.count
+        @rejected_matches_count = @job.matches.rejected.count
+        @total_matches_count = @job.matches.count
         @unmatched_bank_transactions_count = @job.bank_transactions.unmatched.count
         @unmatched_invoices_count = @job.invoices.unmatched.count
+        @unmatched_cash_transactions_count = @job.cash_transactions.unmatched.count
         @imported_records_count = @job.bank_transactions.count + @job.invoices.count + @job.cash_transactions.count + @job.payroll_summaries.count
+        @import_error_count = @job.import_runs.sum(:error_count)
+        @failed_import_runs_count = @job.import_runs.where(status: "failed").count
         @latest_report_snapshot = @job.report_snapshots.recent.first
+        @report_snapshots = @job.report_snapshots.recent.limit(5)
         @approval_blockers_count = BasReports::ApprovalValidator.new(bas_job: @job).call.size
         @ai_config = BasAi::Config.current
+        @workspace_tabs = workspace_tabs
+        @active_tab = active_workspace_tab
+        @ai_readiness = BasAi::ReadinessChecker.new(bas_job: @job)
         @ai_runs = @job.ai_extraction_runs.recent.limit(5)
         @ai_suggestions_count = @job.ai_suggestions.proposed.count
         @open_queries = @job.queries.open_items.recent
+        @open_queries_count = @open_queries.count
+        @queries_count = @job.queries.count
         @audit_events = @job.audit_events.recent.limit(12)
+        @next_step = Admin::Bas::JobNextStepPresenter.new(job: @job)
       end
 
       def new
@@ -92,6 +105,26 @@ module Admin
 
       def set_clients
         @clients = BasClient.ordered
+      end
+
+      def workspace_tabs
+        tabs = [
+          { key: "overview", label: "Overview" },
+          { key: "documents", label: "Files & imports" },
+          { key: "matching", label: "Matches & queries" },
+          { key: "report", label: "Reports" },
+          { key: "audit", label: "Audit & admin" }
+        ]
+        tabs.insert(4, { key: "ai", label: "AI review" }) if @ai_config.ui_enabled?
+        tabs
+      end
+
+      def active_workspace_tab
+        tab = params[:tab].presence || "overview"
+        valid_tabs = @workspace_tabs.map { |item| item.fetch(:key) }
+        return tab if BAS_WORKSPACE_TABS.include?(tab) && valid_tabs.include?(tab)
+
+        "overview"
       end
 
       def job_params

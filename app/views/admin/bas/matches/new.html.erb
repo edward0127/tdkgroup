@@ -25,7 +25,8 @@
   <h2>Create manual match</h2>
   <%= form_with model: @match,
         url: admin_bas_job_matches_path(@job),
-        class: "admin-form" do |form| %>
+        class: "admin-form",
+        data: bas_submit_guard_data("Creating match") do |form| %>
     <div class="admin-form-grid">
       <div class="field">
         <%= label_tag "bas_match_invoice_ids", "Invoices" %>
@@ -53,6 +54,6 @@
       <%= form.label :notes %>
       <%= form.text_area :notes, rows: 4 %>
     </div>
-    <button type="submit" class="btn-primary">Create manual match</button>
+    <button type="submit" class="btn-primary" data-submit-guard-loading-text="Creating match">Create manual match</button>
   <% end %>
 </section>

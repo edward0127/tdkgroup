@@ -40,8 +40,16 @@
                 <%= link_to "Open", admin_bas_job_ai_suggestion_path(@job, suggestion), class: "text-link" %>
                 <% if suggestion.status == "proposed" && !@job.locked? %>
                   <br>
-                  <%= button_to "Accept", accept_admin_bas_job_ai_suggestion_path(@job, suggestion), method: :post, class: "text-link" %>
-                  <%= button_to "Reject", reject_admin_bas_job_ai_suggestion_path(@job, suggestion), method: :post, class: "text-danger" %>
+                  <%= button_to "Accept",
+                        accept_admin_bas_job_ai_suggestion_path(@job, suggestion),
+                        method: :post,
+                        class: "text-link",
+                        form: bas_submit_guard_form("Accepting") %>
+                  <%= button_to "Reject",
+                        reject_admin_bas_job_ai_suggestion_path(@job, suggestion),
+                        method: :post,
+                        class: "text-danger",
+                        form: bas_submit_guard_form("Rejecting") %>
                 <% end %>
               </td>
             </tr>

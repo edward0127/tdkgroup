@@ -40,6 +40,25 @@ class AdminBasImportRunsControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", job.bas_client.display_name
   end
 
+  test "import preview and confirmation forms include visible submit guard loading text" do
+    job = create_job
+    document = create_document(job, "bas_bank_statement.csv", "bank_statement")
+
+    get new_admin_bas_job_import_run_path(job, bas_document_id: document.id)
+
+    assert_response :success
+    assert_guarded_form admin_bas_job_import_runs_path(job), "Creating preview"
+    assert_select "button[data-submit-guard-loading-text='Creating preview']", text: "Create import preview"
+
+    import_run = preview_import(job, "bas_invoice_summary.csv", "invoice_summary", "invoice_summary")
+
+    get admin_bas_job_import_run_path(job, import_run)
+
+    assert_response :success
+    assert_guarded_form confirm_admin_bas_job_import_run_path(job, import_run), "Importing"
+    assert_select "button[data-submit-guard-loading-text='Importing']", text: "Confirm import"
+  end
+
   test "admin can create preview import run with audit actor" do
     job = create_job
     document = create_document(job, "bas_bank_statement.csv", "bank_statement")
@@ -266,5 +285,13 @@ class AdminBasImportRunsControllerTest < ActionDispatch::IntegrationTest
       import_type: import_type,
       actor_username: "bas-import-admin"
     ).call
+  end
+
+  def assert_guarded_form(action, loading_text)
+    form = Nokogiri::HTML(response.body).at_css("form[action='#{action}'][data-controller='submit-guard'][data-submit-guard-loading-text-value='#{loading_text}']")
+
+    assert form, "Expected guarded form #{action} with loading text #{loading_text.inspect}"
+    assert_includes form["data-action"], "turbo:submit-start->submit-guard#submitStart"
+    assert_includes form["data-action"], "turbo:submit-end->submit-guard#submitEnd"
   end
 end

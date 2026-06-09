@@ -29,7 +29,8 @@
   <% if @documents.any? %>
     <%= form_with model: @import_run,
           url: admin_bas_job_import_runs_path(@job),
-          class: "admin-form" do |form| %>
+          class: "admin-form",
+          data: bas_submit_guard_data("Creating preview") do |form| %>
       <div class="admin-form-grid">
         <div class="field">
           <%= form.label :bas_document_id, "Uploaded document" %>
@@ -40,7 +41,7 @@
           <%= form.select :import_type, BasImportRun::IMPORT_TYPE_VALUES.map { |value| [ value.humanize, value ] }, { prompt: "Select import type" }, required: true %>
         </div>
       </div>
-      <button type="submit" class="btn-primary">Create import preview</button>
+      <button type="submit" class="btn-primary" data-submit-guard-loading-text="Creating preview">Create import preview</button>
     <% end %>
   <% else %>
     <p class="admin-muted">Upload a CSV/XLSX bank statement, invoice summary, cash transaction list, or payroll summary before creating an import preview.</p>

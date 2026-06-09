@@ -33,9 +33,24 @@
             <%= link_to "View", admin_bas_job_match_path(job, match), class: "text-link" %>
             <% if match.status == "proposed" && !job.locked? %>
               <br>
-              <%= button_to "Accept", accept_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-link" %>
-              <%= button_to "Reject", reject_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-danger" %>
-              <%= button_to "Needs review", mark_needs_review_admin_bas_job_match_path(job, match), method: :post, params: { return_to: return_to_value }, class: "text-link" %>
+              <%= button_to "Accept",
+                    accept_admin_bas_job_match_path(job, match),
+                    method: :post,
+                    params: { return_to: return_to_value },
+                    class: "text-link",
+                    form: bas_submit_guard_form("Accepting") %>
+              <%= button_to "Reject",
+                    reject_admin_bas_job_match_path(job, match),
+                    method: :post,
+                    params: { return_to: return_to_value },
+                    class: "text-danger",
+                    form: bas_submit_guard_form("Rejecting") %>
+              <%= button_to "Needs review",
+                    mark_needs_review_admin_bas_job_match_path(job, match),
+                    method: :post,
+                    params: { return_to: return_to_value },
+                    class: "text-link",
+                    form: bas_submit_guard_form("Marking review") %>
             <% end %>
           </td>
         </tr>

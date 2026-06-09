@@ -6,7 +6,11 @@
   </div>
   <div class="admin-actions">
     <% if @import_run.status == "imported" && !@job.locked? %>
-      <%= button_to "Revert import", revert_admin_bas_job_import_run_path(@job, @import_run), method: :post, class: "btn-secondary", form: { data: { turbo_confirm: "Revert this import run?" } } %>
+      <%= button_to "Revert import",
+            revert_admin_bas_job_import_run_path(@job, @import_run),
+            method: :post,
+            class: "btn-secondary",
+            form: bas_submit_guard_form("Reverting", data: { turbo_confirm: "Revert this import run?" }) %>
     <% end %>
     <%= link_to "All imports", admin_bas_job_import_runs_path(@job), class: "btn-secondary" %>
     <%= link_to "Back to job", admin_bas_job_path(@job), class: "btn-secondary" %>
@@ -75,7 +79,10 @@
 <% if @import_run.status == "previewed" %>
   <section class="admin-card-panel">
     <h2>Column mapping</h2>
-    <%= form_with url: confirm_admin_bas_job_import_run_path(@job, @import_run), method: :post, class: "admin-form" do %>
+    <%= form_with url: confirm_admin_bas_job_import_run_path(@job, @import_run),
+          method: :post,
+          class: "admin-form",
+          data: bas_submit_guard_data("Importing") do %>
       <div class="admin-form-grid">
         <% @import_fields.each do |field| %>
           <div class="field">
@@ -86,7 +93,7 @@
           </div>
         <% end %>
       </div>
-      <button type="submit" class="btn-primary">Confirm import</button>
+      <button type="submit" class="btn-primary" data-submit-guard-loading-text="Importing">Confirm import</button>
     <% end %>
   </section>
 <% else %>
