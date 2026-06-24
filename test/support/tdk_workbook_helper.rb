@@ -5,9 +5,13 @@ require "roo/excelx"
 require "rack/test"
 require "securerandom"
 require "tempfile"
+require_relative "synthetic_pdf_helper"
 
 module TdkWorkbookHelper
+  include SyntheticPdfHelper
+
   XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".freeze
+  PDF_CONTENT_TYPE = "application/pdf".freeze
   TDK_ACCOUNTING_FORMAT = '#,##0.00;[Red]_(\ \(#,##0.00\)'.freeze
 
   def tdk_xlsx_upload(rows, filename: "synthetic-tdk-bank.xlsx", sheet_name: "Bank Report", accounting_format_columns: [])
@@ -23,13 +27,19 @@ module TdkWorkbookHelper
       end
     end
     package.serialize(path.to_s)
-    Rack::Test::UploadedFile.new(path.to_s, XLSX_CONTENT_TYPE, true)
+    Rack::Test::UploadedFile.new(path.to_s, XLSX_CONTENT_TYPE, true, original_filename: filename)
   end
 
   def tdk_text_upload(content, filename: "synthetic-not-xlsx.txt", content_type: "text/plain")
     path = Rails.root.join("tmp", "#{SecureRandom.hex}-#{filename}")
     File.binwrite(path, content)
-    Rack::Test::UploadedFile.new(path.to_s, content_type, true)
+    Rack::Test::UploadedFile.new(path.to_s, content_type, true, original_filename: filename)
+  end
+
+  def tdk_pdf_upload(text, filename: "synthetic-tdk-bank.pdf")
+    path = Rails.root.join("tmp", "#{SecureRandom.hex}-#{filename}")
+    File.binwrite(path, synthetic_pdf(text))
+    Rack::Test::UploadedFile.new(path.to_s, PDF_CONTENT_TYPE, true, original_filename: filename)
   end
 
   def tdk_downloaded_rows(binary)

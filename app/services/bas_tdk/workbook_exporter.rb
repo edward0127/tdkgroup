@@ -8,7 +8,7 @@ module BasTdk
     MINIMUM_HEADER_ROW_NUMBER = 4
     METADATA_COLUMN_COUNT = 6
     METADATA_COLUMN_WIDTHS = [ 16, 20, 12, 34, 12, 20 ].freeze
-    PREFERRED_HEADER_ORDER = [ "Date", "Category", "Amount", "GST", "Description", "Details" ].freeze
+    PREFERRED_HEADER_ORDER = [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ].freeze
 
     def initialize(workbook:)
       @workbook = workbook

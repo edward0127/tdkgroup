@@ -4,6 +4,10 @@ module BasTdk
     XLSX_CONTENT_TYPES = %w[
       application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
     ].freeze
+    PDF_CONTENT_TYPES = %w[
+      application/pdf
+    ].freeze
+    SUPPORTED_UPLOAD_ERROR = BasTdk::BankStatementImporter::SUPPORTED_UPLOAD_ERROR
     HEADER_ALIASES = {
       date: [
         "date",
@@ -56,15 +60,19 @@ module BasTdk
       workbook = @workbook || build_workbook
       mark_processing(workbook)
 
-      return persist_failed(workbook, [ "Upload an XLSX bank statement file." ]) if source_blank?
-      return persist_failed(workbook, [ "Only XLSX bank statement files are supported for the TDK Group BAS workflow." ]) unless xlsx_upload?
+      return persist_failed(workbook, [ "Upload a bank statement XLSX or PDF file." ]) if source_blank?
+      return persist_failed(workbook, [ SUPPORTED_UPLOAD_ERROR ]) unless supported_upload?
 
-      parsed = parse_uploaded_workbook
+      parsed = parse_uploaded_statement
       return persist_failed(workbook, [ FRIENDLY_HEADER_ERROR ]) if parsed.blank?
 
       persist_processed(workbook, parsed)
-    rescue StandardError => e
+    rescue BasTdk::PdfStatementParser::ParseError => e
+      persist_failed(workbook, [ e.message ])
+    rescue BasTdk::RawXlsxReader::ReadError => e
       persist_failed(workbook, [ "Bank statement Excel could not be read. Please upload a valid XLSX file." ], exception: e)
+    rescue StandardError => e
+      persist_failed(workbook, [ "Bank statement file could not be read. Please upload a valid XLSX or readable bank statement PDF." ], exception: e)
     end
 
     private
@@ -80,24 +88,40 @@ module BasTdk
     end
 
     def source_filename
-      @workbook&.source_filename.presence || @uploaded_file&.original_filename.to_s.presence || "uploaded-bank-statement.xlsx"
+      @workbook&.source_filename.presence || @uploaded_file&.original_filename.to_s.presence || "uploaded-bank-statement"
     end
 
     def next_version_number
       @bas_job.tdk_workbooks.maximum(:version_number).to_i + 1
     end
 
-    def xlsx_upload?
-      extension = File.extname(source_filename).downcase
-      content_type = if @uploaded_file.respond_to?(:content_type)
+    def supported_upload?
+      source_type.present?
+    end
+
+    def source_type
+      @source_type ||= BasTdk::BankStatementImporter.source_type(
+        filename: source_filename,
+        content_type: source_content_type
+      )
+    end
+
+    def source_content_type
+      if @uploaded_file.respond_to?(:content_type)
         @uploaded_file.content_type.to_s
       elsif @workbook&.source_file&.attached?
         @workbook.source_file.blob.content_type.to_s
       else
         ""
       end
+    end
 
-      extension == ".xlsx" || XLSX_CONTENT_TYPES.include?(content_type)
+    def parse_uploaded_statement
+      BasTdk::BankStatementImporter.new(
+        source_type: source_type,
+        xlsx_parser: -> { parse_uploaded_workbook },
+        pdf_parser: -> { BasTdk::PdfStatementParser.new(path: uploaded_file_path).call }
+      ).call
     end
 
     def parse_uploaded_workbook
@@ -400,6 +424,7 @@ module BasTdk
         processed_by: @actor_username
       )
       workbook.metadata = workbook.metadata.merge("processor" => self.class.name)
+      workbook.metadata = workbook.metadata.merge("source_type" => source_type.to_s) if source_type.present?
       workbook.save!
     end
 

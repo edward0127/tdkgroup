@@ -40,18 +40,18 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     end
     assert_select "h2", "Step 1 — Bank statement review"
     assert_select "strong", "Bank statement review"
-    assert_select "h2", "Bank statement Excel"
+    assert_select "h2", "Bank statement upload"
     assert_select "h2", "Background bank statement status"
     assert_select "h2", text: "Current active bank statement", count: 0
     assert_select "h3", text: "Current active statement", count: 0
-    assert_includes response.body, "Upload a bank statement Excel for review."
+    assert_includes response.body, "Upload a bank statement Excel or PDF for review."
     assert_includes response.body, "download the latest Excel for bulk edits"
     refute_includes response.body, "Only XLSX files are supported. A successful upload becomes the active bank statement version"
     assert_select ".tdk-statement-action-row .tdk-upload-form"
     assert_select ".tdk-statement-action-row .tdk-export-action-slot"
     assert_not_includes response.body, "Bank workbook review"
-    assert_select "input[type='file'][name='tdk_workbook[file]']"
-    assert_select "button", text: "Upload Excel"
+    assert_select "input[type='file'][name='tdk_workbook[file]'][accept='.xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf']"
+    assert_select "button", text: "Upload statement"
 
     assert_no_difference "BasBankTransaction.count" do
       assert_difference "BasTdkWorkbook.count", 1 do
@@ -198,6 +198,81 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "GST free", new_workbook.rows.ordered.first.row_data.fetch("GST")
   end
 
+  test "admin can process PDF upload render balance sort edit and export" do
+    job = create_job(workflow_type: "tdk_group")
+
+    assert_difference "BasTdkWorkbook.count", 1 do
+      assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+        post admin_bas_job_tdk_workbooks_path(job), params: {
+          tdk_workbook: {
+            file: tdk_pdf_upload(anz_pdf_text, filename: "anz-business-extra.pdf")
+          }
+        }
+      end
+    end
+
+    assert_redirected_to admin_bas_job_path(job)
+    queued = job.tdk_workbooks.recent.first
+    assert_equal "queued", queued.status
+    assert_equal "pdf", queued.metadata.fetch("source_type")
+
+    perform_enqueued_jobs(only: BasTdkWorkbookProcessingJob)
+
+    workbook = job.tdk_workbooks.active_processed.first
+    assert_equal queued.id, workbook.id
+    assert_equal "processed", workbook.status
+    assert_equal "anz-business-extra.pdf", workbook.source_filename
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], workbook.processed_headers
+    assert_equal 3, workbook.rows.count
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    first_row = workbook.rows.ordered.first
+    assert_select "input[name='rows[#{first_row.id}][Category]']"
+    assert_select "input[name='rows[#{first_row.id}][GST]']"
+    assert_select "input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount"
+    assert_includes response.body, "VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN / EFFECTIVE DATE 05 MAR 2026"
+
+    get admin_bas_job_path(job, sort: "Balance", direction: "asc", per_page: 10)
+    assert_equal [ 7, 5, 10 ], visible_source_rows(response.body)
+
+    get admin_bas_job_path(job, sort: "Balance", direction: "desc", per_page: 10)
+    assert_equal [ 10, 5, 7 ], visible_source_rows(response.body)
+
+    patch update_rows_admin_bas_job_tdk_workbook_path(job, workbook), params: {
+      page: 1,
+      sort: "Balance",
+      direction: "asc",
+      rows: {
+        first_row.id => {
+          "Category" => "Parking",
+          "GST" => "0.35"
+        }
+      }
+    }
+
+    assert_redirected_to admin_bas_job_path(job, page: 1, sort: "Balance", direction: "asc")
+    assert_equal "Parking", first_row.reload.row_data.fetch("Category")
+    assert_equal "0.35", first_row.row_data.fetch("GST")
+
+    assert_enqueued_with(job: BasTdkWorkbookExportJob) do
+      post prepare_download_admin_bas_job_tdk_workbook_path(job, workbook)
+    end
+    perform_enqueued_jobs(only: BasTdkWorkbookExportJob)
+
+    get download_admin_bas_job_tdk_workbook_path(job, workbook)
+
+    assert_response :success
+    downloaded_rows = tdk_downloaded_table_rows(response.body)
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], downloaded_rows.first.first(7)
+    assert_equal "2026-03-06", downloaded_rows.second[0]
+    assert_equal "Parking", downloaded_rows.second[1]
+    assert_equal "4373.7", downloaded_rows.second[2]
+    assert_equal "0.35", downloaded_rows.second[3]
+    assert_equal "68371.24", downloaded_rows.second[6]
+  end
+
   test "bad uploads fail friendly without replacing active processed workbook" do
     job = create_job(workflow_type: "tdk_group")
     active = create_processed_workbook(job, version_number: 1, description_prefix: "Active synthetic row")
@@ -215,7 +290,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     unsupported = job.tdk_workbooks.recent.first
     assert_redirected_to admin_bas_job_path(job)
     assert_equal "failed", unsupported.status
-    assert_includes flash[:alert], "Only XLSX bank statement files are supported"
+    assert_includes flash[:alert], BasTdk::BankStatementImporter::SUPPORTED_UPLOAD_ERROR
     assert_equal active.id, job.tdk_workbooks.active_processed.first.id
 
     assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
@@ -237,6 +312,22 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "processed", active.reload.status
     assert_equal active.id, job.tdk_workbooks.active_processed.first.id
     assert_includes failed.processing_errors, BasTdk::WorkbookProcessor::FRIENDLY_HEADER_ERROR
+
+    assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+      post admin_bas_job_tdk_workbooks_path(job), params: {
+        tdk_workbook: {
+          file: tdk_pdf_upload("", filename: "scanned-bank-statement.pdf")
+        }
+      }
+    end
+
+    perform_enqueued_jobs(only: BasTdkWorkbookProcessingJob)
+
+    scanned_pdf = job.tdk_workbooks.recent.first
+    assert_equal "failed", scanned_pdf.status
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, job.tdk_workbooks.active_processed.first.id
+    assert_includes scanned_pdf.processing_errors, BasTdk::PdfStatementParser::UNREADABLE_PDF_MESSAGE
 
     get admin_bas_job_path(job)
 
@@ -493,6 +584,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "8770.72", description_input.text.strip
     refute_includes html.css("th").map { |header| header.text.squish }, "Source row"
     assert_empty html.css("td.tdk-workbook-source-cell")
+    assert html.at_css("td.tdk-workbook-col--date.tdk-workbook-cell--date input[type='date'][name='rows[#{row.id}][Date]']")
 
     date_link = html.at_css("th.tdk-workbook-col--date a.tdk-workbook-sort-link")
     assert date_link, "expected Date header sort link"
@@ -684,15 +776,17 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-workbook-table-wrap\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: visible/m, css)
     assert_no_match(/\.tdk-workbook-table-wrap\s*\{[^}]*max-height/m, css)
     assert_match(/\.tdk-workbook-table th\s*\{[^}]*padding: 0\.5rem;[^}]*font-size: 0\.75rem/m, css)
-    assert_match(/\.tdk-workbook-table td\s*\{[^}]*padding: 0\.35rem 0\.45rem/m, css)
+    assert_match(/\.tdk-workbook-table td\s*\{[^}]*padding: 0\.35rem 0\.65rem 0\.35rem 0\.45rem/m, css)
     assert_no_match(/\.tdk-workbook-table td:first-child,\s*\.tdk-workbook-table th:first-child\s*\{[^}]*width: 5%/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input\s*\{[^}]*padding: 0\.4rem 0\.5rem;[^}]*font-size: 0\.875rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input:not\(\.tdk-workbook-cell-input--textarea\)\s*\{[^}]*min-height: 2\.25rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--textarea\s*\{[^}]*min-height: 2\.75rem/m, css)
     assert_match(/\.tdk-workbook-col--source\s*\{[^}]*width: 5%/m, css)
-    assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 13%/m, css)
-    assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 11%/m, css)
-    assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 31%/m, css)
+    assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 14%;[^}]*min-width: 9\.75rem/m, css)
+    assert_match(/\.tdk-workbook-col--category\s*\{[^}]*width: 14%;[^}]*min-width: 9\.5rem/m, css)
+    assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 10\.5%/m, css)
+    assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 29%/m, css)
+    assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--date,\s*\.tdk-workbook-table \.tdk-workbook-cell--date\s*\{[^}]*padding-right: 0\.95rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--date\s*\{[^}]*min-width: 8\.5rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--amount\s*\{[^}]*text-align: right/m, css)
     assert_match(/\.tdk-workbook-sort-link\s*\{[^}]*display: inline-flex/m, css)
@@ -888,5 +982,18 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
       [ "Date", "Category", "Amount", "GST", "Description" ],
       [ Date.new(2026, 1, 7), "Fuel", "55.00", "GST free", "Synthetic fuel payment" ]
     ]
+  end
+
+  def anz_pdf_text
+    <<~TEXT
+      ANZ Business Extra
+      06 MARCH 2026 TO 08 APRIL 2026
+      Date       Transaction Details                                      Withdrawals ($)    Deposits ($)       Balance ($)
+      06 MAR     Deposit-Osko Payment Customer                                               4,373.70           68,371.24
+      09 MAR     VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN
+                 / EFFECTIVE DATE 05 MAR 2026                         3.47                                      68,367.77
+      01 APR     Transfer from savings                                                     1,000.00             69,367.77
+      TOTALS AT END OF PERIOD
+    TEXT
   end
 end

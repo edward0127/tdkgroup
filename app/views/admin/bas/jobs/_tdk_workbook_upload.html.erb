@@ -1,8 +1,8 @@
 <section class="tdk-workflow-panel tdk-upload-card">
   <div class="admin-panel-heading">
     <div>
-      <h2>Bank statement Excel</h2>
-      <p class="admin-muted">Upload a bank statement Excel for review. Code Category/GST in the table, or download the latest Excel for bulk edits and upload it again when ready.</p>
+      <h2>Bank statement upload</h2>
+      <p class="admin-muted">Upload a bank statement Excel or PDF for review. Code Category/GST in the table, or download the latest Excel for bulk edits and upload it again when ready.</p>
     </div>
   </div>
 
@@ -13,12 +13,12 @@
           multipart: true,
           data: bas_submit_guard_data("Queueing bank statement upload") do |form| %>
       <div class="field tdk-upload-file-field">
-        <%= form.label :file, "Bank statement Excel file" %>
+        <%= form.label :file, "Bank statement Excel or PDF file" %>
         <%= form.file_field :file,
-              accept: ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              accept: ".xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf",
               required: true %>
       </div>
-      <button type="submit" class="btn-primary" data-submit-guard-loading-text="Queueing bank statement upload">Upload Excel</button>
+      <button type="submit" class="btn-primary" data-submit-guard-loading-text="Queueing bank statement upload">Upload statement</button>
     <% end %>
 
     <div class="tdk-export-action-slot" data-tdk-workbook-status-target="downloadAction">

@@ -63,7 +63,12 @@
                   ("tdk-workbook-cell-input--date" if date_field),
                   ("tdk-workbook-cell-input--amount" if amount_field)
                 ].compact.join(" ") %>
-                <td class="<%= column_class %> <%= "tdk-workbook-review-cell" if review_field %>">
+                <% cell_classes = [
+                  column_class,
+                  ("tdk-workbook-cell--date" if date_field),
+                  ("tdk-workbook-review-cell" if review_field)
+                ].compact.join(" ") %>
+                <td class="<%= cell_classes %>">
                   <% if date_field %>
                     <%= date_field_tag "rows[#{row.id}][#{header}]",
                           tdk_workbook_date_input_value(value),

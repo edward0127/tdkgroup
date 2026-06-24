@@ -11,14 +11,14 @@ module Admin
 
       def create
         if uploaded_file.blank?
-          redirect_to admin_bas_job_path(@job), alert: "Upload an XLSX bank statement file."
+          redirect_to admin_bas_job_path(@job), alert: "Upload a bank statement XLSX or PDF file."
           return
         end
 
-        unless xlsx_upload?(uploaded_file)
+        unless supported_upload?(uploaded_file)
           workbook = create_failed_workbook(
             uploaded_file,
-            [ "Only XLSX bank statement files are supported for the TDK Group BAS workflow." ]
+            [ BasTdk::BankStatementImporter::SUPPORTED_UPLOAD_ERROR ]
           )
           create_audit_event(
             workbook,
@@ -152,7 +152,7 @@ module Admin
             source_filename: source_filename(file),
             version_number: next_version_number,
             processed_by: current_admin_identifier,
-            metadata: { "processor" => BasTdk::WorkbookProcessor.name }
+            metadata: workbook_metadata(file)
           )
           workbook.source_file.attach(file)
           workbook
@@ -170,7 +170,7 @@ module Admin
             processed_at: Time.current,
             processing_finished_at: Time.current,
             processed_by: current_admin_identifier,
-            metadata: { "processor" => BasTdk::WorkbookProcessor.name }
+            metadata: workbook_metadata(file)
           )
           workbook.source_file.attach(file)
           workbook
@@ -200,12 +200,24 @@ module Admin
       end
 
       def source_filename(file)
-        file&.original_filename.to_s.presence || "uploaded-bank-statement.xlsx"
+        file&.original_filename.to_s.presence || "uploaded-bank-statement"
       end
 
-      def xlsx_upload?(file)
-        extension = File.extname(source_filename(file)).downcase
-        extension == ".xlsx" || BasTdk::WorkbookProcessor::XLSX_CONTENT_TYPES.include?(file.content_type.to_s)
+      def supported_upload?(file)
+        BasTdk::BankStatementImporter.supported_upload?(
+          filename: source_filename(file),
+          content_type: file.content_type.to_s
+        )
+      end
+
+      def workbook_metadata(file)
+        {
+          "processor" => BasTdk::WorkbookProcessor.name,
+          "source_type" => BasTdk::BankStatementImporter.source_type(
+            filename: source_filename(file),
+            content_type: file.content_type.to_s
+          ).to_s
+        }
       end
 
       def update_visible_rows

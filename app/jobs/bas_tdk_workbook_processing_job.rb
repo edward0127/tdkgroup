@@ -62,7 +62,7 @@ class BasTdkWorkbookProcessingJob < ApplicationJob
     workbook.update!(
       status: "failed",
       row_count: 0,
-      row_errors: [ "Bank statement Excel could not be read. Please upload a valid XLSX file." ],
+      row_errors: [ "Bank statement file could not be read. Please upload a valid XLSX or readable bank statement PDF." ],
       processing_finished_at: Time.current,
       processed_at: Time.current,
       metadata: workbook.metadata.merge(

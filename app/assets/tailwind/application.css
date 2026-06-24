@@ -2381,7 +2381,7 @@ form.is-submitting {
 }
 
 .tdk-workbook-table td {
-  padding: 0.35rem 0.45rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.45rem;
   vertical-align: top;
   background: #ffffff;
   border-bottom-color: #dbe7f0;
@@ -2399,11 +2399,13 @@ form.is-submitting {
 }
 
 .tdk-workbook-col--date {
-  width: 13%;
+  width: 14%;
+  min-width: 9.75rem;
 }
 
 .tdk-workbook-col--category {
-  width: 13%;
+  width: 14%;
+  min-width: 9.5rem;
 }
 
 .tdk-workbook-col--gst {
@@ -2411,19 +2413,24 @@ form.is-submitting {
 }
 
 .tdk-workbook-col--amount {
-  width: 11%;
+  width: 10.5%;
 }
 
 .tdk-workbook-col--description {
-  width: 31%;
+  width: 29%;
 }
 
 .tdk-workbook-col--details {
-  width: 23%;
+  width: 21%;
 }
 
 .tdk-workbook-col--medium {
   width: 16%;
+}
+
+.tdk-workbook-table th.tdk-workbook-col--date,
+.tdk-workbook-table .tdk-workbook-cell--date {
+  padding-right: 0.95rem;
 }
 
 .tdk-workbook-table .tdk-workbook-cell-input {
