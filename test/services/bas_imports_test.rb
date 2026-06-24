@@ -1,4 +1,6 @@
 require "test_helper"
+require "caxlsx"
+require_relative "../support/tdk_workbook_helper"
 
 class BasImportsTest < ActiveSupport::TestCase
   test "amount parser parses currency strings as BigDecimal" do
@@ -34,6 +36,18 @@ class BasImportsTest < ActiveSupport::TestCase
     assert_equal [ "Date", "Description", "Debit", "Credit", "Balance" ], result.headers
     assert_equal 2, result.rows.size
     assert_equal "Synthetic debit", result.rows.first.fetch("data").fetch("Description")
+  end
+
+  test "file reader reads raw XLSX cells when Roo cannot format a custom number format" do
+    result = BasImports::FileReader.read(bas_xlsx_document([
+      [ "Date", "Description", "Amount" ],
+      [ 46022, "Synthetic supplier payment", -67.89 ]
+    ], custom_format_columns: [ 3 ]))
+
+    assert_equal [ "Date", "Description", "Amount" ], result.headers
+    assert_equal 1, result.rows.size
+    assert_equal "46022", result.rows.first.fetch("data").fetch("Date")
+    assert_equal "-67.89", result.rows.first.fetch("data").fetch("Amount")
   end
 
   test "previewer creates previewed import run without imported records" do
@@ -191,5 +205,34 @@ class BasImportsTest < ActiveSupport::TestCase
     )
     document.save!
     document
+  end
+
+  def bas_xlsx_document(rows, custom_format_columns:, job: bas_job)
+    package = Axlsx::Package.new
+    custom_style = package.workbook.styles.add_style(format_code: TdkWorkbookHelper::TDK_ACCOUNTING_FORMAT)
+    package.workbook.add_worksheet(name: "Synthetic BAS Import") do |sheet|
+      rows.each do |row|
+        sheet.add_row(row, style: xlsx_row_styles(row, custom_format_columns, custom_style))
+      end
+    end
+
+    document = job.documents.build(
+      title: "Synthetic BAS Import XLSX",
+      document_type: "bank_statement",
+      uploaded_by: "phase2"
+    )
+    document.file.attach(
+      io: StringIO.new(package.to_stream.read),
+      filename: "synthetic-bas-import.xlsx",
+      content_type: TdkWorkbookHelper::XLSX_CONTENT_TYPE
+    )
+    document.save!
+    document
+  end
+
+  def xlsx_row_styles(row, custom_format_columns, custom_style)
+    row.each_index.map do |index|
+      custom_format_columns.include?(index + 1) ? custom_style : nil
+    end
   end
 end

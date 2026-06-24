@@ -43,6 +43,7 @@ gem "thruster", require: false
 gem "image_processing", "~> 1.2"
 gem "aws-sdk-s3", require: false
 gem "roo", "~> 2.10", require: false
+gem "caxlsx", "~> 4.0", require: false
 gem "pdf-reader", "~> 2.15", require: false
 
 group :development, :test do

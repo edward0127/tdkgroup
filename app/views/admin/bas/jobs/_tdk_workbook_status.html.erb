@@ -1,0 +1,80 @@
+<section class="tdk-workflow-panel tdk-background-status-card">
+  <div class="admin-panel-heading">
+    <div>
+      <h2>Background bank statement status</h2>
+      <p class="admin-muted">Latest upload or export operation, plus the source file currently used by the table.</p>
+    </div>
+  </div>
+
+  <div class="tdk-status-sections">
+    <section class="tdk-status-section">
+      <div class="tdk-status-section__heading">
+        <h3>Latest operation</h3>
+      </div>
+
+      <% if @latest_tdk_workbook_operation.present? %>
+        <% latest = @latest_tdk_workbook_operation %>
+        <% workbook_running = latest.queued? || latest.processing? %>
+        <% export_running = @active_tdk_workbook&.export_in_progress? %>
+
+        <div class="tdk-status-grid">
+          <div>
+            <div class="tdk-status-line">
+              <span class="tdk-status-pill <%= tdk_workbook_status_class(latest.status) %>" data-tdk-workbook-status-target="statusBadge"><%= latest.status.humanize %></span>
+              <span class="tdk-status-spinner <%= "is-empty" unless workbook_running %>" aria-hidden="true" data-tdk-workbook-status-target="statusSpinner"></span>
+              <span class="tdk-status-working-text <%= "is-empty" unless workbook_running %>" data-tdk-workbook-status-target="statusWorkingText">Processing bank statement...</span>
+            </div>
+            <p class="tdk-status-main" data-tdk-workbook-status-target="statusText"><%= latest.source_filename.presence || "Uploaded bank statement" %></p>
+          </div>
+
+          <dl class="tdk-status-details">
+            <div class="tdk-status-detail">
+              <dt>Latest version</dt>
+              <dd data-tdk-workbook-status-target="version">v<%= latest.version_number %></dd>
+            </div>
+            <div class="tdk-status-detail">
+              <dt>Operation rows</dt>
+              <dd data-tdk-workbook-status-target="rowCount"><%= latest.row_count %></dd>
+            </div>
+            <div class="tdk-status-detail">
+              <dt>Started / processed</dt>
+              <dd><%= (latest.processing_started_at || latest.processed_at || latest.updated_at)&.then { |time| l(time, format: :short) } %></dd>
+            </div>
+            <div class="tdk-status-detail">
+              <dt>Export</dt>
+              <dd>
+                <span class="tdk-status-line tdk-status-line--compact">
+                  <span class="tdk-status-spinner <%= "is-empty" unless export_running %>" aria-hidden="true" data-tdk-workbook-status-target="exportSpinner"></span>
+                  <span data-tdk-workbook-status-target="exportStatus"><%= tdk_workbook_export_status_label(@active_tdk_workbook) %></span>
+                </span>
+              </dd>
+            </div>
+            <div class="tdk-status-detail tdk-status-detail--wide">
+              <dt>Source file</dt>
+              <dd data-tdk-workbook-status-target="activeSourceFilename"><%= @active_tdk_workbook&.source_filename.presence || "No active statement yet" %></dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="tdk-status-errors <%= "is-empty" unless latest.processing_errors.any? %>" data-tdk-workbook-status-target="errors">
+          <% if latest.processing_errors.any? %>
+            <strong>Processing errors</strong>
+            <ul>
+              <% latest.processing_errors.each do |error| %>
+                <li><%= error %></li>
+              <% end %>
+            </ul>
+          <% end %>
+        </div>
+
+        <% if latest.failed? && @active_tdk_workbook.present? && latest.id != @active_tdk_workbook.id %>
+          <p class="tdk-status-note" data-tdk-workbook-status-target="activeNotice">This upload failed. The previous processed bank statement is still active.</p>
+        <% else %>
+          <p class="tdk-status-note is-empty" data-tdk-workbook-status-target="activeNotice"></p>
+        <% end %>
+      <% else %>
+        <p class="admin-muted">No bank statement operation has been queued yet.</p>
+      <% end %>
+    </section>
+  </div>
+</section>

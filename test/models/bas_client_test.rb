@@ -4,6 +4,7 @@ class BasClientTest < ActiveSupport::TestCase
   test "validates required and allowlisted fields" do
     client = BasClient.new(
       legal_name: "Synthetic Client Pty Ltd",
+      industry: "restaurant",
       default_gst_basis: "cash",
       reporting_frequency: "quarterly",
       default_reporting_method: "simpler_bas"
@@ -19,6 +20,25 @@ class BasClientTest < ActiveSupport::TestCase
     client.default_gst_basis = "hybrid"
     assert_not client.valid?
     assert_equal :inclusion, client.errors.details[:default_gst_basis].first.fetch(:error)
+  end
+
+  test "defaults industry to other" do
+    client = BasClient.create!(legal_name: "Synthetic Default Industry Pty Ltd")
+
+    assert_equal "other", client.industry
+    assert_equal "Others", client.industry_label
+  end
+
+  test "validates industry values" do
+    BasClient::INDUSTRY_VALUES.each do |industry|
+      client = BasClient.new(legal_name: "Synthetic #{industry} Client Pty Ltd", industry: industry)
+      assert client.valid?, client.errors.full_messages.to_sentence
+    end
+
+    client = BasClient.new(legal_name: "Synthetic Invalid Industry Pty Ltd", industry: "construction")
+
+    assert_not client.valid?
+    assert_equal :inclusion, client.errors.details[:industry].first.fetch(:error)
   end
 
   test "validates contact email only when present" do

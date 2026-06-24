@@ -10,6 +10,7 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
       legal_name: "Synthetic Index Client Pty Ltd",
       trading_name: "Synthetic Index Trading",
       abn: "12 345 678 901",
+      industry: "restaurant",
       contact_email: "index-client@example.test"
     )
     create_job(client)
@@ -18,8 +19,10 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "h1", "Clients"
+    assert_select "th", "Industry"
     assert_select "a[href='#{admin_bas_client_path(client)}']", text: client.legal_name
     assert_select "td", text: client.trading_name
+    assert_select "td", text: "Restaurant"
     assert_select "td", text: client.abn
     assert_select "td", text: client.contact_email
     assert_select "td", text: "1"
@@ -33,6 +36,7 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
       abn: "98 765 432 109",
       contact_name: "Synthetic Contact",
       contact_email: "details-client@example.test",
+      industry: "medical_service",
       default_gst_basis: "cash",
       default_reporting_method: "simpler_bas",
       notes: "Synthetic internal client notes"
@@ -45,18 +49,35 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", client.primary_name
     assert_includes response.body, "Trading name: #{client.trading_name}"
     assert_includes response.body, "ABN: #{client.formatted_abn}"
+    assert_includes response.body, "Industry: Medical service"
     assert_includes response.body, client.legal_name
     assert_includes response.body, client.trading_name
     assert_includes response.body, client.abn
     assert_includes response.body, client.contact_name
     assert_includes response.body, client.contact_email
+    assert_includes response.body, "Medical service"
     assert_includes response.body, "Cash"
     assert_includes response.body, "Simpler bas"
     assert_includes response.body, client.notes
+    assert_select "dt", "Industry"
     assert_select "h2", "Related BAS jobs"
+    assert_select "a[href='#{new_admin_bas_job_path(bas_client_id: client.id, workflow_type: "tdk_group")}']", text: "New TDK BAS job for this client"
+    assert_select "a[href='#{new_admin_bas_job_path(bas_client_id: client.id)}']", text: "New standard BAS job for this client"
     assert_select "a[href='#{admin_bas_job_path(job)}']", text: job.period_label
     assert_select "td", text: job.status.humanize
     assert_select "a[href='#{admin_bas_job_path(job)}']", text: "Open job"
+  end
+
+  test "new form shows industry in client details" do
+    get new_admin_bas_client_path
+
+    assert_response :success
+    assert_select "h1", "New client"
+    assert_select "h2", "Client details"
+    assert_select "label", "Industry"
+    assert_select "select[name='bas_client[industry]'] option[value='restaurant']", text: "Restaurant"
+    assert_select "select[name='bas_client[industry]'] option[value='medical_service']", text: "Medical service"
+    assert_select "select[name='bas_client[industry]'] option[value='other']", text: "Others"
   end
 
   test "edit form loads" do
@@ -68,9 +89,11 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
     assert_select "h1", "Edit client"
     assert_select "form[action='#{admin_bas_client_path(client)}']"
     assert_select "input[name='bas_client[legal_name]'][value='#{client.legal_name}']"
+    assert_select "label", "Industry"
+    assert_select "select[name='bas_client[industry]'] option[value='other'][selected]"
   end
 
-  test "update changes legal name trading name and contact fields" do
+  test "update changes legal name trading name contact fields and industry" do
     client = create_client
 
     patch admin_bas_client_path(client), params: {
@@ -78,7 +101,8 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
         legal_name: "Synthetic Updated Client Pty Ltd",
         trading_name: "Synthetic Updated Trading",
         contact_name: "Updated Contact",
-        contact_email: "updated-client@example.test"
+        contact_email: "updated-client@example.test",
+        industry: "restaurant"
       }
     }
 
@@ -89,6 +113,7 @@ class AdminBasClientsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Synthetic Updated Trading", client.trading_name
     assert_equal "Updated Contact", client.contact_name
     assert_equal "updated-client@example.test", client.contact_email
+    assert_equal "restaurant", client.industry
   end
 
   test "client with no jobs can be deleted" do

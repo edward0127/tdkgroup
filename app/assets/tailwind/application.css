@@ -1853,6 +1853,752 @@ form.is-submitting {
   font-weight: 900;
 }
 
+.tdk-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.tdk-stepper__step {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.tdk-stepper__step span {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 900;
+  background: var(--tdk-light-blue-soft);
+}
+
+.tdk-stepper__step strong {
+  display: block;
+  font-weight: 900;
+}
+
+.tdk-stepper__step p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.tdk-stepper__step.is-active {
+  border-color: #5fb8d7;
+  background: linear-gradient(180deg, #ffffff, #e7f6fb);
+  box-shadow: 0 12px 24px rgba(15, 88, 124, 0.12);
+}
+
+.tdk-stepper__step.is-disabled {
+  opacity: 0.48;
+  background: #f8fafc;
+}
+
+.tdk-workflow-heading,
+.tdk-workflow-card,
+.tdk-workflow-grid,
+.tdk-workflow-panel,
+.tdk-current-workbook-card,
+.tdk-workbook-review-card {
+  min-width: 0;
+}
+
+.tdk-workflow-heading {
+  display: block;
+}
+
+.tdk-workflow-hero,
+.tdk-workflow-header-card {
+  width: 100%;
+  margin-bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 1.5rem;
+}
+
+.tdk-workflow-hero-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tdk-workflow-hero-actions,
+.tdk-workflow-header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  padding-top: 0.15rem;
+}
+
+.tdk-workflow-hero-actions .btn-secondary,
+.tdk-workflow-header-actions .btn-secondary {
+  white-space: nowrap;
+}
+
+.tdk-workflow-hero h1,
+.tdk-workflow-header-card h1 {
+  font-size: 34px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.tdk-workflow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tdk-workflow-chips span,
+.tdk-workflow-badge {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d6e4f0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #f8fafc;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.tdk-workflow-chips strong {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.tdk-workflow-badge {
+  color: #0f3a54;
+  border-color: #a7d8eb;
+  background: #e7f6fb;
+}
+
+.tdk-workflow-card {
+  overflow: hidden;
+}
+
+.tdk-workflow-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 16px;
+}
+
+.tdk-workflow-panel,
+.tdk-current-workbook-card,
+.tdk-workbook-review-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+#tdk-active-table {
+  scroll-margin-top: 1.5rem;
+}
+
+.tdk-workflow-panel .admin-panel-heading,
+.tdk-current-workbook-card .admin-panel-heading {
+  margin-bottom: 14px;
+}
+
+.tdk-statement-action-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tdk-upload-form {
+  display: flex;
+  align-items: flex-end;
+  flex: 1 1 440px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  min-width: min(100%, 320px);
+}
+
+.tdk-upload-file-field {
+  flex: 1 1 260px;
+  margin: 0;
+  min-width: min(100%, 240px);
+}
+
+.tdk-upload-form .btn-primary,
+.tdk-export-action-slot .btn-primary,
+.tdk-export-action-slot .btn-secondary {
+  white-space: nowrap;
+}
+
+.tdk-export-action-slot {
+  display: flex;
+  align-items: flex-end;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tdk-export-action-slot .tdk-export-stale-note {
+  flex-basis: 100%;
+}
+
+.tdk-status-sections {
+  display: grid;
+  gap: 16px;
+}
+
+.tdk-status-section {
+  min-width: 0;
+}
+
+.tdk-status-section + .tdk-status-section {
+  border-top: 1px solid #dbe7f0;
+  padding-top: 16px;
+}
+
+.tdk-status-section__heading {
+  margin-bottom: 10px;
+}
+
+.tdk-status-section__heading h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.tdk-status-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.tdk-status-main {
+  margin-top: 10px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.tdk-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tdk-status-line--compact {
+  gap: 6px;
+}
+
+.tdk-status-working-text {
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tdk-status-spinner {
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 9999px;
+  animation: tdk-spin 0.8s linear infinite;
+}
+
+@keyframes tdk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tdk-status-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.tdk-status-detail {
+  min-width: 0;
+  border: 1px solid #dbe7f0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.tdk-status-detail--wide {
+  grid-column: 1 / -1;
+}
+
+.tdk-status-details dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.tdk-status-details dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.tdk-status-details--active {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tdk-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #ffffff;
+  color: var(--blue-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tdk-status-pill.is-success {
+  color: #14532d;
+  border-color: #86efac;
+  background: #dcfce7;
+}
+
+.tdk-status-pill.is-danger {
+  color: #7f1d1d;
+  border-color: #fecaca;
+  background: #fee2e2;
+}
+
+.tdk-status-pill.is-working {
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+  background: #dbeafe;
+}
+
+.tdk-status-pill.is-muted {
+  color: #475569;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.tdk-status-errors {
+  margin-top: 14px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px;
+  color: #7f1d1d;
+  background: #fff7f7;
+}
+
+.tdk-status-errors ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.tdk-status-note {
+  margin-top: 12px;
+  color: #7c2d12;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff7ed;
+  font-weight: 800;
+}
+
+.tdk-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.tdk-status-actions,
+.tdk-export-actions {
+  min-width: 0;
+}
+
+.tdk-status-actions .tdk-export-stale-note {
+  flex-basis: 100%;
+}
+
+.tdk-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.tdk-export-actions form {
+  margin: 0;
+}
+
+.tdk-export-disabled {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tdk-export-stale-note {
+  margin: 0 0 8px;
+  color: #7c2d12;
+  font-weight: 850;
+}
+
+.is-empty {
+  display: none !important;
+}
+
+.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.tdk-workbook-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tdk-workbook-summary > div {
+  min-width: 0;
+}
+
+.tdk-workbook-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.tdk-workbook-toolbar > div {
+  min-width: 0;
+}
+
+.tdk-workbook-toolbar__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tdk-workbook-toolbar__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tdk-workbook-toolbar__actions .btn-primary {
+  white-space: nowrap;
+}
+
+.tdk-workbook-toolbar__meta span {
+  border: 1px solid #d6e4f0;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+@media (max-width: 768px) {
+  .tdk-workbook-toolbar {
+    align-items: flex-start;
+  }
+
+  .tdk-workbook-toolbar__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.tdk-workbook-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid #d6e4f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.tdk-workbook-table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 0.875rem;
+}
+
+.tdk-workbook-table th {
+  padding: 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: normal;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.tdk-workbook-table td {
+  padding: 0.35rem 0.45rem;
+  vertical-align: top;
+  background: #ffffff;
+  border-bottom-color: #dbe7f0;
+}
+
+.tdk-workbook-source-cell {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.tdk-workbook-col--source {
+  width: 5%;
+}
+
+.tdk-workbook-col--date {
+  width: 13%;
+}
+
+.tdk-workbook-col--category {
+  width: 13%;
+}
+
+.tdk-workbook-col--gst {
+  width: 9%;
+}
+
+.tdk-workbook-col--amount {
+  width: 11%;
+}
+
+.tdk-workbook-col--description {
+  width: 31%;
+}
+
+.tdk-workbook-col--details {
+  width: 23%;
+}
+
+.tdk-workbook-col--medium {
+  width: 16%;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #c8d6e5;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  color: var(--ink);
+  background: white;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input:not(.tdk-workbook-cell-input--textarea) {
+  min-height: 2.25rem;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input--textarea {
+  resize: vertical;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.5rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input--date {
+  min-width: 8.5rem;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input--review {
+  border-color: #a9ccdc;
+  background: #fbfdff;
+  font-weight: 750;
+}
+
+.tdk-workbook-table .tdk-workbook-cell-input.is-empty-review-field {
+  border-color: #e8bd6a;
+  background: #fffaf0;
+  box-shadow: inset 3px 0 0 rgba(232, 189, 106, 0.36);
+}
+
+.tdk-workbook-table-footer {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(0, auto) minmax(150px, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.tdk-workbook-sort-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.tdk-workbook-sort-link:hover {
+  color: var(--navy);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tdk-workbook-sort-indicator {
+  min-width: 0.75rem;
+  color: var(--navy);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.tdk-workbook-pagination-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+.tdk-workbook-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tdk-workbook-page-selectors {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tdk-workbook-page-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.tdk-workbook-page-form label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.tdk-workbook-page-form select {
+  min-height: 32px;
+  border: 1px solid #c8d6e5;
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  color: var(--ink);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.tdk-page-button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d6e5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--navy);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tdk-page-button:hover {
+  border-color: #91d7ef;
+  background: #e7f6fb;
+}
+
+.tdk-page-button.is-disabled {
+  color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.tdk-page-status {
+  min-width: 104px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tdk-workbook-save-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-submit-row--inline {
+  position: static;
+  justify-content: flex-start;
+  border-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .bas-ai-status-pill {
   display: inline-flex;
   align-items: center;
@@ -2218,6 +2964,20 @@ form.is-submitting {
   .bas-workspace-metadata {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .tdk-stepper,
+  .tdk-workflow-grid,
+  .tdk-workbook-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tdk-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tdk-status-details--active {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -2294,7 +3054,56 @@ form.is-submitting {
   .bas-workflow-step,
   .bas-count-grid,
   .bas-workspace-metadata,
-  .bas-inline-action {
+  .bas-inline-action,
+  .tdk-stepper,
+  .tdk-workflow-grid,
+  .tdk-workbook-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .tdk-workflow-hero,
+  .tdk-workflow-header-card {
+    flex-direction: column;
+  }
+
+  .tdk-workflow-hero-actions,
+  .tdk-workflow-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tdk-workflow-hero h1,
+  .tdk-workflow-header-card h1 {
+    font-size: 28px;
+  }
+
+  .tdk-workbook-toolbar,
+  .tdk-workbook-table-footer {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .tdk-workbook-table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .tdk-workbook-table {
+    min-width: 760px;
+  }
+
+  .tdk-workbook-toolbar__meta,
+  .tdk-workbook-save-action {
+    justify-content: flex-start;
+  }
+
+  .tdk-workbook-pagination,
+  .tdk-workbook-pagination-group {
+    justify-content: flex-start;
+  }
+
+  .tdk-status-details--active {
     grid-template-columns: 1fr;
   }
 

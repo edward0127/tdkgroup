@@ -1,0 +1,65 @@
+<div class="tdk-workbook-pagination-group">
+  <nav class="tdk-workbook-pagination" aria-label="Bank statement table pagination">
+    <% first_disabled = @tdk_page <= 1 %>
+    <% last_disabled = @tdk_page >= @tdk_total_pages %>
+
+    <% if first_disabled %>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="First page">&laquo;</span>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Previous page">&lsaquo;</span>
+    <% else %>
+      <%= link_to "&laquo;".html_safe,
+            admin_bas_job_path(@job, tdk_workbook_page_link_params(1)),
+            class: "tdk-page-button",
+            aria: { label: "First page" } %>
+      <%= link_to "&lsaquo;".html_safe,
+            admin_bas_job_path(@job, tdk_workbook_page_link_params(@tdk_page - 1)),
+            class: "tdk-page-button",
+            aria: { label: "Previous page" } %>
+    <% end %>
+
+    <span class="tdk-page-status">Page <%= @tdk_page %> of <%= @tdk_total_pages %></span>
+
+    <% if last_disabled %>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Next page">&rsaquo;</span>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Last page">&raquo;</span>
+    <% else %>
+      <%= link_to "&rsaquo;".html_safe,
+            admin_bas_job_path(@job, tdk_workbook_page_link_params(@tdk_page + 1)),
+            class: "tdk-page-button",
+            aria: { label: "Next page" } %>
+      <%= link_to "&raquo;".html_safe,
+            admin_bas_job_path(@job, tdk_workbook_page_link_params(@tdk_total_pages)),
+            class: "tdk-page-button",
+            aria: { label: "Last page" } %>
+    <% end %>
+  </nav>
+
+  <div class="tdk-workbook-page-selectors">
+    <%= form_with url: admin_bas_job_path(@job, anchor: "tdk-active-table"),
+          method: :get,
+          class: "tdk-workbook-page-form" do %>
+      <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
+      <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
+      <%= hidden_field_tag :per_page, @tdk_rows_per_page %>
+      <%= label_tag :tdk_page_select, "Page" %>
+      <%= select_tag :page,
+            options_for_select((1..@tdk_total_pages).map { |page| [ page, page ] }, @tdk_page),
+            id: "tdk_page_select",
+            onchange: "this.form.requestSubmit()" %>
+      <span>of <%= @tdk_total_pages %></span>
+    <% end %>
+
+    <%= form_with url: admin_bas_job_path(@job, anchor: "tdk-active-table"),
+          method: :get,
+          class: "tdk-workbook-page-form" do %>
+      <%= hidden_field_tag :page, 1 %>
+      <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
+      <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
+      <%= label_tag :tdk_per_page_select, "Rows per page" %>
+      <%= select_tag :per_page,
+            options_for_select(@tdk_per_page_options, @tdk_rows_per_page),
+            id: "tdk_per_page_select",
+            onchange: "this.form.requestSubmit()" %>
+    <% end %>
+  </div>
+</div>

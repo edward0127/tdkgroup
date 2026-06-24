@@ -13,6 +13,7 @@ class BasJobTest < ActiveSupport::TestCase
     assert_equal "cash", job.gst_basis
     assert_equal "simpler_bas", job.reporting_method
     assert_equal "FY2026 Q1", job.quarter_label
+    assert_equal "standard", job.workflow_type
   end
 
   test "validates period order and allowlists" do
@@ -21,6 +22,7 @@ class BasJobTest < ActiveSupport::TestCase
       period_start: Date.new(2026, 3, 31),
       period_end: Date.new(2026, 1, 1),
       status: "unknown_status",
+      workflow_type: "manual_excel",
       gst_basis: "hybrid",
       reporting_method: "extended"
     )
@@ -28,8 +30,22 @@ class BasJobTest < ActiveSupport::TestCase
     assert_not job.valid?
     assert_includes job.errors[:period_start], "must be before or equal to period end"
     assert_equal :inclusion, job.errors.details[:status].first.fetch(:error)
+    assert_equal :inclusion, job.errors.details[:workflow_type].first.fetch(:error)
     assert_equal :inclusion, job.errors.details[:gst_basis].first.fetch(:error)
     assert_equal :inclusion, job.errors.details[:reporting_method].first.fetch(:error)
+  end
+
+  test "validates workflow type values" do
+    BasJob::WORKFLOW_TYPE_VALUES.each do |workflow_type|
+      job = BasJob.new(
+        bas_client: bas_client,
+        period_start: Date.new(2026, 1, 1),
+        period_end: Date.new(2026, 3, 31),
+        workflow_type: workflow_type
+      )
+
+      assert job.valid?, job.errors.full_messages.to_sentence
+    end
   end
 
   test "detects locked jobs" do

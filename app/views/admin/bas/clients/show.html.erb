@@ -6,7 +6,8 @@
   </div>
   <div class="admin-actions">
     <%= link_to "Edit client", edit_admin_bas_client_path(@client), class: "btn-primary" %>
-    <%= link_to "New BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id), class: "btn-secondary" %>
+    <%= link_to "New TDK BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id, workflow_type: "tdk_group"), class: "btn-secondary" %>
+    <%= link_to "New standard BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id), class: "btn-secondary" %>
     <%= link_to "Back to BAS workspace", admin_bas_root_path, class: "btn-secondary" %>
   </div>
 </section>
@@ -21,6 +22,10 @@
     <div>
       <dt>Trading name</dt>
       <dd><%= @client.trading_name.presence || "Not recorded" %></dd>
+    </div>
+    <div>
+      <dt>Industry</dt>
+      <dd><%= @client.industry_label %></dd>
     </div>
     <div>
       <dt>ABN</dt>
@@ -68,7 +73,10 @@
 <section class="admin-card-panel">
   <div class="admin-panel-heading">
     <h2>Related BAS jobs</h2>
-    <%= link_to "New BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id), class: "text-link" %>
+    <div class="admin-actions">
+      <%= link_to "New TDK BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id, workflow_type: "tdk_group"), class: "text-link" %>
+      <%= link_to "New standard BAS job for this client", new_admin_bas_job_path(bas_client_id: @client.id), class: "text-link" %>
+    </div>
   </div>
 
   <% if @jobs.any? %>
@@ -79,6 +87,7 @@
             <th>Quarter</th>
             <th>Period</th>
             <th>Status</th>
+            <th>Workflow</th>
             <th>GST basis / reporting method</th>
             <th>Updated</th>
             <th></th>
@@ -90,6 +99,7 @@
               <td><%= link_to job.period_label, admin_bas_job_path(job), class: "text-link" %></td>
               <td><%= job.period_start.to_fs(:db) %> to <%= job.period_end.to_fs(:db) %></td>
               <td><%= job.status.humanize %></td>
+              <td><%= job.workflow_type_label %></td>
               <td><%= job.gst_basis.humanize %> / <%= job.reporting_method.humanize %></td>
               <td><%= l(job.updated_at, format: :short) %></td>
               <td><%= link_to "Open job", admin_bas_job_path(job), class: "text-link" %></td>

@@ -19,6 +19,24 @@ class AdminBasWorkflowTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "h1", "BAS workspace"
+    assert_select "a[href='#{new_admin_bas_job_path(workflow_type: "tdk_group")}']", text: "New TDK BAS job"
+    assert_select "a[href='#{new_admin_bas_job_path(workflow_type: "tdk_group")}']", text: "New TDK BAS"
+    assert_select "a[href='#{new_admin_bas_job_path}']", text: "New standard BAS job"
+  end
+
+  test "BAS dashboard recent jobs show workflow labels" do
+    client = create_client(legal_name: "Synthetic Dashboard Client Pty Ltd")
+    standard_job = create_job(bas_client: client, workflow_type: "standard")
+    tdk_job = create_job(bas_client: client, workflow_type: "tdk_group")
+
+    get admin_bas_root_path
+
+    assert_response :success
+    assert_select "th", "Workflow"
+    assert_select "a[href='#{admin_bas_job_path(standard_job)}']", text: standard_job.period_label
+    assert_select "a[href='#{admin_bas_job_path(tdk_job)}']", text: tdk_job.period_label
+    assert_select "td", text: "Standard BAS preparation"
+    assert_select "td", text: "TDK Group BAS workflow"
   end
 
   test "admin can create and update BAS client with audit actor" do
@@ -34,15 +52,17 @@ class AdminBasWorkflowTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_bas_client_path(client)
     assert_equal "bas-admin", BasAuditEvent.last.actor_username
     assert_equal "bas_client_created", BasAuditEvent.last.event_type
+    assert_equal "other", client.industry
 
     assert_difference "BasAuditEvent.count", 1 do
       patch admin_bas_client_path(client), params: {
-        bas_client: client_params(trading_name: "Synthetic Trading")
+        bas_client: client_params(trading_name: "Synthetic Trading", industry: "medical_service")
       }
     end
 
     assert_redirected_to admin_bas_client_path(client)
     assert_equal "Synthetic Trading", client.reload.trading_name
+    assert_equal "medical_service", client.industry
     assert_equal "bas-admin", BasAuditEvent.last.actor_username
   end
 
@@ -61,15 +81,17 @@ class AdminBasWorkflowTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_bas_job_path(job)
     assert_equal "cash", job.gst_basis
     assert_equal "simpler_bas", job.reporting_method
+    assert_equal "standard", job.workflow_type
 
     assert_difference "BasAuditEvent.count", 2 do
       patch admin_bas_job_path(job), params: {
-        bas_job: job_params(bas_client_id: client.id, status: "collecting_materials")
+        bas_job: job_params(bas_client_id: client.id, status: "collecting_materials", workflow_type: "tdk_group")
       }
     end
 
     assert_redirected_to admin_bas_job_path(job)
     assert_equal "collecting_materials", job.reload.status
+    assert_equal "tdk_group", job.workflow_type
     assert_equal "bas_job_status_changed", BasAuditEvent.last.event_type
     assert_equal "bas-admin", BasAuditEvent.last.actor_username
   end
@@ -195,6 +217,7 @@ class AdminBasWorkflowTest < ActionDispatch::IntegrationTest
       contact_name: "Synthetic Contact",
       contact_email: "synthetic@example.test",
       contact_phone: "0400000000",
+      industry: "other",
       default_gst_basis: "cash",
       reporting_frequency: "quarterly",
       default_reporting_method: "simpler_bas",
@@ -209,6 +232,7 @@ class AdminBasWorkflowTest < ActionDispatch::IntegrationTest
       period_start: "2026-01-01",
       period_end: "2026-03-31",
       quarter_label: "",
+      workflow_type: attributes.fetch(:workflow_type, "standard"),
       status: attributes.fetch(:status, "draft"),
       gst_basis: "unknown",
       reporting_method: "unknown",

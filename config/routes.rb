@@ -129,6 +129,14 @@ Rails.application.routes.draw do
         resources :documents do
           get :download, on: :member
         end
+        resources :tdk_workbooks, only: [ :create ] do
+          member do
+            patch :update_rows
+            post :prepare_download
+            get :download
+            get :status
+          end
+        end
         resources :document_conversion_runs, only: [ :index, :show, :create ] do
           member do
             post :confirm_import

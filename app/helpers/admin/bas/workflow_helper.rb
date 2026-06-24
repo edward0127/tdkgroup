@@ -99,6 +99,7 @@ module Admin
         end
 
         lines << "ABN: #{client.formatted_abn}" if client.formatted_abn.present?
+        lines << "Industry: #{client.industry_label}"
         lines << "BAS job: #{job.period_label}" if job.present?
         lines << (client.archived? ? "Archived client" : "Active client") if include_status
         lines
@@ -194,6 +195,13 @@ module Admin
         options.merge(data: data.merge(bas_submit_guard_data(loading_text)))
       end
 
+      def tdk_workbook_rows_form_data
+        bas_submit_guard_data("Saving rows").tap do |data|
+          data[:controller] = [ data[:controller], "tdk-save-scroll" ].join(" ")
+          data[:action] = [ data[:action], "submit->tdk-save-scroll#store" ].join(" ")
+        end
+      end
+
       def bas_document_status_label(document)
         return "Stored only - no import needed" if bas_supporting_only_document?(document)
         return bas_pdf_bank_statement_status_label(document) if bas_pdf_bank_statement_document?(document)
@@ -201,6 +209,125 @@ module Admin
         return "Needs review" if document.processing_status.in?(%w[failed needs_review])
 
         "Stored only - no import needed"
+      end
+
+      def tdk_workbook_status_class(status)
+        case status.to_s
+        when "processed"
+          "is-success"
+        when "failed"
+          "is-danger"
+        when "queued", "processing"
+          "is-working"
+        when "superseded"
+          "is-muted"
+        else
+          "is-neutral"
+        end
+      end
+
+      def tdk_workbook_export_status_label(workbook)
+        return "Ready to download" if workbook&.export_ready?
+
+        case workbook&.export_status.to_s
+        when "queued", "processing"
+          "Preparing Excel download..."
+        when "failed"
+          "Export failed"
+        when "stale"
+          "Export needs refresh"
+        else
+          "Not prepared"
+        end
+      end
+
+      def tdk_workbook_column_class(header)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        return "tdk-workbook-col--date" if normalized.include?("date")
+        return "tdk-workbook-col--category" if normalized == "category" || normalized.include?("category")
+        return "tdk-workbook-col--gst" if normalized == "gst" || normalized.include?("gst")
+        return "tdk-workbook-col--amount" if normalized.match?(/\b(amount|debit|credit|net|gross|balance|paid)\b/)
+        return "tdk-workbook-col--description" if normalized.include?("description")
+        return "tdk-workbook-col--details" if normalized.match?(/\b(details|narration|reference|memo)\b/)
+
+        "tdk-workbook-col--medium"
+      end
+
+      def tdk_workbook_review_field?(header)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        normalized == "category" || normalized == "gst"
+      end
+
+      def tdk_workbook_date_header?(header)
+        BasTdk::WorkbookValues.date_header?(header)
+      end
+
+      def tdk_workbook_amount_header?(header)
+        BasTdk::WorkbookValues.amount_header?(header)
+      end
+
+      def tdk_workbook_date_input_value(value)
+        BasTdk::WorkbookValues.iso_date_value(value)
+      end
+
+      def tdk_workbook_amount_input_value(value)
+        BasTdk::WorkbookValues.amount_input_value(value)
+      end
+
+      def tdk_workbook_amount_input_pattern
+        BasTdk::WorkbookValues::AMOUNT_INPUT_PATTERN
+      end
+
+      def tdk_workbook_amount_input_title
+        BasTdk::WorkbookValues::AMOUNT_INPUT_TITLE
+      end
+
+      def tdk_workbook_display_value(value)
+        BasTdk::WorkbookValues.clean_excel_decimal_noise(value)
+      end
+
+      def tdk_workbook_sortable_header?(header)
+        key = tdk_workbook_sort_key(header)
+        key == "source_row" || @active_tdk_workbook&.processed_headers&.include?(key)
+      end
+
+      def tdk_workbook_sort_direction_for(header)
+        key = tdk_workbook_sort_key(header)
+        return "desc" if @tdk_sort == key && @tdk_direction == "asc"
+
+        "asc"
+      end
+
+      def tdk_workbook_sort_link_params(header)
+        {
+          sort: tdk_workbook_sort_key(header),
+          direction: tdk_workbook_sort_direction_for(header),
+          page: 1,
+          per_page: @tdk_rows_per_page,
+          anchor: "tdk-active-table"
+        }
+      end
+
+      def tdk_workbook_sort_indicator(header)
+        return "&#8597;".html_safe unless @tdk_sort == tdk_workbook_sort_key(header)
+
+        @tdk_direction == "desc" ? "&darr;".html_safe : "&uarr;".html_safe
+      end
+
+      def tdk_workbook_page_link_params(page)
+        {
+          page: page,
+          per_page: @tdk_rows_per_page,
+          sort: @tdk_sort,
+          direction: @tdk_direction,
+          anchor: "tdk-active-table"
+        }.compact
+      end
+
+      def tdk_workbook_row_range_label(start_row, end_row, total_rows)
+        return "Rows 0 of 0" if total_rows.to_i.zero?
+
+        "Rows #{start_row}-#{end_row} of #{total_rows}"
       end
 
       def bas_latest_import_run_for_document(document)
@@ -265,6 +392,10 @@ module Admin
         return "" unless document.file.attached?
 
         document.file.blob.content_type.to_s
+      end
+
+      def tdk_workbook_sort_key(header)
+        header.to_s == "source_row" ? "source_row" : header.to_s
       end
     end
   end

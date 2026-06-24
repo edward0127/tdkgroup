@@ -24,6 +24,10 @@
         <p class="admin-muted">Optional. Leave blank if same as legal name.</p>
       </div>
       <div class="field">
+        <%= form.label :industry, "Industry" %>
+        <%= form.select :industry, BasClient.industry_options %>
+      </div>
+      <div class="field">
         <%= form.label :abn, "ABN" %>
         <%= form.text_field :abn, placeholder: "12 345 678 901" %>
       </div>

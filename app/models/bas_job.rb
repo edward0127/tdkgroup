@@ -16,6 +16,14 @@ class BasJob < ApplicationRecord
     cancelled
   ].freeze
 
+  WORKFLOW_TYPE_VALUES = %w[standard tdk_group].freeze
+  WORKFLOW_TYPE_LABELS = {
+    "standard" => "Standard BAS preparation",
+    "tdk_group" => "TDK Group BAS workflow"
+  }.freeze
+
+  attribute :workflow_type, :string, default: "standard"
+
   belongs_to :bas_client
 
   before_destroy :prevent_destroy_unless_cleanup_deletable, prepend: true
@@ -76,12 +84,17 @@ class BasJob < ApplicationRecord
     class_name: "BasAuditEvent",
     dependent: :destroy,
     inverse_of: :bas_job
+  has_many :tdk_workbooks,
+    class_name: "BasTdkWorkbook",
+    dependent: :destroy,
+    inverse_of: :bas_job
 
   before_validation :copy_defaults_from_client, on: :create
   before_validation :generate_quarter_label
 
   validates :period_start, :period_end, presence: true
   validates :status, inclusion: { in: STATUS_VALUES }
+  validates :workflow_type, inclusion: { in: WORKFLOW_TYPE_VALUES }
   validates :gst_basis, inclusion: { in: BasClient::GST_BASIS_VALUES }
   validates :reporting_method, inclusion: { in: BasClient::REPORTING_METHOD_VALUES }
   validate :period_start_is_not_after_period_end
@@ -91,6 +104,22 @@ class BasJob < ApplicationRecord
 
   def locked?
     status == "locked" || locked_at.present?
+  end
+
+  def standard_workflow?
+    workflow_type == "standard"
+  end
+
+  def tdk_group_workflow?
+    workflow_type == "tdk_group"
+  end
+
+  def workflow_type_label
+    WORKFLOW_TYPE_LABELS.fetch(workflow_type, workflow_type.to_s.humanize)
+  end
+
+  def self.workflow_type_options
+    WORKFLOW_TYPE_VALUES.map { |value| [ WORKFLOW_TYPE_LABELS.fetch(value), value ] }
   end
 
   def cleanup_deletable?

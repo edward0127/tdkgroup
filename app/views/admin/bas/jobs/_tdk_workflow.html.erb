@@ -1,0 +1,79 @@
+<section class="admin-page-heading bas-workspace-heading tdk-workflow-heading">
+  <div class="admin-card-panel tdk-workflow-hero tdk-workflow-header-card">
+    <div class="tdk-workflow-hero-main">
+      <p class="eyebrow">TDK Group BAS workflow</p>
+      <h1><%= @job.bas_client.primary_name %></h1>
+      <div class="tdk-workflow-chips" aria-label="TDK BAS job summary">
+        <% if @job.bas_client.trading_name.present? %>
+          <span><strong>Trading</strong><%= @job.bas_client.trading_name %></span>
+        <% end %>
+        <span><strong>ABN</strong><%= @job.bas_client.formatted_abn.presence || "Not recorded" %></span>
+        <span><strong>Industry</strong><%= @job.bas_client.industry_label %></span>
+        <span><strong>Quarter</strong><%= @job.period_label %></span>
+        <span><strong>Status</strong><%= @job.status.humanize %></span>
+        <span class="tdk-workflow-badge">TDK Group BAS</span>
+      </div>
+    </div>
+    <div class="tdk-workflow-hero-actions tdk-workflow-header-actions">
+      <%= link_to "Edit job", edit_admin_bas_job_path(@job), class: "btn-secondary" %>
+      <%= link_to "Back to BAS", admin_bas_jobs_path, class: "btn-secondary" %>
+    </div>
+  </div>
+</section>
+
+<ol class="tdk-stepper" aria-label="TDK Group BAS workflow steps">
+  <li class="tdk-stepper__step is-active">
+    <span>1</span>
+    <div>
+      <strong>Bank statement review</strong>
+      <p>Upload, code Category/GST, save visible rows, and prepare the latest Excel export.</p>
+    </div>
+  </li>
+  <li class="tdk-stepper__step is-disabled">
+    <span>2</span>
+    <div>
+      <strong>Category summary</strong>
+      <p>Summary review will be added in a later phase.</p>
+    </div>
+  </li>
+  <li class="tdk-stepper__step is-disabled">
+    <span>3</span>
+    <div>
+      <strong>BAS summary</strong>
+      <p>BAS figures will be added in a later phase.</p>
+    </div>
+  </li>
+  <li class="tdk-stepper__step is-disabled">
+    <span>4</span>
+    <div>
+      <strong>Final review / export</strong>
+      <p>Final workflow controls will be added in a later phase.</p>
+    </div>
+  </li>
+</ol>
+
+<section class="admin-card-panel bas-workspace-section tdk-workflow-card">
+  <div class="admin-panel-heading">
+    <div>
+      <h2>Step 1 — Bank statement review</h2>
+      <p class="admin-muted">Review the active processed bank statement. New failed uploads stay visible in background status without replacing the active table.</p>
+    </div>
+  </div>
+
+  <div class="tdk-workflow-grid"
+    <% if @latest_tdk_workbook_operation.present? %>
+      data-controller="tdk-workbook-status"
+      data-tdk-workbook-status-url-value="<%= status_admin_bas_job_tdk_workbook_path(@job, @latest_tdk_workbook_operation) %>"
+      data-tdk-workbook-status-initial-status-value="<%= @latest_tdk_workbook_operation.status %>"
+      data-tdk-workbook-status-rendered-active-workbook-id-value="<%= @active_tdk_workbook&.id %>"
+      data-tdk-workbook-status-rendered-active-workbook-version-value="<%= @active_tdk_workbook&.version_number %>"
+      data-tdk-workbook-status-poll-interval-value="3000"
+    <% end %>>
+    <%= render "tdk_workbook_upload" %>
+    <%= render "tdk_workbook_status" %>
+  </div>
+
+  <% if @active_tdk_workbook.present? %>
+    <%= render "tdk_workbook_table" %>
+  <% end %>
+</section>

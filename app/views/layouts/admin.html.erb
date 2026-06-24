@@ -22,6 +22,7 @@
         <%= link_to "Pages", admin_cms_pages_path %>
         <%= link_to "Assets", admin_cms_assets_path %>
         <%= link_to "BAS", admin_bas_root_path %>
+        <%= link_to "New TDK BAS", new_admin_bas_job_path(workflow_type: "tdk_group") %>
         <%= link_to "Public site", root_path %>
         <%= button_to "Logout", admin_logout_path, method: :delete, class: "admin-logout" %>
       </nav>

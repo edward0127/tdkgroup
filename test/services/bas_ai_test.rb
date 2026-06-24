@@ -2,7 +2,7 @@ require "test_helper"
 
 class BasAiTest < ActiveSupport::TestCase
   test "config is disabled by default" do
-    with_modified_env("BAS_AI_ENABLED" => nil, "BAS_AI_PROVIDER" => nil, "BAS_AI_MODEL" => nil, "BAS_AI_API_KEY" => nil, "BAS_AI_MAX_OUTPUT_TOKENS" => nil) do
+    with_modified_env("BAS_AI_ENABLED" => nil, "BAS_AI_UI_ENABLED" => nil, "BAS_AI_PROVIDER" => nil, "BAS_AI_MODEL" => nil, "BAS_AI_API_KEY" => nil, "BAS_AI_MAX_OUTPUT_TOKENS" => nil) do
       config = BasAi::Config.current
 
       assert config.disabled?

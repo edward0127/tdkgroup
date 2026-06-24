@@ -1,4 +1,5 @@
 require "csv"
+require "roo"
 require "roo/base"
 require "roo/excelx"
 
@@ -68,7 +69,7 @@ module BasImports
 
         (2..sheet.last_row.to_i).each do |row_number|
           data = headers.each_with_index.to_h do |header, index|
-            [ header, formatted_xlsx_value(sheet, row_number, index + 1) ]
+            [ header, raw_xlsx_value(sheet, row_number, index + 1) ]
           end
           next if data.values.all?(&:blank?)
 
@@ -82,10 +83,26 @@ module BasImports
       raise ReadError, "XLSX could not be read: #{e.message}"
     end
 
-    def formatted_xlsx_value(sheet, row_number, column_number)
-      value = sheet.formatted_value(row_number, column_number)
+    def raw_xlsx_value(sheet, row_number, column_number)
+      value = sheet.excelx_value(row_number, column_number)
       value = sheet.cell(row_number, column_number) if value.nil?
       value.to_s
+    rescue RuntimeError => e
+      raise unless custom_number_format_error?(e)
+
+      raw_fallback_xlsx_value(sheet, row_number, column_number).to_s
+    end
+
+    def raw_fallback_xlsx_value(sheet, row_number, column_number)
+      sheet.cell(row_number, column_number)
+    rescue RuntimeError => e
+      raise unless custom_number_format_error?(e)
+
+      nil
+    end
+
+    def custom_number_format_error?(error)
+      error.message.to_s.start_with?("Unknown format:")
     end
   end
 end

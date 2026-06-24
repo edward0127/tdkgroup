@@ -1,0 +1,108 @@
+<section id="tdk-active-table" class="bas-panel-block tdk-workbook-review-card" data-controller="anchor-scroll">
+  <% save_form_id = dom_id(@active_tdk_workbook, :tdk_workbook_rows_form) %>
+
+  <%= form_with url: update_rows_admin_bas_job_tdk_workbook_path(@job, @active_tdk_workbook),
+        method: :patch,
+        id: save_form_id,
+        class: "admin-form admin-form--wide",
+        data: tdk_workbook_rows_form_data do %>
+    <%= hidden_field_tag :page, @tdk_page %>
+    <%= hidden_field_tag :per_page, @tdk_rows_per_page %>
+    <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
+    <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
+
+    <div class="tdk-workbook-toolbar">
+      <div>
+        <h2>Editable bank statement table</h2>
+        <p class="admin-muted"><%= tdk_workbook_row_range_label(@tdk_row_start, @tdk_row_end, @tdk_total_rows) %></p>
+      </div>
+      <div class="tdk-workbook-toolbar__actions">
+        <div class="tdk-workbook-toolbar__meta" aria-label="Bank statement table summary">
+          <span>Page <%= @tdk_page %> of <%= @tdk_total_pages %></span>
+        </div>
+        <button type="submit" class="btn-primary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+      </div>
+    </div>
+
+    <div class="tdk-workbook-table-wrap">
+      <table class="admin-table tdk-workbook-table">
+        <thead>
+          <tr>
+            <% @active_tdk_workbook.processed_headers.each do |header| %>
+              <th class="<%= tdk_workbook_column_class(header) %>">
+                <% if tdk_workbook_sortable_header?(header) %>
+                  <%= link_to admin_bas_job_path(@job, tdk_workbook_sort_link_params(header)),
+                        class: "tdk-workbook-sort-link",
+                        title: "Sort by #{header}",
+                        aria: { label: "Sort by #{header}" } do %>
+                    <span><%= header %></span>
+                    <span class="tdk-workbook-sort-indicator"><%= tdk_workbook_sort_indicator(header) %></span>
+                  <% end %>
+                <% else %>
+                  <%= header %>
+                <% end %>
+              </th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% @tdk_workbook_rows.each do |row| %>
+            <tr data-source-row-number="<%= row.source_row_number %>">
+              <% @active_tdk_workbook.processed_headers.each do |header| %>
+                <% value = tdk_workbook_display_value(row.row_data[header]) %>
+                <% column_class = tdk_workbook_column_class(header) %>
+                <% review_field = tdk_workbook_review_field?(header) %>
+                <% date_field = tdk_workbook_date_header?(header) %>
+                <% amount_field = tdk_workbook_amount_header?(header) %>
+                <% multiline_field = !date_field && !amount_field && column_class.in?([ "tdk-workbook-col--description", "tdk-workbook-col--details" ]) %>
+                <% input_classes = [
+                  "tdk-workbook-cell-input",
+                  ("tdk-workbook-cell-input--review" if review_field),
+                  ("is-empty-review-field" if review_field && value.blank?),
+                  ("tdk-workbook-cell-input--textarea" if multiline_field),
+                  ("tdk-workbook-cell-input--date" if date_field),
+                  ("tdk-workbook-cell-input--amount" if amount_field)
+                ].compact.join(" ") %>
+                <td class="<%= column_class %> <%= "tdk-workbook-review-cell" if review_field %>">
+                  <% if date_field %>
+                    <%= date_field_tag "rows[#{row.id}][#{header}]",
+                          tdk_workbook_date_input_value(value),
+                          class: input_classes,
+                          aria: { label: "#{header} for source row #{row.source_row_number}" } %>
+                  <% elsif multiline_field %>
+                    <%= text_area_tag "rows[#{row.id}][#{header}]",
+                          value,
+                          rows: 2,
+                          class: input_classes,
+                          aria: { label: "#{header} for source row #{row.source_row_number}" } %>
+                  <% elsif amount_field %>
+                    <%= text_field_tag "rows[#{row.id}][#{header}]",
+                          tdk_workbook_amount_input_value(value),
+                          class: input_classes,
+                          inputmode: "decimal",
+                          pattern: tdk_workbook_amount_input_pattern,
+                          title: tdk_workbook_amount_input_title,
+                          aria: { label: "#{header} for source row #{row.source_row_number}" } %>
+                  <% else %>
+                    <%= text_field_tag "rows[#{row.id}][#{header}]",
+                          value,
+                          class: input_classes,
+                          aria: { label: "#{header} for source row #{row.source_row_number}" } %>
+                  <% end %>
+                </td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+
+  <div class="tdk-workbook-table-footer">
+    <div class="admin-muted"><%= tdk_workbook_row_range_label(@tdk_row_start, @tdk_row_end, @tdk_total_rows) %></div>
+    <%= render "tdk_workbook_pagination" %>
+    <div class="tdk-workbook-save-action">
+      <button type="submit" form="<%= save_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+    </div>
+  </div>
+</section>

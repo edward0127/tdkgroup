@@ -15,6 +15,7 @@
       <tr>
         <th>Legal name</th>
         <th>Trading name</th>
+        <th>Industry</th>
         <th>ABN</th>
         <th>Contact email</th>
         <th>Jobs</th>
@@ -27,6 +28,7 @@
         <tr>
           <td><%= link_to client.legal_name, admin_bas_client_path(client), class: "text-link" %></td>
           <td><%= client.trading_name.presence || "Not recorded" %></td>
+          <td><%= client.industry_label %></td>
           <td><%= client.abn.presence || "Not recorded" %></td>
           <td><%= client.contact_email.presence || "Not recorded" %></td>
           <td><%= client.bas_jobs.size %></td>

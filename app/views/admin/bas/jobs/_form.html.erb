@@ -19,6 +19,12 @@
         <%= form.collection_select :bas_client_id, @clients, :id, :display_name, { prompt: "Select client" }, required: true %>
       </div>
       <div class="field">
+        <%= form.label :workflow_type, "Workflow" %>
+        <%= form.select :workflow_type, BasJob.workflow_type_options %>
+        <p class="admin-muted">Standard BAS preparation uses the existing upload, import, matching, query and report workflow.</p>
+        <p class="admin-muted">TDK Group BAS workflow starts with an editable bank statement review step.</p>
+      </div>
+      <div class="field">
         <%= form.label :quarter_label %>
         <%= form.text_field :quarter_label, placeholder: "FY2026 Q1" %>
       </div>

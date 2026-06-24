@@ -15,7 +15,9 @@ class AdminBasWorkflowUiTest < ActionDispatch::IntegrationTest
     pdf_document(job)
     csv_document(job, "Synthetic Receipt", "receipt")
 
-    get admin_bas_job_path(job)
+    with_modified_env("BAS_AI_ENABLED" => nil, "BAS_AI_UI_ENABLED" => nil) do
+      get admin_bas_job_path(job)
+    end
 
     assert_response :success
     assert_select "h1", "Synthetic Workflow UI Client Pty Ltd"
@@ -63,7 +65,9 @@ class AdminBasWorkflowUiTest < ActionDispatch::IntegrationTest
 
     assert_select ".bas-warning-banner", text: /Reporting method is unknown/
 
-    get admin_bas_job_path(job, tab: "documents")
+    with_modified_env("BAS_AI_ENABLED" => nil, "BAS_AI_UI_ENABLED" => nil) do
+      get admin_bas_job_path(job, tab: "documents")
+    end
 
     assert_response :success
     assert_select "#overview", count: 0
@@ -79,7 +83,9 @@ class AdminBasWorkflowUiTest < ActionDispatch::IntegrationTest
     assert_select "#matching-queries", count: 0
     assert_select "#audit-admin", count: 0
 
-    get admin_bas_job_path(job, tab: "audit")
+    with_modified_env("BAS_AI_ENABLED" => nil, "BAS_AI_UI_ENABLED" => nil) do
+      get admin_bas_job_path(job, tab: "audit")
+    end
 
     assert_response :success
     assert_select "#audit-admin" do

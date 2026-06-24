@@ -4,48 +4,27 @@ module Admin
       before_action :set_job, only: [ :show, :edit, :update, :destroy ]
       before_action :set_clients, only: [ :new, :create, :edit, :update ]
       BAS_WORKSPACE_TABS = %w[overview documents matching report audit ai].freeze
+      TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
+      TDK_SORT_DIRECTIONS = %w[asc desc].freeze
 
       def index
         @jobs = BasJob.includes(:bas_client, :report_snapshots).order(period_end: :desc, id: :desc)
       end
 
       def show
-        @documents = @job.documents.with_attached_file.includes(:import_runs, :conversion_runs).ordered
-        @documents_by_type = @documents.group_by(&:document_type)
-        @import_runs = @job.import_runs.includes(:bas_document).recent.limit(6)
-        @bank_transactions = @job.bank_transactions.recent.limit(8)
-        @invoices = @job.invoices.recent.limit(8)
-        @cash_transactions = @job.cash_transactions.recent.limit(8)
-        @payroll_summaries = @job.payroll_summaries.recent.limit(8)
-        @proposed_matches_count = @job.matches.proposed.count
-        @needs_review_matches_count = @job.matches.needs_review.count
-        @accepted_matches_count = @job.matches.accepted.count
-        @rejected_matches_count = @job.matches.rejected.count
-        @total_matches_count = @job.matches.count
-        @unmatched_bank_transactions_count = @job.bank_transactions.unmatched.count
-        @unmatched_invoices_count = @job.invoices.unmatched.count
-        @unmatched_cash_transactions_count = @job.cash_transactions.unmatched.count
-        @imported_records_count = @job.bank_transactions.count + @job.invoices.count + @job.cash_transactions.count + @job.payroll_summaries.count
-        @import_error_count = @job.import_runs.sum(:error_count)
-        @failed_import_runs_count = @job.import_runs.where(status: "failed").count
-        @latest_report_snapshot = @job.report_snapshots.recent.first
-        @report_snapshots = @job.report_snapshots.recent.limit(5)
-        @approval_blockers_count = BasReports::ApprovalValidator.new(bas_job: @job).call.size
-        @ai_config = BasAi::Config.current
-        @workspace_tabs = workspace_tabs
-        @active_tab = active_workspace_tab
-        @ai_readiness = BasAi::ReadinessChecker.new(bas_job: @job)
-        @ai_runs = @job.ai_extraction_runs.recent.limit(5)
-        @ai_suggestions_count = @job.ai_suggestions.proposed.count
-        @open_queries = @job.queries.open_items.recent
-        @open_queries_count = @open_queries.count
-        @queries_count = @job.queries.count
-        @audit_events = @job.audit_events.recent.limit(12)
-        @next_step = Admin::Bas::JobNextStepPresenter.new(job: @job)
+        if @job.tdk_group_workflow?
+          prepare_tdk_workflow
+          return
+        end
+
+        prepare_standard_workspace
       end
 
       def new
-        @job = BasJob.new(bas_client_id: params[:bas_client_id])
+        @job = BasJob.new(
+          bas_client_id: params[:bas_client_id],
+          workflow_type: initial_workflow_type
+        )
       end
 
       def create
@@ -107,6 +86,150 @@ module Admin
         @clients = BasClient.ordered
       end
 
+      def initial_workflow_type
+        workflow_type = params[:workflow_type].to_s
+        return workflow_type if BasJob::WORKFLOW_TYPE_VALUES.include?(workflow_type)
+
+        "standard"
+      end
+
+      def prepare_standard_workspace
+        @documents = @job.documents.with_attached_file.includes(:import_runs, :conversion_runs).ordered
+        @documents_by_type = @documents.group_by(&:document_type)
+        @import_runs = @job.import_runs.includes(:bas_document).recent.limit(6)
+        @bank_transactions = @job.bank_transactions.recent.limit(8)
+        @invoices = @job.invoices.recent.limit(8)
+        @cash_transactions = @job.cash_transactions.recent.limit(8)
+        @payroll_summaries = @job.payroll_summaries.recent.limit(8)
+        @proposed_matches_count = @job.matches.proposed.count
+        @needs_review_matches_count = @job.matches.needs_review.count
+        @accepted_matches_count = @job.matches.accepted.count
+        @rejected_matches_count = @job.matches.rejected.count
+        @total_matches_count = @job.matches.count
+        @unmatched_bank_transactions_count = @job.bank_transactions.unmatched.count
+        @unmatched_invoices_count = @job.invoices.unmatched.count
+        @unmatched_cash_transactions_count = @job.cash_transactions.unmatched.count
+        @imported_records_count = @job.bank_transactions.count + @job.invoices.count + @job.cash_transactions.count + @job.payroll_summaries.count
+        @import_error_count = @job.import_runs.sum(:error_count)
+        @failed_import_runs_count = @job.import_runs.where(status: "failed").count
+        @latest_report_snapshot = @job.report_snapshots.recent.first
+        @report_snapshots = @job.report_snapshots.recent.limit(5)
+        @approval_blockers_count = BasReports::ApprovalValidator.new(bas_job: @job).call.size
+        @ai_config = BasAi::Config.current
+        @workspace_tabs = workspace_tabs
+        @active_tab = active_workspace_tab
+        @ai_readiness = BasAi::ReadinessChecker.new(bas_job: @job)
+        @ai_runs = @job.ai_extraction_runs.recent.limit(5)
+        @ai_suggestions_count = @job.ai_suggestions.proposed.count
+        @open_queries = @job.queries.open_items.recent
+        @open_queries_count = @open_queries.count
+        @queries_count = @job.queries.count
+        @audit_events = @job.audit_events.recent.limit(12)
+        @next_step = Admin::Bas::JobNextStepPresenter.new(job: @job)
+      end
+
+      def prepare_tdk_workflow
+        @latest_tdk_workbook = @job.tdk_workbooks.recent.first
+        @latest_tdk_workbook_operation = @latest_tdk_workbook
+        @active_tdk_workbook = @job.tdk_workbooks.active_processed.first
+        @tdk_summary_workbook = @active_tdk_workbook
+        @tdk_per_page_options = TDK_ROWS_PER_PAGE_OPTIONS
+        @tdk_rows_per_page = tdk_rows_per_page
+        @tdk_sort = tdk_sort_param
+        @tdk_direction = tdk_sort_direction
+        sorted_rows = tdk_sorted_workbook_rows
+        @tdk_total_rows = sorted_rows.size
+        @tdk_total_pages = [ (@tdk_total_rows.to_f / @tdk_rows_per_page).ceil, 1 ].max
+        @tdk_page = params.fetch(:page, 1).to_i
+        @tdk_page = 1 if @tdk_page < 1
+        @tdk_page = @tdk_total_pages if @tdk_page > @tdk_total_pages
+        @tdk_row_start = @tdk_total_rows.positive? ? ((@tdk_page - 1) * @tdk_rows_per_page) + 1 : 0
+        @tdk_row_end = [ @tdk_page * @tdk_rows_per_page, @tdk_total_rows ].min
+        @tdk_workbook_rows = sorted_rows.slice((@tdk_page - 1) * @tdk_rows_per_page, @tdk_rows_per_page) || []
+      end
+
+      def tdk_rows_per_page
+        requested = params[:per_page].to_i
+        return requested if TDK_ROWS_PER_PAGE_OPTIONS.include?(requested)
+
+        25
+      end
+
+      def tdk_sort_param
+        requested = params[:sort].to_s
+        allowed = @active_tdk_workbook&.processed_headers.to_a + [ "source_row" ]
+        @tdk_sort_param_valid = allowed.include?(requested)
+        return requested if @tdk_sort_param_valid
+
+        "source_row"
+      end
+
+      def tdk_sort_direction
+        return "asc" unless @tdk_sort_param_valid
+
+        requested = params[:direction].to_s.downcase
+        return requested if TDK_SORT_DIRECTIONS.include?(requested)
+
+        "asc"
+      end
+
+      def tdk_sorted_workbook_rows
+        return [] if @active_tdk_workbook.blank?
+
+        rows = @active_tdk_workbook.rows.ordered.to_a
+        return rows if @tdk_sort.blank? || (@tdk_sort == "source_row" && @tdk_direction == "asc")
+
+        rows.sort { |left, right| compare_tdk_workbook_rows(left, right) }
+      end
+
+      def compare_tdk_workbook_rows(left, right)
+        left_value = tdk_workbook_sort_value(left)
+        right_value = tdk_workbook_sort_value(right)
+
+        blank_result = blank_sort_comparison(left_value, right_value)
+        return blank_result unless blank_result.zero?
+        return tdk_workbook_source_order_comparison(left, right) if left_value.nil? && right_value.nil?
+
+        result = left_value.fetch(:value) <=> right_value.fetch(:value)
+        result ||= 0
+        return tdk_workbook_source_order_comparison(left, right) if result.to_i.zero?
+
+        @tdk_direction == "desc" ? -result : result
+      end
+
+      def blank_sort_comparison(left_value, right_value)
+        left_blank = left_value.nil?
+        right_blank = right_value.nil?
+        return 0 if left_blank == right_blank
+
+        left_blank ? 1 : -1
+      end
+
+      def tdk_workbook_source_order_comparison(left, right)
+        (left.source_row_number.to_i <=> right.source_row_number.to_i).nonzero? ||
+          (left.position.to_i <=> right.position.to_i).nonzero? ||
+          (left.id.to_i <=> right.id.to_i)
+      end
+
+      def tdk_workbook_sort_value(row)
+        return { value: row.source_row_number.to_i } if @tdk_sort == "source_row"
+
+        raw_value = row.row_data[@tdk_sort]
+        return if raw_value.to_s.blank?
+
+        if BasTdk::WorkbookValues.date_header?(@tdk_sort)
+          date = BasTdk::WorkbookValues.parse_date(raw_value)
+          return date.present? ? { value: date } : nil
+        end
+
+        if BasTdk::WorkbookValues.amount_header?(@tdk_sort)
+          amount = BasTdk::WorkbookValues.parse_amount(raw_value)
+          return amount.present? ? { value: amount } : nil
+        end
+
+        { value: BasTdk::WorkbookValues.clean_excel_decimal_noise(raw_value).downcase }
+      end
+
       def workspace_tabs
         tabs = [
           { key: "overview", label: "Overview" },
@@ -133,6 +256,7 @@ module Admin
           :period_start,
           :period_end,
           :quarter_label,
+          :workflow_type,
           :status,
           :gst_basis,
           :reporting_method,

@@ -78,6 +78,7 @@ module Admin
           :contact_name,
           :contact_email,
           :contact_phone,
+          :industry,
           :default_gst_basis,
           :reporting_frequency,
           :default_reporting_method,

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_07_010000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_22_013000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -165,12 +165,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_07_010000) do
     t.datetime "created_at", null: false
     t.string "default_gst_basis", default: "unknown", null: false
     t.string "default_reporting_method", default: "unknown", null: false
+    t.string "industry", default: "other", null: false
     t.string "legal_name", null: false
     t.text "notes"
     t.string "reporting_frequency", default: "quarterly", null: false
     t.string "trading_name"
     t.datetime "updated_at", null: false
     t.index ["archived"], name: "index_bas_clients_on_archived"
+    t.index ["industry"], name: "index_bas_clients_on_industry"
     t.index ["legal_name"], name: "index_bas_clients_on_legal_name"
   end
 
@@ -284,9 +286,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_07_010000) do
     t.string "reporting_method", default: "unknown", null: false
     t.string "status", default: "draft", null: false
     t.datetime "updated_at", null: false
+    t.string "workflow_type", default: "standard", null: false
     t.index ["bas_client_id"], name: "index_bas_jobs_on_bas_client_id"
     t.index ["period_start", "period_end"], name: "index_bas_jobs_on_period_start_and_period_end"
     t.index ["status"], name: "index_bas_jobs_on_status"
+    t.index ["workflow_type"], name: "index_bas_jobs_on_workflow_type"
   end
 
   create_table "bas_match_items", force: :cascade do |t|
@@ -377,6 +381,50 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_07_010000) do
     t.index ["status"], name: "index_bas_report_snapshots_on_status"
   end
 
+  create_table "bas_tdk_workbook_rows", force: :cascade do |t|
+    t.integer "bas_tdk_workbook_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "position", null: false
+    t.json "row_data", default: {}, null: false
+    t.integer "source_row_number"
+    t.datetime "updated_at", null: false
+    t.index ["bas_tdk_workbook_id", "position"], name: "index_bas_tdk_rows_on_workbook_and_position", unique: true
+    t.index ["bas_tdk_workbook_id"], name: "index_bas_tdk_workbook_rows_on_bas_tdk_workbook_id"
+  end
+
+  create_table "bas_tdk_workbooks", force: :cascade do |t|
+    t.integer "bas_job_id", null: false
+    t.datetime "created_at", null: false
+    t.text "export_error"
+    t.datetime "export_finished_at"
+    t.datetime "export_generated_at"
+    t.string "export_requested_by"
+    t.datetime "export_started_at"
+    t.string "export_status", default: "not_started", null: false
+    t.integer "header_row_number"
+    t.json "metadata", default: {}, null: false
+    t.json "original_headers", default: [], null: false
+    t.datetime "processed_at"
+    t.string "processed_by"
+    t.json "processed_headers", default: [], null: false
+    t.datetime "processing_finished_at"
+    t.datetime "processing_started_at"
+    t.integer "row_count", default: 0, null: false
+    t.json "row_errors", default: [], null: false
+    t.string "sheet_name"
+    t.integer "source_bas_document_id"
+    t.string "source_filename"
+    t.string "status", default: "processed", null: false
+    t.datetime "superseded_at"
+    t.datetime "updated_at", null: false
+    t.integer "version_number", default: 1, null: false
+    t.index ["bas_job_id", "version_number"], name: "index_bas_tdk_workbooks_on_bas_job_id_and_version_number", unique: true
+    t.index ["bas_job_id"], name: "index_bas_tdk_workbooks_on_bas_job_id"
+    t.index ["export_status"], name: "index_bas_tdk_workbooks_on_export_status"
+    t.index ["source_bas_document_id"], name: "index_bas_tdk_workbooks_on_source_bas_document_id"
+    t.index ["status"], name: "index_bas_tdk_workbooks_on_status"
+  end
+
   create_table "cms_asset_versions", force: :cascade do |t|
     t.string "admin_identifier"
     t.string "alt_text_en"
@@ -450,6 +498,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_07_010000) do
   add_foreign_key "bas_payroll_summaries", "bas_jobs"
   add_foreign_key "bas_queries", "bas_jobs"
   add_foreign_key "bas_report_snapshots", "bas_jobs"
+  add_foreign_key "bas_tdk_workbook_rows", "bas_tdk_workbooks"
+  add_foreign_key "bas_tdk_workbooks", "bas_documents", column: "source_bas_document_id"
+  add_foreign_key "bas_tdk_workbooks", "bas_jobs"
   add_foreign_key "cms_asset_versions", "cms_assets"
   add_foreign_key "cms_page_translations", "cms_pages"
 end

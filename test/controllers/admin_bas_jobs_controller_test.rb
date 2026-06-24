@@ -98,6 +98,44 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, client.notes
   end
 
+  test "new job form defaults to standard BAS workflow" do
+    get new_admin_bas_job_path
+
+    assert_response :success
+    assert_select "h1", "New standard BAS job"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='standard'][selected]", text: "Standard BAS preparation"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='tdk_group']", text: "TDK Group BAS workflow"
+  end
+
+  test "new job form preselects TDK Group BAS workflow from query param" do
+    get new_admin_bas_job_path(workflow_type: "tdk_group")
+
+    assert_response :success
+    assert_select "h1", "New TDK BAS job"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='tdk_group'][selected]", text: "TDK Group BAS workflow"
+    assert_includes response.body, "TDK Group BAS workflow starts with an editable bank statement review step."
+  end
+
+  test "invalid new job workflow type param falls back to standard BAS workflow" do
+    get new_admin_bas_job_path(workflow_type: "unexpected_workflow")
+
+    assert_response :success
+    assert_select "h1", "New standard BAS job"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='standard'][selected]", text: "Standard BAS preparation"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='unexpected_workflow']", count: 0
+  end
+
+  test "job form includes workflow type options" do
+    job = create_job
+
+    get edit_admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "select[name='bas_job[workflow_type]'] option[value='standard']", text: "Standard BAS preparation"
+    assert_select "select[name='bas_job[workflow_type]'] option[value='tdk_group']", text: "TDK Group BAS workflow"
+    assert_includes response.body, "Standard BAS preparation uses the existing upload, import, matching, query and report workflow."
+  end
+
   test "new job form client dropdown uses legal name as primary label" do
     client = create_client(
       legal_name: "Synthetic Primary Legal Pty Ltd",
@@ -119,6 +157,43 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "a[href='#{admin_bas_client_path(client)}']", text: client.display_name
     assert_select "a[href='#{admin_bas_client_path(client)}']", text: "View client details"
+  end
+
+  test "jobs index exposes standard and TDK BAS creation actions" do
+    get admin_bas_jobs_path
+
+    assert_response :success
+    assert_select "a[href='#{new_admin_bas_job_path(workflow_type: "tdk_group")}']", text: "New TDK BAS job"
+    assert_select "a[href='#{new_admin_bas_job_path}']", text: "New standard BAS job"
+  end
+
+  test "standard jobs render existing BAS workspace" do
+    job = create_job
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "p.eyebrow", "BAS workspace"
+    assert_select "nav.bas-workspace-tabs"
+    assert_select "h1", "Synthetic Jobs Controller Client Pty Ltd"
+    assert_select "h1", text: "TDK Group BAS workflow", count: 0
+  end
+
+  test "TDK workflow jobs render step by step workflow" do
+    job = create_job(workflow_type: "tdk_group")
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "p.eyebrow", "TDK Group BAS workflow"
+    assert_select "h1", "Synthetic Jobs Controller Client Pty Ltd"
+    assert_select ".tdk-workflow-badge", "TDK Group BAS"
+    assert_select "h2", "Step 1 — Bank statement review"
+    assert_select "strong", "Bank statement review"
+    assert_select "strong", "Category summary"
+    assert_select "strong", "BAS summary"
+    assert_select "strong", "Final review / export"
+    assert_select "nav.bas-workspace-tabs", count: 0
   end
 
   private
@@ -230,6 +305,31 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
       source_bas_document: pdf_document,
       status: "previewed"
     )
+    tdk_workbook = BasTdkWorkbook.create!(
+      bas_job: job,
+      status: "processed",
+      source_filename: "synthetic-tdk.xlsx",
+      sheet_name: "Bank Report",
+      header_row_number: 4,
+      original_headers: [ "Date", "Amount", "Description" ],
+      processed_headers: [ "Date", "Category", "Amount", "GST", "Description" ],
+      row_count: 1,
+      version_number: 1,
+      processed_at: Time.current,
+      processed_by: "bas-jobs-admin"
+    )
+    tdk_workbook_row = BasTdkWorkbookRow.create!(
+      bas_tdk_workbook: tdk_workbook,
+      position: 1,
+      source_row_number: 5,
+      row_data: {
+        "Date" => "2026-01-05",
+        "Category" => "",
+        "Amount" => "100.00",
+        "GST" => "",
+        "Description" => "Synthetic bank item"
+      }
+    )
     audit_event = BasAuditEvent.create!(
       bas_job: job,
       auditable: job,
@@ -252,6 +352,8 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
       ai_run: ai_run.id,
       ai_suggestion: ai_suggestion.id,
       conversion_run: conversion_run.id,
+      tdk_workbook: tdk_workbook.id,
+      tdk_workbook_row: tdk_workbook_row.id,
       audit_event: audit_event.id
     }
   end
@@ -274,6 +376,8 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     assert_not BasAiExtractionRun.exists?(records.fetch(:ai_run))
     assert_not BasAiSuggestion.exists?(records.fetch(:ai_suggestion))
     assert_not BasDocumentConversionRun.exists?(records.fetch(:conversion_run))
+    assert_not BasTdkWorkbook.exists?(records.fetch(:tdk_workbook))
+    assert_not BasTdkWorkbookRow.exists?(records.fetch(:tdk_workbook_row))
     assert_not BasAuditEvent.exists?(records.fetch(:audit_event))
   end
 

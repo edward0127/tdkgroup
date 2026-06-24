@@ -4,7 +4,8 @@
     <h1>Jobs</h1>
   </div>
   <div class="admin-actions">
-    <%= link_to "New BAS job", new_admin_bas_job_path, class: "btn-primary" %>
+    <%= link_to "New TDK BAS job", new_admin_bas_job_path(workflow_type: "tdk_group"), class: "btn-primary" %>
+    <%= link_to "New standard BAS job", new_admin_bas_job_path, class: "btn-secondary" %>
     <%= link_to "Back to BAS workspace", admin_bas_root_path, class: "btn-secondary" %>
   </div>
 </section>
@@ -16,6 +17,7 @@
         <th>Client</th>
         <th>Period</th>
         <th>Status</th>
+        <th>Workflow</th>
         <th>GST basis</th>
         <th>Reporting method</th>
         <th>Cleanup</th>
@@ -28,6 +30,7 @@
           <td><%= link_to job.bas_client.display_name, admin_bas_client_path(job.bas_client), class: "text-link" %></td>
           <td><%= link_to job.period_label, admin_bas_job_path(job), class: "text-link" %></td>
           <td><%= job.status.humanize %></td>
+          <td><%= job.workflow_type_label %></td>
           <td><%= job.gst_basis.humanize %></td>
           <td><%= job.reporting_method.humanize %></td>
           <td>
