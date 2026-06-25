@@ -31,11 +31,14 @@ TDK_LOCAL_OCR_ENABLED=true
 TDK_LOCAL_OCR_COMMAND=/usr/bin/ocrmypdf
 TDK_LOCAL_OCR_TIMEOUT_SECONDS=300
 TDK_LOCAL_OCR_JOBS=1
+TDK_LOCAL_OCR_PSM=6
 ```
 
 Readable PDFs do not require OCR to be enabled. Scanned/image-only PDFs fail safely when OCR is disabled or unavailable.
 
 `TDK_LOCAL_OCR_JOBS=1` is recommended on small servers so OCR does not use all CPU cores for one uploaded PDF.
+
+`TDK_LOCAL_OCR_PSM=6` uses Tesseract's single uniform block page segmentation mode, which is a better default for scanned bank statement tables.
 
 ## Verify Installation Inside Container
 
@@ -50,6 +53,7 @@ docker compose exec web printenv TDK_LOCAL_OCR_ENABLED
 docker compose exec web printenv TDK_LOCAL_OCR_COMMAND
 docker compose exec web printenv TDK_LOCAL_OCR_TIMEOUT_SECONDS
 docker compose exec web printenv TDK_LOCAL_OCR_JOBS
+docker compose exec web printenv TDK_LOCAL_OCR_PSM
 ```
 
 Expected:

@@ -7,6 +7,8 @@ module BasTdk
     DEFAULT_COMMAND = "ocrmypdf".freeze
     DEFAULT_TIMEOUT_SECONDS = 300
     DEFAULT_JOBS = 1
+    DEFAULT_PSM = 6
+    VALID_PSM_RANGE = (1..13).freeze
     TRUE_VALUES = %w[1 true t yes y on].freeze
 
     DISABLED_MESSAGE = "This PDF appears to be image-based, but local OCR is not enabled on this server. Please upload the original bank PDF with selectable text, or upload XLSX.".freeze
@@ -48,6 +50,13 @@ module BasTdk
       DEFAULT_JOBS
     end
 
+    def self.configured_psm(env = ENV)
+      value = Integer(env["TDK_LOCAL_OCR_PSM"].presence || DEFAULT_PSM)
+      VALID_PSM_RANGE.include?(value) ? value : DEFAULT_PSM
+    rescue ArgumentError, TypeError
+      DEFAULT_PSM
+    end
+
     def initialize(
       path:,
       env: ENV,
@@ -63,6 +72,7 @@ module BasTdk
       @command = command.to_s.strip.presence || self.class.configured_command(env)
       @timeout_seconds = timeout_seconds || self.class.configured_timeout_seconds(env)
       @jobs = self.class.configured_jobs(env)
+      @psm = self.class.configured_psm(env)
       @command_finder = command_finder || ->(cmd) { self.class.executable_path(cmd, env: env).present? }
       @executor = executor || ->(*argv) { Open3.capture3(*argv) }
       @tmpdir_parent = tmpdir_parent
@@ -116,7 +126,7 @@ module BasTdk
 
     private
 
-    attr_reader :path, :env, :command, :timeout_seconds, :jobs, :command_finder, :executor, :tmpdir_parent, :logger
+    attr_reader :path, :env, :command, :timeout_seconds, :jobs, :psm, :command_finder, :executor, :tmpdir_parent, :logger
 
     def command_available?
       command_finder.call(command).present?
@@ -160,6 +170,7 @@ module BasTdk
         "--rotate-pages",
         "--deskew",
         "--jobs", jobs.to_s,
+        "--tesseract-pagesegmode", psm.to_s,
         "--sidecar", sidecar_path,
         "--output-type", "pdf",
         path,

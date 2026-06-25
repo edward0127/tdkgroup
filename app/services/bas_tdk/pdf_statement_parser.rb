@@ -46,20 +46,19 @@ module BasTdk
       )
       \b
     /ix
+    OCR_CURRENCY_MARKER_SOURCE = "\\$\\u{00A7}".freeze
+    AMOUNT_NUMBER_SOURCE = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}".freeze
     AMOUNT_PATTERN = /
       (?<![A-Za-z0-9])
-      -?
-      \$?
-      \(?
-      -?
       (?:
-        \d{1,3}(?:,\d{3})+ |
-        \d+
+        \(\s*-?\s*[#{OCR_CURRENCY_MARKER_SOURCE}]?\s*#{AMOUNT_NUMBER_SOURCE}\s*\) |
+        -\s*[#{OCR_CURRENCY_MARKER_SOURCE}]?\s*#{AMOUNT_NUMBER_SOURCE} |
+        [#{OCR_CURRENCY_MARKER_SOURCE}]\s*-?\s*#{AMOUNT_NUMBER_SOURCE} |
+        #{AMOUNT_NUMBER_SOURCE}
       )
-      \.\d{2}
-      \)?
       (?![A-Za-z0-9])
     /x
+    OCR_DESCRIPTION_NOISE_TOKEN_PATTERN = /\A(?:-?[#{OCR_CURRENCY_MARKER_SOURCE}]+|[~|"'\(\)\/.:-]+)\z/
     EXTRACTED_BLANK_TOKEN_PATTERN = /(?<![A-Za-z0-9])blank(?![A-Za-z0-9])/i
     BLANK_TOKEN_SOURCE = EXTRACTED_BLANK_TOKEN_PATTERN.source
     AMOUNT_TOKEN_SOURCE = AMOUNT_PATTERN.source
@@ -71,7 +70,34 @@ module BasTdk
       "#{BLANK_TOKEN_SOURCE}\\s+(?<deposit>#{AMOUNT_TOKEN_SOURCE})\\s+(?<balance>#{AMOUNT_TOKEN_SOURCE})(?:\\s+#{BLANK_TOKEN_SOURCE})*\\s*\\z",
       Regexp::IGNORECASE | Regexp::EXTENDED
     )
-    INLINE_STOP_BOUNDARY_PATTERN = /\bTOTALS?\s+AT\s+END\s+OF\s+(?:PAGE|PERIOD)\b/i
+    INLINE_STOP_BOUNDARY_PATTERN = /
+      \b(
+        closing\s+balance |
+        balance\s+carried\s+forward |
+        convenience\s+at\s+your\s+fingertips |
+        transaction\s+fee\s+summary |
+        fees?\s+and\s+charges\s+summary |
+        more\s+information |
+        need\s+help |
+        contact\s+us |
+        for\s+more\s+information |
+        visit\s+westpac |
+        terms\s+and\s+conditions |
+        privacy |
+        important\s+information |
+        thank\s+you\s+for\s+banking |
+        things\s+you\s+should\s+know |
+        running\s+balance\s+means |
+        this\s+page\s+is\s+current\s+as\s+at |
+        not\s+an\s+official\s+statement |
+        service\s+online\s+page |
+        use\s+online\s+mobile\s+or\s+tablet\s+banking |
+        to\s+reconcile\s+your\s+transaction\s+fee\s+summary |
+        fees?\s+charged |
+        complaints |
+        totals?\s+at\s+end\s+of\s+(?:page|period)
+      )\b
+    /ix
     TABLE_STOP_NORMALIZED_PATTERN = /
       \b(
         closing\s+balance |
@@ -89,10 +115,16 @@ module BasTdk
         privacy |
         important\s+information |
         thank\s+you\s+for\s+banking |
+        things\s+you\s+should\s+know |
+        running\s+balance\s+means |
+        this\s+page\s+is\s+current\s+as\s+at |
+        not\s+an\s+official\s+statement |
+        service\s+online\s+page |
         use\s+online\s+mobile\s+or\s+tablet\s+banking |
         to\s+reconcile\s+your\s+transaction\s+fee\s+summary |
         fee\s+s\s+charged\s+to\s+account |
         fees\s+charged\s+to\s+account |
+        fees?\s+charged |
         westpac\s+live\s+telephone\s+banking |
         complaints |
         totals?\s+at\s+end\s+of\s+(page|period) |
@@ -129,21 +161,26 @@ module BasTdk
         electronic\s+debits
       )\b
     /ix
-    WESTPAC_SERVICE_ONLINE_CREDIT_DESCRIPTION_PATTERN = /
+    SCANNED_CREDIT_DESCRIPTION_PATTERN = /
       \b(
         deposit |
+        deposit\s+online |
+        transfer\s+deposit |
         direct\s+credit |
-        credit |
         transfer\s+from |
+        credit |
         osko\s+deposit |
         payid\s+credit |
         cash\s+deposit
       )\b
     /ix
-    WESTPAC_SERVICE_ONLINE_DEBIT_DESCRIPTION_PATTERN = /
+    SCANNED_DEBIT_DESCRIPTION_PATTERN = /
       \b(
         withdrawal |
+        withdraw |
         monthly\s+plan\s+fee |
+        line\s+fee |
+        overdrawn\s+fee |
         fee |
         charge |
         debit |
@@ -155,10 +192,12 @@ module BasTdk
         atm |
         bpay |
         payment\s+to |
+        payment\s+by\s+authority |
         transfer\s+to |
         osko\s+payment |
         internet\s+banking\s+withdrawal |
         purchase |
+        interest |
         payroll
       )\b
     /ix
@@ -243,8 +282,8 @@ module BasTdk
     end
 
     def detect_header_shape(lines)
-      candidates = lines.filter_map do |line|
-        score = header_score(line.fetch(:raw))
+      candidates = lines.filter_map.with_index do |line, index|
+        score = header_score(line.fetch(:raw), bank_context: bank_statement_context?(lines, index))
         next if score.zero?
 
         [ score, line.fetch(:line_number), header_shape(line) ]
@@ -253,25 +292,34 @@ module BasTdk
       candidates.max_by { |score, line_number, _shape| [ score, -line_number ] }&.last
     end
 
-    def header_score(raw_line)
+    def bank_statement_context?(lines, index)
+      context = lines[[ index - 4, 0 ].max..[ index + 2, lines.length - 1 ].min].to_a
+      normalize(context.map { |line| line.fetch(:raw) }.join(" ")).match?(/\b(bank|statement|transactions?|account|service online)\b/)
+    end
+
+    def header_score(raw_line, bank_context: false)
       normalized = normalize(raw_line)
       return 0 unless normalized.include?("date")
-      return 0 unless description_header?(normalized)
 
       amount_score = 0
-      amount_score += 10 if debit_header?(normalized)
-      amount_score += 10 if credit_header?(normalized)
-      amount_score += 6 if balance_header?(normalized)
+      has_debit = debit_header?(normalized)
+      has_credit = credit_header?(normalized)
+      has_balance = balance_header?(normalized)
+      has_description = description_header?(normalized)
+      amount_score += 10 if has_debit
+      amount_score += 10 if has_credit
+      amount_score += 6 if has_balance
       return 0 if amount_score.zero?
+      return 0 unless has_description || (bank_context && has_debit && has_credit && has_balance)
 
-      20 + amount_score
+      20 + amount_score + (has_description ? 8 : 0) + (bank_context ? 4 : 0)
     end
 
     def header_shape(line)
       raw = line.fetch(:raw)
       columns = {}
       columns[:date] = column(:date, raw, /\b(transaction\s+date|effective\s+date|date)\b/i)
-      columns[:description] = column(:description, raw, /\b(transaction\s+description|transaction\s+details|description|details)\b/i)
+      columns[:description] = column(:description, raw, /\b(transaction\s+description|transaction\s+details|description|deseription|details)\b/i)
       columns[:debit] = column(:debit, raw, /\b(debit\s+amount|withdrawals?(?:\s+\(\$\))?|debit)\b/i)
       columns[:credit] = column(:credit, raw, /\b(credit\s+amount|deposits?(?:\s+\(\$\))?|credit)\b/i)
       columns[:balance] = column(:balance, raw, /\b(running\s+balance(?:\s+\(\$\))?|balance(?:\s+\(\$\))?)\b/i)
@@ -309,7 +357,7 @@ module BasTdk
       lines.each do |line|
         raw = line.fetch(:raw)
 
-        if header_score(raw).positive?
+        if header_score(raw, bank_context: true).positive?
           blocks << current if current.present?
           current = nil
           in_table = true
@@ -395,7 +443,7 @@ module BasTdk
       amount = transaction_amount(assignments)
       return if amount.blank?
 
-      description = description_from_block(block, date_match.end(0), assignments)
+      description = description_from_block(block, date_match.end(0), assignments, header_shape)
       return if description.blank? || non_transaction_description?(description)
 
       data = {
@@ -419,13 +467,13 @@ module BasTdk
       candidates = amount_candidates(block)
       return {} if candidates.blank?
 
-      if westpac_service_online_ocr_header?(header_shape)
-        service_online_assignments = assign_westpac_service_online_ocr_amounts(block, candidates)
-        return service_online_assignments if service_online_assignments.present?
+      return assign_anz_business_extra_amounts(block, header_shape, candidates) if anz_business_extra_header?(header_shape)
+
+      if scanned_debit_credit_balance_header?(header_shape)
+        scanned_assignments = assign_scanned_debit_credit_balance_amounts(block, header_shape, candidates)
+        return scanned_assignments if scanned_assignments.present?
         return {}
       end
-
-      return assign_anz_business_extra_amounts(block, header_shape, candidates) if anz_business_extra_header?(header_shape)
 
       assignments = assign_amounts_by_position(candidates, header_shape)
       assignments = assign_amounts_by_fallback(candidates, header_shape) if transaction_amount(assignments).blank?
@@ -438,7 +486,7 @@ module BasTdk
 
       balance_candidate = candidates.last
       transaction_candidates = candidates[0...-1]
-      assignments = { balance: balance_candidate.fetch(:amount) }
+      assignments = { balance: balance_candidate.fetch(:amount), assigned_candidates: [ balance_candidate ] }
       return assignments unless transaction_candidates.one?
 
       transaction_candidate = transaction_candidates.first
@@ -447,6 +495,7 @@ module BasTdk
       return assignments if amount_column.blank?
 
       assignments[amount_column] = transaction_candidate.fetch(:amount)
+      assignments[:assigned_candidates] << transaction_candidate
       assignments
     end
 
@@ -461,6 +510,7 @@ module BasTdk
           {
             line_index: index,
             line_number: line.fetch(:line_number),
+            line_raw: raw,
             start: match.begin(0),
             end: match.end(0),
             raw: match[0],
@@ -485,6 +535,7 @@ module BasTdk
 
       if header_shape.columns.key?(:balance) && candidates.size >= 2
         assignments[:balance] = candidates.last.fetch(:amount)
+        candidate_by_assignment[:balance] = candidates.last.merge(distance: 0)
         remaining_candidates = candidates[0...-1]
         amount_columns = amount_columns.reject { |key, _start| key == :balance }
       end
@@ -496,11 +547,14 @@ module BasTdk
 
         existing = candidate_by_assignment[key]
         if existing.blank? || distance < existing.fetch(:distance)
-          assignments[key] = candidate.fetch(:amount)
           candidate_by_assignment[key] = candidate.merge(distance: distance)
         end
       end
 
+      candidate_by_assignment.each do |key, candidate|
+        assignments[key] = candidate.fetch(:amount)
+      end
+      assignments[:assigned_candidates] = candidate_by_assignment.values if assignments.present?
       assignments
     end
 
@@ -529,8 +583,10 @@ module BasTdk
       assignments = {}
       if header_shape.columns.key?(:balance) && candidates.size >= 2
         assignments[:balance] = candidates.last.fetch(:amount)
+        assigned_candidates = [ candidates.last ]
         transaction_candidate = candidates[-2]
       else
+        assigned_candidates = []
         transaction_candidate = candidates.last
       end
 
@@ -548,6 +604,7 @@ module BasTdk
         assignments[:amount] = transaction_candidate.fetch(:amount)
       end
 
+      assignments[:assigned_candidates] = assigned_candidates + [ transaction_candidate ]
       assignments
     end
 
@@ -559,31 +616,63 @@ module BasTdk
       nil
     end
 
-    def westpac_service_online_ocr_header?(header_shape)
-      normalize(header_shape.columns.dig(:description, :label)) == "description" &&
-        normalize(header_shape.columns.dig(:debit, :label)) == "withdrawals" &&
-        normalize(header_shape.columns.dig(:credit, :label)) == "deposits" &&
-        normalize(header_shape.columns.dig(:balance, :label)) == "running balance"
+    def scanned_debit_credit_balance_header?(header_shape)
+      debit_label = normalize(header_shape.columns.dig(:debit, :label))
+      credit_label = normalize(header_shape.columns.dig(:credit, :label))
+      balance_label = normalize(header_shape.columns.dig(:balance, :label))
+
+      debit_label.match?(/\b(withdrawal|withdrawals|debit)\b/) &&
+        credit_label.match?(/\b(deposit|deposits|credit)\b/) &&
+        balance_label.match?(/\b(running balance|balance)\b/)
     end
 
-    def assign_westpac_service_online_ocr_amounts(block, candidates)
-      return {} unless candidates.size == 2
+    def assign_scanned_debit_credit_balance_amounts(block, header_shape, candidates)
+      return {} unless header_shape.columns.key?(:balance)
+      return {} if candidates.size < 2
 
-      transaction_candidate = candidates.first
-      balance_candidate = candidates.second
+      balance_candidate = candidates.last
+      transaction_candidate = candidates[0...-1].last
+      direction = reliable_scanned_amount_column(transaction_candidate, header_shape)
       description = description_text_without_amounts(block, candidates)
-      direction = westpac_service_online_transaction_direction(description)
+      direction ||= scanned_transaction_direction(description)
       return {} if direction.blank?
 
       {
         direction => transaction_candidate.fetch(:amount),
-        balance: balance_candidate.fetch(:amount)
+        balance: balance_candidate.fetch(:amount),
+        assigned_candidates: [ transaction_candidate, balance_candidate ]
       }
     end
 
-    def westpac_service_online_transaction_direction(description)
-      credit = description.match?(WESTPAC_SERVICE_ONLINE_CREDIT_DESCRIPTION_PATTERN)
-      debit = description.match?(WESTPAC_SERVICE_ONLINE_DEBIT_DESCRIPTION_PATTERN)
+    def reliable_scanned_amount_column(candidate, header_shape)
+      return unless candidate.fetch(:line_index).zero?
+      return unless amount_column_spacing_reliable?(candidate)
+
+      amount_columns = [ :debit, :credit ].filter_map do |key|
+        column = header_shape.columns[key]
+        next if column.blank?
+
+        [ key, column.fetch(:start).to_i ]
+      end
+      return if amount_columns.size < 2
+
+      distances = amount_columns.map { |key, start| [ key, (candidate.fetch(:start) - start).abs ] }.sort_by(&:second)
+      nearest_key, nearest_distance = distances.first
+      next_distance = distances.second&.second
+      return if nearest_distance.blank? || nearest_distance > 20
+      return if next_distance.present? && (next_distance - nearest_distance) < 8
+
+      nearest_key
+    end
+
+    def amount_column_spacing_reliable?(candidate)
+      raw = candidate.fetch(:line_raw).to_s
+      raw[0...candidate.fetch(:start)].to_s.match?(/\s{2,}\z/)
+    end
+
+    def scanned_transaction_direction(description)
+      credit = description.match?(SCANNED_CREDIT_DESCRIPTION_PATTERN)
+      debit = description.match?(SCANNED_DEBIT_DESCRIPTION_PATTERN)
       return if credit && debit
       return :credit if credit
       return :debit if debit
@@ -604,10 +693,10 @@ module BasTdk
       end.reject(&:blank?).join(" ").squish
     end
 
-    def description_from_block(block, first_line_date_end, assignments)
+    def description_from_block(block, first_line_date_end, assignments, header_shape)
       assigned_candidates = assigned_amount_candidates(block, assignments)
 
-      block.lines.map.with_index do |line, index|
+      description = block.lines.map.with_index do |line, index|
         raw = line.fetch(:raw).dup
         start_index = index.zero? ? first_line_date_end : 0
         assigned_candidates.select { |candidate| candidate.fetch(:line_index) == index }.each do |candidate|
@@ -615,14 +704,32 @@ module BasTdk
         end
         raw[start_index..].to_s.squish
       end.reject(&:blank?).join(" ").squish
+
+      ocr_description_cleanup_header?(header_shape) ? clean_ocr_description(description) : description
     end
 
     def assigned_amount_candidates(block, assignments)
       return [] if assignments.blank?
+      return assignments[:assigned_candidates] if assignments[:assigned_candidates].present?
 
       candidates = amount_candidates(block)
       assigned_amounts = assignments.slice(:debit, :credit, :balance, :amount).values.compact.map { |amount| amount.round(2) }
       candidates.select { |candidate| assigned_amounts.include?(candidate.fetch(:amount).round(2)) }
+    end
+
+    def clean_ocr_description(description)
+      description.to_s.squish.split(/\s+/).filter_map do |token|
+        cleaned = token.to_s
+        cleaned = cleaned.gsub(/\A[~|"']+|[~|"']+\z/, "")
+        cleaned = cleaned.gsub(/\A[:.]+|[:.]+\z/, "")
+        next if cleaned.blank? || cleaned.match?(OCR_DESCRIPTION_NOISE_TOKEN_PATTERN)
+
+        cleaned
+      end.join(" ").squish
+    end
+
+    def ocr_description_cleanup_header?(header_shape)
+      scanned_debit_credit_balance_header?(header_shape) && !anz_business_extra_header?(header_shape)
     end
 
     def scrub_extracted_blank_tokens(value)
@@ -782,9 +889,12 @@ module BasTdk
     end
 
     def parse_amount(value)
-      text = value.to_s.strip
-      negative = text.include?("-") || text.start_with?("(")
-      normalized = text.delete("$").delete(",").delete("(").delete(")").delete("-").strip
+      text = value.to_s.squish
+      number_match = text.match(/#{AMOUNT_NUMBER_SOURCE}/)
+      return if number_match.blank?
+
+      negative = text.include?("-") || text.match?(/\A\s*\(/)
+      normalized = number_match[0].delete(",")
       decimal = BigDecimal(normalized)
       negative ? -decimal.abs : decimal
     rescue ArgumentError
@@ -808,11 +918,11 @@ module BasTdk
     end
 
     def description_header?(normalized)
-      normalized.match?(/\b(transaction description|transaction details|description|details)\b/)
+      normalized.match?(/\b(transaction description|transaction details|description|deseription|details)\b/)
     end
 
     def debit_header?(normalized)
-      normalized.match?(/\b(debit|withdrawal|withdrawals|debit amount)\b/)
+      normalized.match?(/\b(debit|withdrawal|withdrawals|withdraw|debit amount)\b/)
     end
 
     def credit_header?(normalized)

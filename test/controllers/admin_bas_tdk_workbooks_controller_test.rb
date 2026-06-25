@@ -233,7 +233,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_select "input[name='rows[#{first_row.id}][Category]']"
     assert_select "input[name='rows[#{first_row.id}][GST]']"
     assert_select "input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount"
-    assert_includes response.body, "VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN / EFFECTIVE DATE 05 MAR 2026"
+    assert_includes response.body, "VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING / EFFECTIVE DATE 05 MAR 2026"
 
     get admin_bas_job_path(job, sort: "Balance", direction: "asc", per_page: 10)
     assert_equal [ 7, 5, 10 ], visible_source_rows(response.body)
@@ -990,8 +990,8 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
       ANZ Business Extra
       06 MARCH 2026 TO 08 APRIL 2026
       Date       Transaction Details                                      Withdrawals ($)    Deposits ($)       Balance ($)
-      06 MAR     Deposit-Osko Payment Customer                                               4,373.70           68,371.24
-      09 MAR     VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN
+      06 MAR     Deposit-Osko Payment SAMPLE CUSTOMER                                        4,373.70           68,371.24
+      09 MAR     VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING
                  / EFFECTIVE DATE 05 MAR 2026                         3.47                                      68,367.77
       01 APR     Transfer from savings                                                     1,000.00             69,367.77
       TOTALS AT END OF PERIOD

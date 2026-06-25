@@ -1,20 +1,18 @@
-Implemented the OCR productionisation.
+Implemented configurable local OCR PSM.
 
-Changed:
-- [Dockerfile](C:/Users/edward/projects/tdkgroup/Dockerfile:67): installs `ocrmypdf`, Tesseract `eng/osd`, Ghostscript, qpdf, and Poppler in the final runtime image before `USER 1000:1000`.
-- [local_ocr.rb](C:/Users/edward/projects/tdkgroup/app/services/bas_tdk/local_ocr.rb:9): added `TDK_LOCAL_OCR_JOBS`, defaulting invalid/missing values to `1`, and passes `--jobs <n>` safely via argv.
-- [tdk_local_ocr.md](C:/Users/edward/projects/tdkgroup/docs/tdk_local_ocr.md:11): replaced host-install guidance with Docker/runtime OCR docs and job-limit notes.
-- [.env.prod.example](C:/Users/edward/projects/tdkgroup/.env.prod.example:32) and [.env.example](C:/Users/edward/projects/tdkgroup/.env.example:34): added disabled-by-default OCR config blocks.
-- [bas_tdk_local_ocr_test.rb](C:/Users/edward/projects/tdkgroup/test/services/bas_tdk_local_ocr_test.rb:86): added default/configured/invalid job tests and log content-safety coverage. Tests still stub OCR execution.
+Changes:
+- Added `DEFAULT_PSM = 6`, `.configured_psm`, valid range `1..13`, and argv support for `--tesseract-pagesegmode <psm>` in [local_ocr.rb](C:/Users/edward/projects/tdkgroup/app/services/bas_tdk/local_ocr.rb:10).
+- Kept `--jobs`, `--sidecar`, `--skip-text`, `--rotate-pages`, `--deskew`, and `--output-type pdf`.
+- Added focused PSM tests for default, configured `4`/`6`, and invalid fallback cases in [bas_tdk_local_ocr_test.rb](C:/Users/edward/projects/tdkgroup/test/services/bas_tdk_local_ocr_test.rb:95).
+- Added `TDK_LOCAL_OCR_PSM=6` to `.env.example`, `.env.prod.example`, and the local OCR ops doc.
+- Did not modify real `.env`, `.env.prod`, storage, DB, secrets, or customer files.
 
 Verification passed:
-- `bundle exec rails test`: 422 runs, 4515 assertions, 0 failures.
-- `bundle exec rails zeitwerk:check`: All is good.
-- `bundle exec rails tailwindcss:build`: completed.
-- `docker build -t tdkgroup-ocr-check .`: completed.
-- `docker run --rm tdkgroup-ocr-check which ocrmypdf`: `/usr/bin/ocrmypdf`
-- `ocrmypdf --version`: `16.7.0+dfsg1`
-- `tesseract --version`: `5.5.0`
-- Extra check: `tesseract --list-langs` includes `eng` and `osd`.
+- `ruby -c app/services/bas_tdk/local_ocr.rb`
+- `ruby -c test/services/bas_tdk_local_ocr_test.rb`
+- `bundle exec rails test test/services/bas_tdk_local_ocr_test.rb`: 12 runs, 101 assertions, 0 failures
+- `bundle exec rails test`: 431 runs, 4679 assertions, 0 failures
+- `bundle exec rails zeitwerk:check`: All is good
+- `bundle exec rails tailwindcss:build`: Done
 
-Notes: local Windows VIPS optional-module warnings, Ruby CSV deprecation warnings, and Tempfile cleanup warnings appeared during Rails commands, but all command exit codes were clean. I did not modify real `.env`, `.env.prod`, secrets, storage, or customer data; `.dockerignore` also excludes those from the Docker build context. The OCR service/docs/test files remain untracked because they were already untracked when I started.
+The full test/zeitwerk/tailwind commands emitted existing local Windows warnings from VIPS modules, Ruby CSV default-gem deprecation, and Tempfile cleanup, but all commands exited successfully. Existing unrelated uncommitted changes in parser/controller/workbook test files and `codex_summary.md` were left untouched.

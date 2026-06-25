@@ -155,7 +155,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     assert_equal "", credit_row.row_data.fetch("GST")
     assert_equal "5049.00", credit_row.row_data.fetch("Amount")
     assert_equal "6696.81", credit_row.row_data.fetch("Balance")
-    assert_equal "Deposit-Osko Payment 2234694 Ccon Group Pty Ltd", credit_row.row_data.fetch("Description")
+    assert_equal "Deposit-Osko Payment SAMPLE001 SAMPLE CUSTOMER", credit_row.row_data.fetch("Description")
 
     assert_equal "2025-12-09", debit_row.row_data.fetch("Date")
     assert_equal "-71930.00", debit_row.row_data.fetch("Amount")
@@ -178,7 +178,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     assert_equal "2026-03-09", withdrawal_row.row_data.fetch("Date")
     assert_equal "-3.47", withdrawal_row.row_data.fetch("Amount")
     assert_equal "68367.77", withdrawal_row.row_data.fetch("Balance")
-    assert_equal "VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN / EFFECTIVE DATE 05 MAR 2026", withdrawal_row.row_data.fetch("Description")
+    assert_equal "VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING / EFFECTIVE DATE 05 MAR 2026", withdrawal_row.row_data.fetch("Description")
 
     assert_equal "2026-04-01", april_row.row_data.fetch("Date")
     assert_equal "1000.00", april_row.row_data.fetch("Amount")
@@ -223,7 +223,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     assert_equal "2026-05-18", deposit_row.row_data.fetch("Date")
     assert_equal "2000.00", deposit_row.row_data.fetch("Amount")
     assert_equal "-66187.25", deposit_row.row_data.fetch("Balance")
-    assert_equal "DEPOSIT CAMBERWELL VIC", deposit_row.row_data.fetch("Description")
+    assert_equal "DEPOSIT SAMPLE VIC", deposit_row.row_data.fetch("Description")
 
     assert_equal "2026-05-01", withdrawal_row.row_data.fetch("Date")
     assert_equal "-10.00", withdrawal_row.row_data.fetch("Amount")
@@ -337,7 +337,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
       Statement period 05 December 2025 to 05 January 2026
       DATE       TRANSACTION DESCRIPTION                                      DEBIT              CREDIT             BALANCE
       STATEMENT OPENING BALANCE                                                                                       1,647.81
-      08/12/25   Deposit-Osko Payment 2234694 Ccon Group Pty Ltd                                  5,049.00           6,696.81
+      08/12/25   Deposit-Osko Payment SAMPLE001 SAMPLE CUSTOMER                                   5,049.00           6,696.81
       09/12/25   Office rent transfer                                      71,930.00                              (65,233.19)
       TOTALS AT END OF PAGE                                                71,930.00             5,049.00
       CLOSING BALANCE                                                                                              (65,233.19)
@@ -349,8 +349,8 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
       ANZ Business Extra
       06 MARCH 2026 TO 08 APRIL 2026
       Date       Transaction Details                                      Withdrawals ($)    Deposits ($)       Balance ($)
-      06 MAR     Deposit-Osko Payment Customer                                               4,373.70           68,371.24
-      09 MAR     VISA DEBIT PURCHASE CARD 7805 / EASYPARK PRAHRAN
+      06 MAR     Deposit-Osko Payment SAMPLE CUSTOMER                                        4,373.70           68,371.24
+      09 MAR     VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING
                  / EFFECTIVE DATE 05 MAR 2026                         3.47                                      68,367.77
       01 APR     Transfer from savings                                                     1,000.00             69,367.77
       TOTALS AT END OF PERIOD
@@ -363,7 +363,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
       Statement period 01/05/2026 to 31/05/2026
       Date Description Withdrawals Deposits Running Balance
       Opening Balance -$69,597.25
-      18/05/2026 DEPOSIT CAMBERWELL VIC $2,000.00 -$66,187.25
+      18/05/2026 DEPOSIT SAMPLE VIC $2,000.00 -$66,187.25
       01/05/2026 MONTHLY PLAN FEE $10.00 -$69,587.25
       Closing Balance -$66,187.25
       Need help? Contact us using Westpac Online.

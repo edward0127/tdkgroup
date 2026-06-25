@@ -59,7 +59,7 @@ class BasTdkLocalOcrTest < ActiveSupport::TestCase
         executor: ->(*argv) {
           captured_argv = argv
           sidecar_path = argv.fetch(argv.index("--sidecar") + 1)
-          File.write(sidecar_path, "Date Description Withdrawals Deposits Running Balance\n18/05/2026 DEPOSIT CAMBERWELL VIC $2,000.00 -$66,187.25\n")
+          File.write(sidecar_path, "Date Description Withdrawals Deposits Running Balance\n18/05/2026 DEPOSIT SAMPLE VIC $2,000.00 -$66,187.25\n")
           [ "stdout should not be logged", "stderr should not be logged", CommandStatus.new(true) ]
         }
       ).call
@@ -79,6 +79,7 @@ class BasTdkLocalOcrTest < ActiveSupport::TestCase
     assert_includes captured_argv, "--rotate-pages"
     assert_includes captured_argv, "--deskew"
     assert_command_jobs captured_argv, "1"
+    assert_command_psm captured_argv, "6"
     assert_includes captured_argv, "--output-type"
     assert_includes captured_argv, "input.pdf"
   end
@@ -89,6 +90,34 @@ class BasTdkLocalOcrTest < ActiveSupport::TestCase
     )
 
     assert_command_jobs captured_argv, "1"
+  end
+
+  test "default OCR page segmentation mode is passed when env is missing" do
+    captured_argv = successful_ocr_argv(
+      env: { "TDK_LOCAL_OCR_ENABLED" => "true" }
+    )
+
+    assert_command_psm captured_argv, "6"
+  end
+
+  test "configured OCR page segmentation modes are passed to ocrmypdf" do
+    [ "4", "6" ].each do |psm|
+      captured_argv = successful_ocr_argv(
+        env: { "TDK_LOCAL_OCR_ENABLED" => "true", "TDK_LOCAL_OCR_PSM" => psm }
+      )
+
+      assert_command_psm captured_argv, psm
+    end
+  end
+
+  test "invalid OCR page segmentation modes fall back to default" do
+    [ "", "0", "-2", "not-a-number", "14" ].each do |invalid_psm|
+      captured_argv = successful_ocr_argv(
+        env: { "TDK_LOCAL_OCR_ENABLED" => "true", "TDK_LOCAL_OCR_PSM" => invalid_psm }
+      )
+
+      assert_command_psm captured_argv, "6", "expected default page segmentation mode for #{invalid_psm.inspect}"
+    end
   end
 
   test "configured OCR jobs are passed to ocrmypdf" do
@@ -185,7 +214,7 @@ class BasTdkLocalOcrTest < ActiveSupport::TestCase
       executor: ->(*argv) {
         captured_argv = argv
         sidecar_path = argv.fetch(argv.index("--sidecar") + 1)
-        File.write(sidecar_path, "Date Description Withdrawals Deposits Running Balance\n18/05/2026 DEPOSIT CAMBERWELL VIC $2,000.00 -$66,187.25\n")
+        File.write(sidecar_path, "Date Description Withdrawals Deposits Running Balance\n18/05/2026 DEPOSIT SAMPLE VIC $2,000.00 -$66,187.25\n")
         [ "", "", CommandStatus.new(true) ]
       }
     ).call.tap do |result|
@@ -199,5 +228,11 @@ class BasTdkLocalOcrTest < ActiveSupport::TestCase
     jobs_index = argv.index("--jobs")
     assert jobs_index, message
     assert_equal expected_jobs, argv[jobs_index + 1], message
+  end
+
+  def assert_command_psm(argv, expected_psm, message = nil)
+    psm_index = argv.index("--tesseract-pagesegmode")
+    assert psm_index, message
+    assert_equal expected_psm, argv[psm_index + 1], message
   end
 end
