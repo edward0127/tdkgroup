@@ -1,18 +1,19 @@
-Implemented configurable local OCR PSM.
+Implemented the scanned OCR parser fixes.
 
-Changes:
-- Added `DEFAULT_PSM = 6`, `.configured_psm`, valid range `1..13`, and argv support for `--tesseract-pagesegmode <psm>` in [local_ocr.rb](C:/Users/edward/projects/tdkgroup/app/services/bas_tdk/local_ocr.rb:10).
-- Kept `--jobs`, `--sidecar`, `--skip-text`, `--rotate-pages`, `--deskew`, and `--output-type pdf`.
-- Added focused PSM tests for default, configured `4`/`6`, and invalid fallback cases in [bas_tdk_local_ocr_test.rb](C:/Users/edward/projects/tdkgroup/test/services/bas_tdk_local_ocr_test.rb:95).
-- Added `TDK_LOCAL_OCR_PSM=6` to `.env.example`, `.env.prod.example`, and the local OCR ops doc.
-- Did not modify real `.env`, `.env.prod`, storage, DB, secrets, or customer files.
+Changed [pdf_statement_parser.rb](C:/Users/edward/projects/tdkgroup/app/services/bas_tdk/pdf_statement_parser.rb:62) to:
+- Use a scanned-OCR amount pattern that accepts 2-4 decimal places only on the scanned debit/credit/balance path.
+- Truncate over-precise OCR currency amounts to cents in `parse_amount`, e.g. `86.307` -> `86.30`.
+- Treat `osko payment` as a generic debit signal only when no explicit credit/deposit signal is present, so `DEPOSIT-OSKO PAYMENT`, `DEPOSIT OSKO PAYMENT`, and `OSKO DEPOSIT` import as credits while `WITHDRAWAL-OSKO PAYMENT` remains debit.
+
+Added synthetic coverage in [bas_tdk_pdf_statement_parser_test.rb](C:/Users/edward/projects/tdkgroup/test/services/bas_tdk_pdf_statement_parser_test.rb:99) for Osko direction, decimal-noise truncation, and the combined footer fixture.
 
 Verification passed:
-- `ruby -c app/services/bas_tdk/local_ocr.rb`
-- `ruby -c test/services/bas_tdk_local_ocr_test.rb`
-- `bundle exec rails test test/services/bas_tdk_local_ocr_test.rb`: 12 runs, 101 assertions, 0 failures
-- `bundle exec rails test`: 431 runs, 4679 assertions, 0 failures
-- `bundle exec rails zeitwerk:check`: All is good
-- `bundle exec rails tailwindcss:build`: Done
+- `ruby -c app/services/bas_tdk/pdf_statement_parser.rb`
+- `ruby -c test/services/bas_tdk_pdf_statement_parser_test.rb`
+- `bundle exec rails test test/services/bas_tdk_pdf_statement_parser_test.rb` — 18 runs, 255 assertions
+- `bundle exec rails test` — 434 runs, 4716 assertions
+- `bundle exec rails zeitwerk:check`
+- `bundle exec rails tailwindcss:build`
+- `git diff --check`
 
-The full test/zeitwerk/tailwind commands emitted existing local Windows warnings from VIPS modules, Ruby CSV default-gem deprecation, and Tempfile cleanup, but all commands exited successfully. Existing unrelated uncommitted changes in parser/controller/workbook test files and `codex_summary.md` were left untouched.
+The Rails commands still emit existing local vips/csv/Windows Tempfile warnings, but all exited successfully.

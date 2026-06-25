@@ -96,6 +96,31 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     assert_equal :no_transaction_table, error.code
   end
 
+  test "scanned OCR deposit osko descriptions prefer deposit direction" do
+    statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/02/2026 to 28/02/2026
+      Date Description Withdrawals Deposits Running Balance
+      16/02/2026 DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER $ 1,300.00 -$ 70,905.80
+      16/02/2026 DEPOSIT OSKO PAYMENT SAMPLE CUSTOMER $ 1,300.00 -$ 70,905.80
+      16/02/2026 OSKO DEPOSIT SAMPLE CUSTOMER $ 1,300.00 -$ 70,905.80
+      16/02/2026 WITHDRAWAL-OSKO PAYMENT SAMPLE SUPPLIER $ 1,300.00 -$ 70,905.80
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 4, rows.size
+
+    assert_equal "1300.00", rows.first.fetch("Amount")
+    assert_equal "1300.00", rows.second.fetch("Amount")
+    assert_equal "1300.00", rows.third.fetch("Amount")
+    assert_equal "-1300.00", rows.fourth.fetch("Amount")
+
+    assert_equal "-70905.80", rows.first.fetch("Balance")
+    assert_equal "-70905.80", rows.second.fetch("Balance")
+    assert_equal "-70905.80", rows.third.fetch("Balance")
+    assert_equal "-70905.80", rows.fourth.fetch("Balance")
+  end
+
   test "scanned OCR amount variants preserve transaction and balance signs" do
     statement = parse_statement_text(<<~TEXT)
       Bank Service Online
@@ -117,6 +142,29 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
 
     assert_equal "-10.00", rows.third.fetch("Amount")
     assert_equal "-64697.25", rows.third.fetch("Balance")
+  end
+
+  test "scanned OCR over precise decimal amounts are truncated to cents" do
+    statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/09/2025 to 30/11/2025
+      Date Description Withdrawals Deposits Running Balance
+      03/11/2025 LINE FEE $ 86.307 -$ 68,843.57
+      01/10/2025 MONTHLY PLAN FEE $ 10.000 -$ 70,225.78
+      23/09/2025 PAYMENT BY AUTHORITY TO SAMPLE FINANCE $ 745.650 -$ 69,340.15
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 3, rows.size
+
+    assert_equal "-86.30", rows.first.fetch("Amount")
+    assert_equal "-68843.57", rows.first.fetch("Balance")
+
+    assert_equal "-10.00", rows.second.fetch("Amount")
+    assert_equal "-70225.78", rows.second.fetch("Balance")
+
+    assert_equal "-745.65", rows.third.fetch("Amount")
+    assert_equal "-69340.15", rows.third.fetch("Balance")
   end
 
   test "scanned OCR descriptions remove orphan currency and punctuation noise" do
@@ -217,6 +265,40 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     assert_equal "-70084.50", row.fetch("Balance")
     refute_includes row.fetch("Description"), "Things you should know"
     refute_includes row.fetch("Description"), "Running balance means"
+  end
+
+  test "scanned OCR fixture imports deposit osko and decimal noise rows and skips footer" do
+    statement = parse_statement_text(<<~TEXT)
+      Service Online Page 1 of 2
+      Transactions
+      Date Description Withdrawals Deposits Running Balance
+      16/02/2026 DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER $ 1,300.00 -$ 70,905.80
+      03/11/2025 LINE FEE $ 86.307 -$ 68,843.57
+      Things you should know
+      1. Running balance means...
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 2, rows.size
+
+    deposit_row = rows.first
+    assert_equal "2026-02-16", deposit_row.fetch("Date")
+    assert_equal "DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER", deposit_row.fetch("Description")
+    assert_equal "1300.00", deposit_row.fetch("Amount")
+    assert_equal "-70905.80", deposit_row.fetch("Balance")
+
+    fee_row = rows.second
+    assert_equal "2025-11-03", fee_row.fetch("Date")
+    assert_equal "LINE FEE", fee_row.fetch("Description")
+    assert_equal "-86.30", fee_row.fetch("Amount")
+    assert_equal "-68843.57", fee_row.fetch("Balance")
+
+    descriptions = rows.map { |row| row.fetch("Description") }
+    descriptions.each do |description|
+      refute_match(/[$#{Regexp.escape(ocr_currency_marker)}]/, description)
+      refute_includes description, "Things you should know"
+      refute_includes description, "Running balance means"
+    end
   end
 
   test "production BAS TDK services do not contain fixture only synthetic statement tokens" do

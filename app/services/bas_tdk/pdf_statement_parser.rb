@@ -48,6 +48,7 @@ module BasTdk
     /ix
     OCR_CURRENCY_MARKER_SOURCE = "\\$\\u{00A7}".freeze
     AMOUNT_NUMBER_SOURCE = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}".freeze
+    OCR_AMOUNT_NUMBER_SOURCE = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2,4}".freeze
     AMOUNT_PATTERN = /
       (?<![A-Za-z0-9])
       (?:
@@ -55,6 +56,16 @@ module BasTdk
         -\s*[#{OCR_CURRENCY_MARKER_SOURCE}]?\s*#{AMOUNT_NUMBER_SOURCE} |
         [#{OCR_CURRENCY_MARKER_SOURCE}]\s*-?\s*#{AMOUNT_NUMBER_SOURCE} |
         #{AMOUNT_NUMBER_SOURCE}
+      )
+      (?![A-Za-z0-9])
+    /x
+    OCR_AMOUNT_PATTERN = /
+      (?<![A-Za-z0-9])
+      (?:
+        \(\s*-?\s*[#{OCR_CURRENCY_MARKER_SOURCE}]?\s*#{OCR_AMOUNT_NUMBER_SOURCE}\s*\) |
+        -\s*[#{OCR_CURRENCY_MARKER_SOURCE}]?\s*#{OCR_AMOUNT_NUMBER_SOURCE} |
+        [#{OCR_CURRENCY_MARKER_SOURCE}]\s*-?\s*#{OCR_AMOUNT_NUMBER_SOURCE} |
+        #{OCR_AMOUNT_NUMBER_SOURCE}
       )
       (?![A-Za-z0-9])
     /x
@@ -194,11 +205,15 @@ module BasTdk
         payment\s+to |
         payment\s+by\s+authority |
         transfer\s+to |
-        osko\s+payment |
         internet\s+banking\s+withdrawal |
         purchase |
         interest |
         payroll
+      )\b
+    /ix
+    SCANNED_GENERIC_DEBIT_DESCRIPTION_PATTERN = /
+      \b(
+        osko\s+payment
       )\b
     /ix
 
@@ -422,7 +437,7 @@ module BasTdk
       return true if first_text_index.blank?
 
       first_text_index >= [ header_shape.columns.dig(:description, :start).to_i - 8, 0 ].max ||
-        raw.scan(AMOUNT_PATTERN).any?
+        raw.scan(amount_pattern_for_header(header_shape)).any?
     end
 
     def parsed_rows(blocks, header_shape)
@@ -464,7 +479,7 @@ module BasTdk
     end
 
     def assign_amounts(block, header_shape)
-      candidates = amount_candidates(block)
+      candidates = amount_candidates(block, amount_pattern: amount_pattern_for_header(header_shape))
       return {} if candidates.blank?
 
       return assign_anz_business_extra_amounts(block, header_shape, candidates) if anz_business_extra_header?(header_shape)
@@ -499,10 +514,10 @@ module BasTdk
       assignments
     end
 
-    def amount_candidates(block)
+    def amount_candidates(block, amount_pattern: AMOUNT_PATTERN)
       block.lines.flat_map.with_index do |line, index|
         raw = line.fetch(:raw)
-        raw.to_enum(:scan, AMOUNT_PATTERN).map do
+        raw.to_enum(:scan, amount_pattern).map do
           match = Regexp.last_match
           amount = parse_amount(match[0])
           next if amount.blank?
@@ -673,11 +688,16 @@ module BasTdk
     def scanned_transaction_direction(description)
       credit = description.match?(SCANNED_CREDIT_DESCRIPTION_PATTERN)
       debit = description.match?(SCANNED_DEBIT_DESCRIPTION_PATTERN)
+      debit ||= description.match?(SCANNED_GENERIC_DEBIT_DESCRIPTION_PATTERN) unless credit
       return if credit && debit
       return :credit if credit
       return :debit if debit
 
       nil
+    end
+
+    def amount_pattern_for_header(header_shape)
+      scanned_debit_credit_balance_header?(header_shape) ? OCR_AMOUNT_PATTERN : AMOUNT_PATTERN
     end
 
     def description_text_without_amounts(block, candidates)
@@ -890,11 +910,11 @@ module BasTdk
 
     def parse_amount(value)
       text = value.to_s.squish
-      number_match = text.match(/#{AMOUNT_NUMBER_SOURCE}/)
+      number_match = text.match(/#{OCR_AMOUNT_NUMBER_SOURCE}/)
       return if number_match.blank?
 
       negative = text.include?("-") || text.match?(/\A\s*\(/)
-      normalized = number_match[0].delete(",")
+      normalized = number_match[0].delete(",").sub(/(\.\d{2})\d+\z/, "\\1")
       decimal = BigDecimal(normalized)
       negative ? -decimal.abs : decimal
     rescue ArgumentError
