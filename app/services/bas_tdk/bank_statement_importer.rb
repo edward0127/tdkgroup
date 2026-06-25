@@ -8,7 +8,7 @@ module BasTdk
     PDF_CONTENT_TYPES = %w[
       application/pdf
     ].freeze
-    SUPPORTED_UPLOAD_ERROR = "Only XLSX and readable bank statement PDF files are supported.".freeze
+    SUPPORTED_UPLOAD_ERROR = "Only XLSX and bank statement PDF files are supported.".freeze
 
     def self.source_type(filename:, content_type:)
       extension = File.extname(filename.to_s).downcase

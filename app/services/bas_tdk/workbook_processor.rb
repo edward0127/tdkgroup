@@ -72,7 +72,7 @@ module BasTdk
     rescue BasTdk::RawXlsxReader::ReadError => e
       persist_failed(workbook, [ "Bank statement Excel could not be read. Please upload a valid XLSX file." ], exception: e)
     rescue StandardError => e
-      persist_failed(workbook, [ "Bank statement file could not be read. Please upload a valid XLSX or readable bank statement PDF." ], exception: e)
+      persist_failed(workbook, [ "Bank statement file could not be read. Please upload a valid XLSX or bank statement PDF." ], exception: e)
     end
 
     private
@@ -120,8 +120,38 @@ module BasTdk
       BasTdk::BankStatementImporter.new(
         source_type: source_type,
         xlsx_parser: -> { parse_uploaded_workbook },
-        pdf_parser: -> { BasTdk::PdfStatementParser.new(path: uploaded_file_path).call }
+        pdf_parser: -> { parse_uploaded_pdf_statement }
       ).call
+    end
+
+    def parse_uploaded_pdf_statement
+      @ocr_metadata = { "ocr_attempted" => false }
+      BasTdk::PdfStatementParser.new(path: uploaded_file_path).call
+    rescue BasTdk::PdfStatementParser::ParseError => e
+      raise unless e.ocr_eligible?
+
+      ocr_result = BasTdk::LocalOcr.new(path: uploaded_file_path).call
+      @ocr_metadata = {
+        "ocr_attempted" => ocr_result.attempted,
+        "ocr_status" => ocr_result.status,
+        "ocr_parser" => "local_ocr"
+      }
+
+      unless ocr_result.success?
+        raise BasTdk::PdfStatementParser::ParseError.new(ocr_result.message, code: e.code)
+      end
+
+      begin
+        parsed = BasTdk::PdfStatementParser.new(text: ocr_result.text, source_name: "OCR text").call
+        @ocr_metadata = @ocr_metadata.merge(
+          "ocr_status" => "succeeded",
+          "ocr_row_count" => parsed.rows.size
+        )
+        parsed
+      rescue BasTdk::PdfStatementParser::ParseError
+        @ocr_metadata = @ocr_metadata.merge("ocr_status" => "failed")
+        raise BasTdk::PdfStatementParser::ParseError.new(BasTdk::LocalOcr::UNRELIABLE_MESSAGE, code: :no_transaction_table)
+      end
     end
 
     def parse_uploaded_workbook
@@ -367,7 +397,8 @@ module BasTdk
           row_count: parsed.rows.size,
           row_errors: [],
           processing_finished_at: nil,
-          processed_at: nil
+          processed_at: nil,
+          metadata: workbook.metadata.merge(processing_metadata)
         )
         workbook.save! if workbook.new_record?
 
@@ -403,7 +434,8 @@ module BasTdk
         row_count: 0,
         row_errors: messages,
         processing_finished_at: Time.current,
-        processed_at: Time.current
+        processed_at: Time.current,
+        metadata: workbook.metadata.merge(processing_metadata)
       )
       workbook.metadata = workbook.metadata.merge(
         "exception_class" => exception.class.name,
@@ -426,6 +458,13 @@ module BasTdk
       workbook.metadata = workbook.metadata.merge("processor" => self.class.name)
       workbook.metadata = workbook.metadata.merge("source_type" => source_type.to_s) if source_type.present?
       workbook.save!
+    end
+
+    def processing_metadata
+      metadata = {}
+      metadata["source_type"] = source_type.to_s if source_type.present?
+      metadata.merge!(@ocr_metadata) if @ocr_metadata.present?
+      metadata
     end
 
     def source_blank?

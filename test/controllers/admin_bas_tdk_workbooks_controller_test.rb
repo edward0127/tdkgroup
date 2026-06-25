@@ -45,6 +45,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_select "h2", text: "Current active bank statement", count: 0
     assert_select "h3", text: "Current active statement", count: 0
     assert_includes response.body, "Upload a bank statement Excel or PDF for review."
+    assert_includes response.body, "scanned PDFs can be processed when local OCR is available"
     assert_includes response.body, "download the latest Excel for bulk edits"
     refute_includes response.body, "Only XLSX files are supported. A successful upload becomes the active bank statement version"
     assert_select ".tdk-statement-action-row .tdk-upload-form"
@@ -327,7 +328,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "failed", scanned_pdf.status
     assert_equal "processed", active.reload.status
     assert_equal active.id, job.tdk_workbooks.active_processed.first.id
-    assert_includes scanned_pdf.processing_errors, BasTdk::PdfStatementParser::UNREADABLE_PDF_MESSAGE
+    assert_includes scanned_pdf.processing_errors, BasTdk::LocalOcr::DISABLED_MESSAGE
 
     get admin_bas_job_path(job)
 

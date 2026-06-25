@@ -4,7 +4,20 @@ require "pdf/reader"
 
 module BasTdk
   class PdfStatementParser
-    class ParseError < StandardError; end
+    class ParseError < StandardError
+      OCR_ELIGIBLE_CODES = %i[no_readable_text no_transaction_table].freeze
+
+      attr_reader :code
+
+      def initialize(message = nil, code: :unknown)
+        @code = code
+        super(message || BasTdk::PdfStatementParser::UNREADABLE_PDF_MESSAGE)
+      end
+
+      def ocr_eligible?
+        OCR_ELIGIBLE_CODES.include?(code)
+      end
+    end
 
     UNREADABLE_PDF_MESSAGE = "This PDF appears to be image-based or does not contain a readable transaction table. Please upload the original bank PDF with selectable text, or upload XLSX.".freeze
     SHEET_NAME = "PDF transaction table".freeze
@@ -35,6 +48,7 @@ module BasTdk
     /ix
     AMOUNT_PATTERN = /
       (?<![A-Za-z0-9])
+      -?
       \$?
       \(?
       -?
@@ -67,6 +81,12 @@ module BasTdk
         fee\s+summary |
         fees?\s+and\s+charges\s+summary |
         more\s+information |
+        need\s+help |
+        contact\s+us |
+        for\s+more\s+information |
+        visit\s+westpac |
+        terms\s+and\s+conditions |
+        privacy |
         important\s+information |
         thank\s+you\s+for\s+banking |
         use\s+online\s+mobile\s+or\s+tablet\s+banking |
@@ -109,6 +129,39 @@ module BasTdk
         electronic\s+debits
       )\b
     /ix
+    WESTPAC_SERVICE_ONLINE_CREDIT_DESCRIPTION_PATTERN = /
+      \b(
+        deposit |
+        direct\s+credit |
+        credit |
+        transfer\s+from |
+        osko\s+deposit |
+        payid\s+credit |
+        cash\s+deposit
+      )\b
+    /ix
+    WESTPAC_SERVICE_ONLINE_DEBIT_DESCRIPTION_PATTERN = /
+      \b(
+        withdrawal |
+        monthly\s+plan\s+fee |
+        fee |
+        charge |
+        debit |
+        direct\s+debit |
+        eftpos |
+        visa |
+        mastercard |
+        card |
+        atm |
+        bpay |
+        payment\s+to |
+        transfer\s+to |
+        osko\s+payment |
+        internet\s+banking\s+withdrawal |
+        purchase |
+        payroll
+      )\b
+    /ix
 
     ParsedStatement = Struct.new(
       :sheet_name,
@@ -121,8 +174,13 @@ module BasTdk
     HeaderShape = Struct.new(:line_number, :original_headers, :columns, keyword_init: true)
     TransactionBlock = Struct.new(:line_number, :lines, keyword_init: true)
 
-    def initialize(path:)
+    def initialize(path: nil, text: nil, source_name: nil)
+      raise ArgumentError, "path or text is required" if path.blank? && text.nil?
+      raise ArgumentError, "provide path or text, not both" if path.present? && !text.nil?
+
       @path = path
+      @text = text
+      @source_name = source_name
     end
 
     def call
@@ -134,11 +192,11 @@ module BasTdk
         { raw: scrub_extracted_blank_tokens(original_raw), original_raw: original_raw, line_number: line_number }
       end
       header_shape = detect_header_shape(lines)
-      raise ParseError, UNREADABLE_PDF_MESSAGE if header_shape.blank?
+      raise_parse_error(:no_transaction_table) if header_shape.blank?
 
       blocks = transaction_blocks(lines, header_shape)
       rows = parsed_rows(blocks, header_shape)
-      raise ParseError, UNREADABLE_PDF_MESSAGE if rows.blank?
+      raise_parse_error(:no_transaction_table) if rows.blank?
 
       processed_headers = BASE_HEADERS.dup
       processed_headers << "Balance" if header_shape.columns.key?(:balance) || rows.any? { |row| row.fetch(:data)["Balance"].present? }
@@ -151,22 +209,37 @@ module BasTdk
         processed_headers: processed_headers,
         rows: rows
       )
-    rescue PDF::Reader::EncryptedPDFError, PDF::Reader::MalformedPDFError, PDF::Reader::UnsupportedFeatureError
-      raise ParseError, UNREADABLE_PDF_MESSAGE
+    rescue PDF::Reader::EncryptedPDFError
+      raise_parse_error(:encrypted_pdf)
+    rescue PDF::Reader::MalformedPDFError, PDF::Reader::UnsupportedFeatureError
+      raise_parse_error(:malformed_pdf)
     end
 
     private
 
-    attr_reader :path, :statement_periods, :fallback_years
+    attr_reader :path, :text, :source_name, :statement_periods, :fallback_years
 
     def extract_text
+      return extract_supplied_text if text_source?
+
       File.open(path, "rb") do |file|
         reader = PDF::Reader.new(file)
         text = reader.pages.map(&:text).join("\n\n").scrub
-        raise ParseError, UNREADABLE_PDF_MESSAGE if text.squish.blank?
+        raise_parse_error(:no_readable_text) if text.squish.blank?
 
         { text: text, page_count: reader.page_count }
       end
+    end
+
+    def extract_supplied_text
+      extracted_text = text.to_s.scrub
+      raise_parse_error(:no_readable_text) if extracted_text.squish.blank?
+
+      { text: extracted_text, page_count: nil }
+    end
+
+    def text_source?
+      !text.nil?
     end
 
     def detect_header_shape(lines)
@@ -346,6 +419,12 @@ module BasTdk
       candidates = amount_candidates(block)
       return {} if candidates.blank?
 
+      if westpac_service_online_ocr_header?(header_shape)
+        service_online_assignments = assign_westpac_service_online_ocr_amounts(block, candidates)
+        return service_online_assignments if service_online_assignments.present?
+        return {}
+      end
+
       return assign_anz_business_extra_amounts(block, header_shape, candidates) if anz_business_extra_header?(header_shape)
 
       assignments = assign_amounts_by_position(candidates, header_shape)
@@ -478,6 +557,51 @@ module BasTdk
       return assignments[:amount] if assignments[:amount].present?
 
       nil
+    end
+
+    def westpac_service_online_ocr_header?(header_shape)
+      normalize(header_shape.columns.dig(:description, :label)) == "description" &&
+        normalize(header_shape.columns.dig(:debit, :label)) == "withdrawals" &&
+        normalize(header_shape.columns.dig(:credit, :label)) == "deposits" &&
+        normalize(header_shape.columns.dig(:balance, :label)) == "running balance"
+    end
+
+    def assign_westpac_service_online_ocr_amounts(block, candidates)
+      return {} unless candidates.size == 2
+
+      transaction_candidate = candidates.first
+      balance_candidate = candidates.second
+      description = description_text_without_amounts(block, candidates)
+      direction = westpac_service_online_transaction_direction(description)
+      return {} if direction.blank?
+
+      {
+        direction => transaction_candidate.fetch(:amount),
+        balance: balance_candidate.fetch(:amount)
+      }
+    end
+
+    def westpac_service_online_transaction_direction(description)
+      credit = description.match?(WESTPAC_SERVICE_ONLINE_CREDIT_DESCRIPTION_PATTERN)
+      debit = description.match?(WESTPAC_SERVICE_ONLINE_DEBIT_DESCRIPTION_PATTERN)
+      return if credit && debit
+      return :credit if credit
+      return :debit if debit
+
+      nil
+    end
+
+    def description_text_without_amounts(block, candidates)
+      first_line_date_end = block.lines.first.fetch(:raw).match(DATE_START_PATTERN)&.end(0).to_i
+
+      block.lines.map.with_index do |line, index|
+        raw = line.fetch(:raw).dup
+        start_index = index.zero? ? first_line_date_end : 0
+        candidates.select { |candidate| candidate.fetch(:line_index) == index }.each do |candidate|
+          raw[candidate.fetch(:start)...candidate.fetch(:end)] = " " * (candidate.fetch(:end) - candidate.fetch(:start))
+        end
+        raw[start_index..].to_s.squish
+      end.reject(&:blank?).join(" ").squish
     end
 
     def description_from_block(block, first_line_date_end, assignments)
@@ -677,6 +801,10 @@ module BasTdk
 
     def normalize(value)
       value.to_s.downcase.gsub(/[^a-z0-9]+/, " ").squish
+    end
+
+    def raise_parse_error(code)
+      raise ParseError.new(UNREADABLE_PDF_MESSAGE, code: code)
     end
 
     def description_header?(normalized)

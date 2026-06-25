@@ -64,6 +64,18 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 # Final stage for app image
 FROM base
 
+# Install OCR runtime packages for scanned/image-only bank statement PDFs.
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+      ocrmypdf \
+      tesseract-ocr \
+      tesseract-ocr-eng \
+      tesseract-ocr-osd \
+      ghostscript \
+      qpdf \
+      poppler-utils && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
 # Run and own only the runtime files as a non-root user for security
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \

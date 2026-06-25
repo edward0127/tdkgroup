@@ -5,6 +5,97 @@ require_relative "../support/synthetic_pdf_helper"
 class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
   include SyntheticPdfHelper
 
+  test "parses supplied transaction text without a PDF file" do
+    statement = parse_statement_text(<<~TEXT)
+      Westpac Business One
+      Statement period 05 December 2025 to 05 January 2026
+      DATE       TRANSACTION DESCRIPTION                                      DEBIT              CREDIT             BALANCE
+      08/12/25   Deposit-Osko Payment 2234694 Ccon Group Pty Ltd                                  5,049.00           6,696.81
+    TEXT
+
+    assert_equal "PDF transaction table", statement.sheet_name
+    assert_equal 1, statement.rows.size
+    row = statement.rows.first.fetch(:data)
+    assert_equal "2025-12-08", row.fetch("Date")
+    assert_equal "5049.00", row.fetch("Amount")
+    assert_equal "6696.81", row.fetch("Balance")
+  end
+
+  test "parse errors expose OCR eligible no text and no table reasons" do
+    blank_error = assert_raises(BasTdk::PdfStatementParser::ParseError) do
+      BasTdk::PdfStatementParser.new(text: "   ").call
+    end
+
+    assert_equal :no_readable_text, blank_error.code
+    assert blank_error.ocr_eligible?
+
+    no_table_error = assert_raises(BasTdk::PdfStatementParser::ParseError) do
+      BasTdk::PdfStatementParser.new(text: "Statement summary only\nNo transactions here").call
+    end
+
+    assert_equal :no_transaction_table, no_table_error.code
+    assert no_table_error.ocr_eligible?
+  end
+
+  test "Westpac Service Online OCR text imports deposit withdrawal and running balance rows" do
+    statement = parse_statement_text(<<~TEXT)
+      Westpac Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      Opening Balance -$69,597.25
+      18/05/2026 DEPOSIT CAMBERWELL VIC $2,000.00 -$66,187.25
+      01/05/2026 MONTHLY PLAN FEE $10.00 -$69,587.25
+      31/05/2026 CLOSING BALANCE -$66,187.25
+      Need help? Contact us using Westpac Online.
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 2, rows.size
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], statement.processed_headers
+
+    deposit_row, withdrawal_row = rows
+    assert_equal "2026-05-18", deposit_row.fetch("Date")
+    assert_equal "DEPOSIT CAMBERWELL VIC", deposit_row.fetch("Description")
+    assert_equal "2000.00", deposit_row.fetch("Amount")
+    assert_equal "-66187.25", deposit_row.fetch("Balance")
+
+    assert_equal "2026-05-01", withdrawal_row.fetch("Date")
+    assert_equal "MONTHLY PLAN FEE", withdrawal_row.fetch("Description")
+    assert_equal "-10.00", withdrawal_row.fetch("Amount")
+    assert_equal "-69587.25", withdrawal_row.fetch("Balance")
+  end
+
+  test "Westpac Service Online OCR text joins noisy multiline descriptions conservatively" do
+    statement = parse_statement_text(<<~TEXT)
+      Westpac Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      18/05/2026 DEPOSIT
+                 CAMBERWELL VIC
+                 $2,000.00 -$66,187.25
+      Visit westpac.com.au for more information.
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 1, rows.size
+    assert_equal "DEPOSIT CAMBERWELL VIC", rows.first.fetch("Description")
+    assert_equal "2000.00", rows.first.fetch("Amount")
+    assert_equal "-66187.25", rows.first.fetch("Balance")
+  end
+
+  test "Westpac Service Online OCR text rejects ambiguous amount direction" do
+    error = assert_raises(BasTdk::PdfStatementParser::ParseError) do
+      parse_statement_text(<<~TEXT)
+        Westpac Service Online
+        Statement period 01/05/2026 to 31/05/2026
+        Date Description Withdrawals Deposits Running Balance
+        18/05/2026 CUSTOMER REFERENCE ABC $2,000.00 -$66,187.25
+      TEXT
+    end
+
+    assert_equal :no_transaction_table, error.code
+  end
+
   test "Westpac LT page 2 boundaries stop before closing balance fee summary and footer text" do
     statement = parse_pdf_text(<<~TEXT)
       Westpac Business One
@@ -120,6 +211,10 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
   end
 
   private
+
+  def parse_statement_text(text)
+    BasTdk::PdfStatementParser.new(text: text, source_name: "synthetic OCR text").call
+  end
 
   def parse_pdf_text(text)
     path = Rails.root.join("tmp", "#{SecureRandom.hex}-tdk-parser-test.pdf")
