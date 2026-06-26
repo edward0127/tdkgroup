@@ -46,6 +46,7 @@ module BasTdk
       )
       \b
     /ix
+    MONTH_NAME_DATE_CONTINUATION_PATTERN = /\A\s*\d{1,2}\s+(?:#{MONTH_PATTERN})\s+\d{2,4}\b/i
     OCR_CURRENCY_MARKER_SOURCE = "\\$\\u{00A7}".freeze
     AMOUNT_NUMBER_SOURCE = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2}".freeze
     OCR_AMOUNT_NUMBER_SOURCE = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2,4}".freeze
@@ -69,7 +70,9 @@ module BasTdk
       )
       (?![A-Za-z0-9])
     /x
-    OCR_DESCRIPTION_NOISE_TOKEN_PATTERN = /\A(?:-?[#{OCR_CURRENCY_MARKER_SOURCE}]+|[~|"'\(\)\/.:-]+)\z/
+    OCR_DESCRIPTION_NOISE_TOKEN_PATTERN = /\A(?:-?[#{OCR_CURRENCY_MARKER_SOURCE}]+|[^\p{Alnum}]+)\z/u
+    OCR_DESCRIPTION_EDGE_NOISE_PATTERN = /\A[_~|"'\\\/\[\]\(\).:;]+|[_~|"'\\\/\[\]\(\).:;]+\z/
+    OCR_SPLIT_UPPERCASE_COMPLETIONS = %w[VIC NSW QLD ACT TAS].freeze
     EXTRACTED_BLANK_TOKEN_PATTERN = /(?<![A-Za-z0-9])blank(?![A-Za-z0-9])/i
     BLANK_TOKEN_SOURCE = EXTRACTED_BLANK_TOKEN_PATTERN.source
     AMOUNT_TOKEN_SOURCE = AMOUNT_PATTERN.source
@@ -82,12 +85,18 @@ module BasTdk
       Regexp::IGNORECASE | Regexp::EXTENDED
     )
     INLINE_STOP_BOUNDARY_PATTERN = /
-      \b(
+      (?:
+        \b(?:https?:\/\/\S+|www\.\S+) |
+        \bprinted\s*: |
+        \bpage\s+\d+\s+of\s+\d+\b |
+        \b(
         closing\s+balance |
         balance\s+carried\s+forward |
         convenience\s+at\s+your\s+fingertips |
         transaction\s+fee\s+summary |
         fees?\s+and\s+charges\s+summary |
+        gsso |
+        intranet |
         more\s+information |
         need\s+help |
         contact\s+us |
@@ -101,22 +110,28 @@ module BasTdk
         running\s+balance\s+means |
         this\s+page\s+is\s+current\s+as\s+at |
         not\s+an\s+official\s+statement |
+        service\s+online |
         service\s+online\s+page |
         use\s+online\s+mobile\s+or\s+tablet\s+banking |
         to\s+reconcile\s+your\s+transaction\s+fee\s+summary |
         fees?\s+charged |
         complaints |
         totals?\s+at\s+end\s+of\s+(?:page|period)
-      )\b
+        )\b
+      )
     /ix
     TABLE_STOP_NORMALIZED_PATTERN = /
       \b(
+        https? |
+        www |
         closing\s+balance |
         balance\s+carried\s+forward |
         convenience\s+at\s+your\s+fingertips |
         transaction\s+fee\s+summary |
         fee\s+summary |
         fees?\s+and\s+charges\s+summary |
+        gsso |
+        intranet |
         more\s+information |
         need\s+help |
         contact\s+us |
@@ -130,7 +145,10 @@ module BasTdk
         running\s+balance\s+means |
         this\s+page\s+is\s+current\s+as\s+at |
         not\s+an\s+official\s+statement |
+        printed |
+        service\s+online |
         service\s+online\s+page |
+        page\s+\d+\s+of |
         use\s+online\s+mobile\s+or\s+tablet\s+banking |
         to\s+reconcile\s+your\s+transaction\s+fee\s+summary |
         fee\s+s\s+charged\s+to\s+account |
@@ -147,6 +165,11 @@ module BasTdk
     /ix
     SKIP_LINE_NORMALIZED_PATTERN = /
       \A(
+        https? |
+        www |
+        gsso |
+        intranet |
+        printed |
         page\s+\d+ |
         statement\s+opening\s+balance |
         opening\s+balance |
@@ -404,14 +427,15 @@ module BasTdk
         next if skip_line?(squished)
 
         if raw.match?(DATE_START_PATTERN)
-          if non_transaction_dated_line?(raw)
+          if current.present? && date_starting_continuation_line?(raw, header_shape)
+            current.lines << line
+          elsif non_transaction_dated_line?(raw)
             blocks << current if current.present?
             current = nil
-            next
+          else
+            blocks << current if current.present?
+            current = TransactionBlock.new(line_number: line.fetch(:line_number), lines: [ line ])
           end
-
-          blocks << current if current.present?
-          current = TransactionBlock.new(line_number: line.fetch(:line_number), lines: [ line ])
         elsif current.present? && continuation_line?(raw, header_shape)
           current.lines << line
         end
@@ -438,6 +462,12 @@ module BasTdk
 
       first_text_index >= [ header_shape.columns.dig(:description, :start).to_i - 8, 0 ].max ||
         raw.scan(amount_pattern_for_header(header_shape)).any?
+    end
+
+    def date_starting_continuation_line?(raw, header_shape)
+      return false unless raw.match?(MONTH_NAME_DATE_CONTINUATION_PATTERN)
+
+      raw.scan(amount_pattern_for_header(header_shape)).blank?
     end
 
     def parsed_rows(blocks, header_shape)
@@ -716,16 +746,42 @@ module BasTdk
     def description_from_block(block, first_line_date_end, assignments, header_shape)
       assigned_candidates = assigned_amount_candidates(block, assignments)
 
-      description = block.lines.map.with_index do |line, index|
+      fragments = block.lines.map.with_index do |line, index|
         raw = line.fetch(:raw).dup
         start_index = index.zero? ? first_line_date_end : 0
         assigned_candidates.select { |candidate| candidate.fetch(:line_index) == index }.each do |candidate|
           raw[candidate.fetch(:start)...candidate.fetch(:end)] = " " * (candidate.fetch(:end) - candidate.fetch(:start))
         end
         raw[start_index..].to_s.squish
-      end.reject(&:blank?).join(" ").squish
+      end.reject(&:blank?)
+
+      description = join_description_fragments(fragments)
 
       ocr_description_cleanup_header?(header_shape) ? clean_ocr_description(description) : description
+    end
+
+    def join_description_fragments(fragments)
+      fragments.each_with_object(+"") do |fragment, description|
+        if description.blank?
+          description << fragment
+        else
+          description.replace(append_description_fragment(description, fragment))
+        end
+      end.squish
+    end
+
+    def append_description_fragment(description, fragment)
+      day_match = description.match(/(?<head>.*(?:\A|\s))(?<tens>[1-3])\z/)
+      continuation_match = fragment.match(/\A(?<ones>\d)\s+(?<month>#{MONTH_PATTERN})\s+(?<year>\d{2,4})(?<rest>(?:\s+.*)?)\z/i)
+
+      if day_match.present? && continuation_match.present?
+        combined_day = "#{day_match[:tens]}#{continuation_match[:ones]}".to_i
+        if combined_day.between?(10, 31)
+          return "#{day_match[:head]}#{combined_day} #{continuation_match[:month]} #{continuation_match[:year]}#{continuation_match[:rest]}".squish
+        end
+      end
+
+      "#{description} #{fragment}".squish
     end
 
     def assigned_amount_candidates(block, assignments)
@@ -738,14 +794,81 @@ module BasTdk
     end
 
     def clean_ocr_description(description)
-      description.to_s.squish.split(/\s+/).filter_map do |token|
-        cleaned = token.to_s
-        cleaned = cleaned.gsub(/\A[~|"']+|[~|"']+\z/, "")
-        cleaned = cleaned.gsub(/\A[:.]+|[:.]+\z/, "")
+      text = truncate_ocr_description_at_footer(description.to_s.squish)
+      text = repair_trailing_split_ocr_word(text)
+      text = text.split(/\s+/).filter_map do |token|
+        cleaned = clean_ocr_description_token(token)
         next if cleaned.blank? || cleaned.match?(OCR_DESCRIPTION_NOISE_TOKEN_PATTERN)
 
         cleaned
       end.join(" ").squish
+      text = strip_trailing_single_character_ocr_artifact(text)
+      strip_trailing_attached_ocr_digit(text)
+    end
+
+    def truncate_ocr_description_at_footer(description)
+      match = description.match(INLINE_STOP_BOUNDARY_PATTERN)
+      return description if match.blank?
+
+      description[0...match.begin(0)].to_s.rstrip
+    end
+
+    def clean_ocr_description_token(token)
+      token.to_s.gsub(OCR_DESCRIPTION_EDGE_NOISE_PATTERN, "")
+    end
+
+    def repair_trailing_split_ocr_word(description)
+      text = description.to_s.squish
+      match = text.match(/(?<head>.*(?:\A|\s))(?<prefix>[A-Z]{2,4})\s+(?<tail>.+)\z/u)
+      return text if match.blank?
+
+      tail = match[:tail].to_s
+      return text unless tail.match?(/[\[\]]/)
+
+      suffix = trailing_split_ocr_suffix(match[:prefix], tail)
+      return text if suffix.blank?
+
+      "#{match[:head]}#{match[:prefix]}#{suffix}".squish
+    end
+
+    def trailing_split_ocr_suffix(prefix, tail)
+      standalone_letters = tail.scan(/(?<![A-Za-z])([A-Za-z])(?![A-Za-z])/).flatten
+      return standalone_letters.last.upcase if standalone_letters.one?
+
+      return unless tail.match?(/[^\x00-\x7F]/)
+      return if tail.scan(/[A-Za-z]+/).any? { |word| word.length > 5 }
+
+      # Keep noisy multi-letter fallbacks to common short location abbreviations.
+      tail.scan(/[A-Za-z]/).each do |letter|
+        candidate = "#{prefix}#{letter}".upcase
+        return letter.upcase if OCR_SPLIT_UPPERCASE_COMPLETIONS.include?(candidate)
+      end
+
+      nil
+    end
+
+    def strip_trailing_attached_ocr_digit(description)
+      tokens = description.to_s.squish.split(/\s+/)
+      return description if tokens.blank?
+
+      match = tokens.last.to_s.match(/\A(?<word>\p{Alpha}{3,})(?<digit>\d)\z/u)
+      return description if match.blank?
+      return description if tokens[-2].to_s.match?(/\A(ref|reference|id|invoice|inv|account|acct|no|number)\z/i)
+
+      tokens[-1] = match[:word]
+      tokens.join(" ")
+    end
+
+    def strip_trailing_single_character_ocr_artifact(description)
+      tokens = description.to_s.squish.split(/\s+/)
+      return description if tokens.size < 2
+
+      trailing = tokens.last.to_s
+      return description unless trailing.match?(/\A\p{Alpha}\z/u)
+      return description if trailing.match?(/\A[A-Z]\z/)
+
+      tokens.pop
+      tokens.join(" ")
     end
 
     def ocr_description_cleanup_header?(header_shape)
@@ -759,10 +882,20 @@ module BasTdk
     def truncate_inline_stop_boundary(line)
       raw = line.fetch(:raw).to_s
       match = raw.match(INLINE_STOP_BOUNDARY_PATTERN)
-      return [ line, false ] if match.blank? || match.begin(0).zero?
+      return [ line, false ] if match.blank?
 
       original_raw = line.fetch(:original_raw).to_s
       original_match = original_raw.match(INLINE_STOP_BOUNDARY_PATTERN)
+      if match.begin(0).zero?
+        return [
+          line.merge(
+            raw: "",
+            original_raw: original_match.present? && original_match.begin(0).zero? ? "" : original_raw
+          ),
+          true
+        ]
+      end
+
       [
         line.merge(
           raw: raw[0...match.begin(0)].to_s.rstrip,

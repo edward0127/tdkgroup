@@ -185,6 +185,104 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     ], descriptions
   end
 
+  test "scanned OCR descriptions truncate trailing footer URLs" do
+    https_statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      01/05/2026 LINE FEE $ 10.00 -$ 70,000.00 https://example.internal/path 25/05/2026
+    TEXT
+
+    https_row = https_statement.rows.first.fetch(:data)
+    assert_equal "LINE FEE", https_row.fetch("Description")
+    assert_equal "-10.00", https_row.fetch("Amount")
+
+    www_statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      01/05/2026 MONTHLY PLAN FEE $ 10.00 -$ 70,000.00 www.example.com/footer
+    TEXT
+
+    www_row = www_statement.rows.first.fetch(:data)
+    assert_equal "MONTHLY PLAN FEE", www_row.fetch("Description")
+    assert_equal "-10.00", www_row.fetch("Amount")
+  end
+
+  test "scanned OCR descriptions remove trailing artefacts without stripping references" do
+    statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      18/05/2026 DEPOSIT SAMPLE VIC1 $ 2,000.00 -$ 66,187.25
+      19/05/2026 DEPOSIT SAMPLE LOCATION s $ 3.00 -$ 66,184.25
+      20/05/2026 LINE FEE _ $ 10.00 -$ 66,194.25
+      21/05/2026 MONTHLY PLAN FEE . $ 10.00 -$ 66,204.25
+      22/05/2026 TRANSFER DEPOSIT 0000000 AT LOCATION VI [ c $ 25.00 -$ 66,179.25
+      23/05/2026 TRANSFER DEPOSIT 0000000 AT LOCATION VI [ #{e_acute} pcos) $ 30.00 -$ 66,149.25
+      24/05/2026 TRANSFER DEPOSIT SAMPLE REF A $ 40.00 -$ 66,109.25
+      25/05/2026 DEPOSIT PAYMENT REF ABC123 $ 50.00 -$ 66,059.25
+      26/05/2026 DEPOSIT PAYMENT REF 12345 $ 60.00 -$ 65,999.25
+    TEXT
+
+    descriptions = statement.rows.map { |row| row.fetch(:data).fetch("Description") }
+    assert_equal [
+      "DEPOSIT SAMPLE VIC",
+      "DEPOSIT SAMPLE LOCATION",
+      "LINE FEE",
+      "MONTHLY PLAN FEE",
+      "TRANSFER DEPOSIT 0000000 AT LOCATION VIC",
+      "TRANSFER DEPOSIT 0000000 AT LOCATION VIC",
+      "TRANSFER DEPOSIT SAMPLE REF A",
+      "DEPOSIT PAYMENT REF ABC123",
+      "DEPOSIT PAYMENT REF 12345"
+    ], descriptions
+  end
+
+  test "scanned OCR date starting lines without amounts continue the active description" do
+    statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/02/2026 to 28/02/2026
+      Date Description Withdrawals Deposits Running Balance
+      16/02/2026 DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER 1 $ 1,300.00 -$ 70,905.80
+      5 FEB 2026
+      17/02/2026 DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER $ 100.00 -$ 70,805.80
+      5 FEB 2026
+      5 FEB 2026 LINE FEE $ 10.00 -$ 70,815.80
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 3, rows.size
+    assert_equal "DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER 15 FEB 2026", rows.first.fetch("Description")
+    assert_equal "1300.00", rows.first.fetch("Amount")
+    assert_equal "DEPOSIT-OSKO PAYMENT SAMPLE CUSTOMER 5 FEB 2026", rows.second.fetch("Description")
+    assert_equal "100.00", rows.second.fetch("Amount")
+    assert_equal "2026-02-05", rows.third.fetch("Date")
+    assert_equal "LINE FEE", rows.third.fetch("Description")
+    assert_equal "-10.00", rows.third.fetch("Amount")
+  end
+
+  test "scanned OCR footer metadata is not appended to the final transaction" do
+    statement = parse_statement_text(<<~TEXT)
+      Service Online Page 1 of 1
+      Transactions
+      Date Description Withdrawals Deposits Running Balance
+      01/09/2025 LINE FEE $ 86.30 -$ 70,084.50 Printed: 25/05/2026
+      gsso intranet service online
+      page 1 of 1
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 1, rows.size
+
+    row = rows.first
+    assert_equal "LINE FEE", row.fetch("Description")
+    refute_includes row.fetch("Description"), "Printed"
+    refute_includes row.fetch("Description"), "gsso"
+    refute_includes row.fetch("Description"), "service online"
+    refute_includes row.fetch("Description"), "page 1 of"
+  end
+
   test "scanned OCR fuzzy headers require statement context when description is omitted" do
     misspelled = parse_statement_text(<<~TEXT)
       Bank Service Online
@@ -434,6 +532,10 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
 
   def ocr_currency_marker
     "\u00A7"
+  end
+
+  def e_acute
+    "\u00E9"
   end
 
   def row_for(rows, date:, description:)

@@ -246,6 +246,7 @@ module Admin
         return "tdk-workbook-col--date" if normalized.include?("date")
         return "tdk-workbook-col--category" if normalized == "category" || normalized.include?("category")
         return "tdk-workbook-col--gst" if normalized == "gst" || normalized.include?("gst")
+        return "tdk-workbook-col--balance" if normalized == "balance" || normalized.include?("running balance")
         return "tdk-workbook-col--amount" if normalized.match?(/\b(amount|debit|credit|net|gross|balance|paid)\b/)
         return "tdk-workbook-col--description" if normalized.include?("description")
         return "tdk-workbook-col--details" if normalized.match?(/\b(details|narration|reference|memo)\b/)

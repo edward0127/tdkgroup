@@ -234,6 +234,14 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_select "input[name='rows[#{first_row.id}][GST]']"
     assert_select "input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount"
     assert_includes response.body, "VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING / EFFECTIVE DATE 05 MAR 2026"
+    html = Nokogiri::HTML(response.body)
+    balance_header = html.at_css("th.tdk-workbook-col--balance")
+    assert balance_header, "expected Balance header to use the dedicated Balance column class"
+    assert_includes balance_header.text.squish, "Balance"
+    amount_header = html.css("th.tdk-workbook-col--amount").find { |header| header.text.squish.include?("Amount") }
+    assert amount_header, "expected Amount header to keep the generic amount column class"
+    assert_nil html.css("th.tdk-workbook-col--amount").find { |header| header.text.squish.include?("Balance") }
+    assert html.at_css("td.tdk-workbook-col--balance input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount")
 
     get admin_bas_job_path(job, sort: "Balance", direction: "asc", per_page: 10)
     assert_equal [ 7, 5, 10 ], visible_source_rows(response.body)
@@ -773,6 +781,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-status-detail\s*\{[^}]*background: #f8fafc;/m, css)
     assert_match(/\.tdk-status-detail--wide\s*\{[^}]*grid-column: 1 \/ -1;/m, css)
     assert_match(/\.tdk-workbook-table\s*\{[^}]*width: 100%;[^}]*table-layout: fixed;[^}]*font-size: 0\.875rem/m, css)
+    assert_match(/\.tdk-workbook-table\s*\{[^}]*min-width: 78rem/m, css)
     assert_no_match(/\.tdk-workbook-table\s*\{[^}]*width: max-content/m, css)
     assert_match(/\.tdk-workbook-table-wrap\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: visible/m, css)
     assert_no_match(/\.tdk-workbook-table-wrap\s*\{[^}]*max-height/m, css)
@@ -786,7 +795,10 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 14%;[^}]*min-width: 9\.75rem/m, css)
     assert_match(/\.tdk-workbook-col--category\s*\{[^}]*width: 14%;[^}]*min-width: 9\.5rem/m, css)
     assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 10\.5%/m, css)
+    assert_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 12rem;[^}]*min-width: 11rem/m, css)
+    assert_no_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 10\.5%/m, css)
     assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 29%/m, css)
+    assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--amount,\s*\.tdk-workbook-table th\.tdk-workbook-col--balance\s*\{[^}]*text-align: right/m, css)
     assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--date,\s*\.tdk-workbook-table \.tdk-workbook-cell--date\s*\{[^}]*padding-right: 0\.95rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--date\s*\{[^}]*min-width: 8\.5rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--amount\s*\{[^}]*text-align: right/m, css)
