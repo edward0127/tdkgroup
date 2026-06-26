@@ -25,11 +25,12 @@
     </div>
 
     <div class="tdk-workbook-table-wrap">
+      <% column_width_styles = @active_tdk_workbook.processed_headers.index_with { |header| tdk_workbook_column_width_style(header, @tdk_workbook_rows) } %>
       <table class="admin-table tdk-workbook-table">
         <thead>
           <tr>
             <% @active_tdk_workbook.processed_headers.each do |header| %>
-              <th class="<%= tdk_workbook_column_class(header) %>">
+              <%= tag.th class: tdk_workbook_column_class(header), style: column_width_styles[header] do %>
                 <% if tdk_workbook_sortable_header?(header) %>
                   <%= link_to admin_bas_job_path(@job, tdk_workbook_sort_link_params(header)),
                         class: "tdk-workbook-sort-link",
@@ -41,7 +42,7 @@
                 <% else %>
                   <%= header %>
                 <% end %>
-              </th>
+              <% end %>
             <% end %>
           </tr>
         </thead>
@@ -54,6 +55,7 @@
                 <% review_field = tdk_workbook_review_field?(header) %>
                 <% date_field = tdk_workbook_date_header?(header) %>
                 <% amount_field = tdk_workbook_amount_header?(header) %>
+                <% balance_field = tdk_workbook_balance_header?(header) %>
                 <% multiline_field = !date_field && !amount_field && column_class.in?([ "tdk-workbook-col--description", "tdk-workbook-col--details" ]) %>
                 <% input_classes = [
                   "tdk-workbook-cell-input",
@@ -61,14 +63,15 @@
                   ("is-empty-review-field" if review_field && value.blank?),
                   ("tdk-workbook-cell-input--textarea" if multiline_field),
                   ("tdk-workbook-cell-input--date" if date_field),
-                  ("tdk-workbook-cell-input--amount" if amount_field)
+                  ("tdk-workbook-cell-input--amount" if amount_field),
+                  ("tdk-workbook-cell-input--balance" if balance_field)
                 ].compact.join(" ") %>
                 <% cell_classes = [
                   column_class,
                   ("tdk-workbook-cell--date" if date_field),
                   ("tdk-workbook-review-cell" if review_field)
                 ].compact.join(" ") %>
-                <td class="<%= cell_classes %>">
+                <%= tag.td class: cell_classes, style: column_width_styles[header] do %>
                   <% if date_field %>
                     <%= date_field_tag "rows[#{row.id}][#{header}]",
                           tdk_workbook_date_input_value(value),
@@ -94,7 +97,7 @@
                           class: input_classes,
                           aria: { label: "#{header} for source row #{row.source_row_number}" } %>
                   <% end %>
-                </td>
+                <% end %>
               <% end %>
             </tr>
           <% end %>

@@ -246,12 +246,25 @@ module Admin
         return "tdk-workbook-col--date" if normalized.include?("date")
         return "tdk-workbook-col--category" if normalized == "category" || normalized.include?("category")
         return "tdk-workbook-col--gst" if normalized == "gst" || normalized.include?("gst")
-        return "tdk-workbook-col--balance" if normalized == "balance" || normalized.include?("running balance")
+        return "tdk-workbook-col--balance" if tdk_workbook_balance_header?(header)
         return "tdk-workbook-col--amount" if normalized.match?(/\b(amount|debit|credit|net|gross|balance|paid)\b/)
         return "tdk-workbook-col--description" if normalized.include?("description")
         return "tdk-workbook-col--details" if normalized.match?(/\b(details|narration|reference|memo)\b/)
 
         "tdk-workbook-col--medium"
+      end
+
+      def tdk_workbook_column_width_style(header, rows)
+        return unless tdk_workbook_balance_header?(header)
+
+        max_length = rows.to_a.map { |row| tdk_workbook_amount_input_value(row.row_data[header]).to_s.length }.max.to_i
+        ch = [[ max_length + 3, 13 ].max, 22 ].min
+        "--tdk-balance-input-width: #{ch}ch;"
+      end
+
+      def tdk_workbook_balance_header?(header)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        normalized == "balance" || normalized.include?("running balance")
       end
 
       def tdk_workbook_review_field?(header)

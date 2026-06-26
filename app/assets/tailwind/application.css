@@ -2366,7 +2366,7 @@ form.is-submitting {
 
 .tdk-workbook-table {
   width: 100%;
-  min-width: 78rem;
+  min-width: 92rem;
   table-layout: fixed;
   font-size: 0.875rem;
 }
@@ -2418,8 +2418,8 @@ form.is-submitting {
 }
 
 .tdk-workbook-col--balance {
-  width: 12rem;
-  min-width: 11rem;
+  width: var(--tdk-balance-input-width, 14ch);
+  min-width: var(--tdk-balance-input-width, 14ch);
 }
 
 .tdk-workbook-col--description {
@@ -2476,6 +2476,11 @@ form.is-submitting {
 .tdk-workbook-table .tdk-workbook-cell-input--amount {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.tdk-workbook-col--balance .tdk-workbook-cell-input,
+.tdk-workbook-table .tdk-workbook-cell-input--balance {
+  min-width: var(--tdk-balance-input-width, 14ch);
 }
 
 .tdk-workbook-table .tdk-workbook-cell-input--review {
@@ -3108,7 +3113,7 @@ form.is-submitting {
   }
 
   .tdk-workbook-table {
-    min-width: 78rem;
+    min-width: 92rem;
   }
 
   .tdk-workbook-toolbar__meta,

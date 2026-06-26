@@ -207,6 +207,17 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     www_row = www_statement.rows.first.fetch(:data)
     assert_equal "MONTHLY PLAN FEE", www_row.fetch("Description")
     assert_equal "-10.00", www_row.fetch("Amount")
+
+    service_online_statement = parse_statement_text(<<~TEXT)
+      Bank Service Online
+      Statement period 01/05/2026 to 31/05/2026
+      Date Description Withdrawals Deposits Running Balance
+      01/05/2026 LINE FEE $ 10.00 -$ 70,000.00 service online page 2 of 2
+    TEXT
+
+    service_online_row = service_online_statement.rows.first.fetch(:data)
+    assert_equal "LINE FEE", service_online_row.fetch("Description")
+    assert_equal "-10.00", service_online_row.fetch("Amount")
   end
 
   test "scanned OCR descriptions remove trailing artefacts without stripping references" do
@@ -220,9 +231,14 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
       21/05/2026 MONTHLY PLAN FEE . $ 10.00 -$ 66,204.25
       22/05/2026 TRANSFER DEPOSIT 0000000 AT LOCATION VI [ c $ 25.00 -$ 66,179.25
       23/05/2026 TRANSFER DEPOSIT 0000000 AT LOCATION VI [ #{e_acute} pcos) $ 30.00 -$ 66,149.25
-      24/05/2026 TRANSFER DEPOSIT SAMPLE REF A $ 40.00 -$ 66,109.25
-      25/05/2026 DEPOSIT PAYMENT REF ABC123 $ 50.00 -$ 66,059.25
-      26/05/2026 DEPOSIT PAYMENT REF 12345 $ 60.00 -$ 65,999.25
+      24/05/2026 TRANSFER DEPOSIT SAMPLE AT LOCATION NS [ w $ 35.00 -$ 66,114.25
+      25/05/2026 TRANSFER DEPOSIT SAMPLE AT LOCATION QL [ d $ 40.00 -$ 66,074.25
+      26/05/2026 DEPOSIT SAMPLE LOCATION #{e_acute} $ 45.00 -$ 66,029.25
+      27/05/2026 LINE FEE - $ 10.00 -$ 66,039.25
+      28/05/2026 DEPOSIT SAMPLE CUSTOMER } $ 50.00 -$ 65,989.25
+      29/05/2026 TRANSFER DEPOSIT SAMPLE REF A $ 55.00 -$ 65,934.25
+      30/05/2026 DEPOSIT PAYMENT REF ABC123 $ 60.00 -$ 65,874.25
+      31/05/2026 DEPOSIT PAYMENT REF 12345 $ 65.00 -$ 65,809.25
     TEXT
 
     descriptions = statement.rows.map { |row| row.fetch(:data).fetch("Description") }
@@ -233,6 +249,11 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
       "MONTHLY PLAN FEE",
       "TRANSFER DEPOSIT 0000000 AT LOCATION VIC",
       "TRANSFER DEPOSIT 0000000 AT LOCATION VIC",
+      "TRANSFER DEPOSIT SAMPLE AT LOCATION NSW",
+      "TRANSFER DEPOSIT SAMPLE AT LOCATION QLD",
+      "DEPOSIT SAMPLE LOCATION",
+      "LINE FEE",
+      "DEPOSIT SAMPLE CUSTOMER",
       "TRANSFER DEPOSIT SAMPLE REF A",
       "DEPOSIT PAYMENT REF ABC123",
       "DEPOSIT PAYMENT REF 12345"

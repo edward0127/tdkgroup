@@ -71,8 +71,9 @@ module BasTdk
       (?![A-Za-z0-9])
     /x
     OCR_DESCRIPTION_NOISE_TOKEN_PATTERN = /\A(?:-?[#{OCR_CURRENCY_MARKER_SOURCE}]+|[^\p{Alnum}]+)\z/u
-    OCR_DESCRIPTION_EDGE_NOISE_PATTERN = /\A[_~|"'\\\/\[\]\(\).:;]+|[_~|"'\\\/\[\]\(\).:;]+\z/
-    OCR_SPLIT_UPPERCASE_COMPLETIONS = %w[VIC NSW QLD ACT TAS].freeze
+    OCR_DESCRIPTION_EDGE_NOISE_PATTERN = /(?:\A[_~|"'\\\/\[\]\(\)\{\}.:;,\-]+|[_~|"'\\\/\[\]\(\)\{\}.:;,\-]+\z)/
+    OCR_DESCRIPTION_TRAILING_NOISE_TOKEN_PATTERN = /\A(?:[_~|"'\\\/\[\]\(\)\{\}.:;,\-]+|\u{00C9}+|\u{00E9}+)\z/u
+    OCR_SPLIT_UPPERCASE_COMPLETIONS = %w[VIC NSW QLD ACT TAS SA WA NT].freeze
     EXTRACTED_BLANK_TOKEN_PATTERN = /(?<![A-Za-z0-9])blank(?![A-Za-z0-9])/i
     BLANK_TOKEN_SOURCE = EXTRACTED_BLANK_TOKEN_PATTERN.source
     AMOUNT_TOKEN_SOURCE = AMOUNT_PATTERN.source
@@ -88,7 +89,7 @@ module BasTdk
       (?:
         \b(?:https?:\/\/\S+|www\.\S+) |
         \bprinted\s*: |
-        \bpage\s+\d+\s+of\s+\d+\b |
+        \bpage\s+\d+\s+of(?:\s+\d+)?\b |
         \b(
         closing\s+balance |
         balance\s+carried\s+forward |
@@ -796,14 +797,22 @@ module BasTdk
     def clean_ocr_description(description)
       text = truncate_ocr_description_at_footer(description.to_s.squish)
       text = repair_trailing_split_ocr_word(text)
-      text = text.split(/\s+/).filter_map do |token|
+      text = clean_ocr_description_tokens(text)
+      text = strip_trailing_single_character_ocr_artifact(text)
+      text = strip_trailing_attached_ocr_digit(text)
+      text = truncate_ocr_description_at_footer(text)
+      text = strip_trailing_single_character_ocr_artifact(text)
+      text = strip_trailing_attached_ocr_digit(text)
+      strip_trailing_ocr_noise(text)
+    end
+
+    def clean_ocr_description_tokens(description)
+      description.to_s.split(/\s+/).filter_map do |token|
         cleaned = clean_ocr_description_token(token)
         next if cleaned.blank? || cleaned.match?(OCR_DESCRIPTION_NOISE_TOKEN_PATTERN)
 
         cleaned
       end.join(" ").squish
-      text = strip_trailing_single_character_ocr_artifact(text)
-      strip_trailing_attached_ocr_digit(text)
     end
 
     def truncate_ocr_description_at_footer(description)
@@ -819,11 +828,11 @@ module BasTdk
 
     def repair_trailing_split_ocr_word(description)
       text = description.to_s.squish
-      match = text.match(/(?<head>.*(?:\A|\s))(?<prefix>[A-Z]{2,4})\s+(?<tail>.+)\z/u)
+      match = text.match(/(?<head>.*(?:\A|\s))(?<prefix>[A-Z]{1,3})\s+(?<tail>.+)\z/u)
       return text if match.blank?
 
       tail = match[:tail].to_s
-      return text unless tail.match?(/[\[\]]/)
+      return text unless split_ocr_tail_noise?(tail)
 
       suffix = trailing_split_ocr_suffix(match[:prefix], tail)
       return text if suffix.blank?
@@ -831,15 +840,24 @@ module BasTdk
       "#{match[:head]}#{match[:prefix]}#{suffix}".squish
     end
 
+    def split_ocr_tail_noise?(tail)
+      tail.match?(/[_~|"'\\\/\[\]\(\)\{\}.:;,\-]/) || tail.match?(/[^\x00-\x7F]/)
+    end
+
     def trailing_split_ocr_suffix(prefix, tail)
+      return unless split_ocr_tail_noise?(tail)
+
       standalone_letters = tail.scan(/(?<![A-Za-z])([A-Za-z])(?![A-Za-z])/).flatten
-      return standalone_letters.last.upcase if standalone_letters.one?
+      letter_candidates = standalone_letters.dup
 
-      return unless tail.match?(/[^\x00-\x7F]/)
-      return if tail.scan(/[A-Za-z]+/).any? { |word| word.length > 5 }
+      if tail.match?(/[^\x00-\x7F]/) || letter_candidates.blank?
+        return if tail.scan(/[A-Za-z]+/).any? { |word| word.length > 5 }
 
-      # Keep noisy multi-letter fallbacks to common short location abbreviations.
-      tail.scan(/[A-Za-z]/).each do |letter|
+        # Keep noisy multi-letter fallbacks to common short location abbreviations.
+        letter_candidates.concat(tail.scan(/[A-Za-z]/))
+      end
+
+      letter_candidates.each do |letter|
         candidate = "#{prefix}#{letter}".upcase
         return letter.upcase if OCR_SPLIT_UPPERCASE_COMPLETIONS.include?(candidate)
       end
@@ -868,6 +886,25 @@ module BasTdk
       return description if trailing.match?(/\A[A-Z]\z/)
 
       tokens.pop
+      tokens.join(" ")
+    end
+
+    def strip_trailing_ocr_noise(description)
+      tokens = description.to_s.squish.split(/\s+/)
+      return "" if tokens.blank?
+
+      while tokens.any?
+        trailing = tokens.last.to_s
+        cleaned = clean_ocr_description_token(trailing)
+
+        if cleaned.blank? || cleaned.match?(OCR_DESCRIPTION_NOISE_TOKEN_PATTERN) || cleaned.match?(OCR_DESCRIPTION_TRAILING_NOISE_TOKEN_PATTERN)
+          tokens.pop
+        else
+          tokens[-1] = cleaned
+          break
+        end
+      end
+
       tokens.join(" ")
     end
 
