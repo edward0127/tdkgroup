@@ -41,6 +41,7 @@
       <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
       <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
       <%= hidden_field_tag :per_page, @tdk_rows_per_page %>
+      <%= hidden_field_tag :show_blank_optional_columns, "1" if tdk_workbook_show_blank_optional_columns? %>
       <%= label_tag :tdk_page_select, "Page" %>
       <%= select_tag :page,
             options_for_select((1..@tdk_total_pages).map { |page| [ page, page ] }, @tdk_page),
@@ -55,6 +56,7 @@
       <%= hidden_field_tag :page, 1 %>
       <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
       <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
+      <%= hidden_field_tag :show_blank_optional_columns, "1" if tdk_workbook_show_blank_optional_columns? %>
       <%= label_tag :tdk_per_page_select, "Rows per page" %>
       <%= select_tag :per_page,
             options_for_select(@tdk_per_page_options, @tdk_rows_per_page),

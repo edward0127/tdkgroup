@@ -321,7 +321,8 @@ module Admin
           page: page_param,
           per_page: per_page_param,
           sort: sort,
-          direction: sort.present? ? direction_param : nil
+          direction: sort.present? ? direction_param : nil,
+          show_blank_optional_columns: params[:show_blank_optional_columns].to_s == "1" ? "1" : nil
         }.compact
       end
 

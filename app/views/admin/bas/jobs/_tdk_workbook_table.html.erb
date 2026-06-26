@@ -1,5 +1,22 @@
 <section id="tdk-active-table" class="bas-panel-block tdk-workbook-review-card" data-controller="anchor-scroll">
   <% save_form_id = dom_id(@active_tdk_workbook, :tdk_workbook_rows_form) %>
+  <% show_blank_optional_columns = tdk_workbook_show_blank_optional_columns? %>
+  <% table_headers = tdk_workbook_table_headers(
+    @active_tdk_workbook,
+    current_sort: @tdk_sort,
+    show_blank_optional: show_blank_optional_columns
+  ) %>
+  <% blank_optional_headers = Array(@active_tdk_workbook.processed_headers).select { |header| tdk_workbook_blank_optional_header?(@active_tdk_workbook, header) } %>
+  <% hidden_blank_optional_headers = blank_optional_headers.reject { |header| table_headers.include?(header) } %>
+  <% has_balance_column = table_headers.any? { |header| tdk_workbook_balance_header?(header) } %>
+  <% has_visible_optional_details = table_headers.any? { |header| tdk_workbook_optional_detail_header?(header) } %>
+  <% table_classes = [
+    "admin-table",
+    "tdk-workbook-table",
+    ("tdk-workbook-table--has-balance" if has_balance_column),
+    ("tdk-workbook-table--compact-balance" if has_balance_column && !has_visible_optional_details),
+    ("tdk-workbook-table--has-visible-details" if has_visible_optional_details)
+  ].compact.join(" ") %>
 
   <%= form_with url: update_rows_admin_bas_job_tdk_workbook_path(@job, @active_tdk_workbook),
         method: :patch,
@@ -10,6 +27,7 @@
     <%= hidden_field_tag :per_page, @tdk_rows_per_page %>
     <%= hidden_field_tag :sort, @tdk_sort if @tdk_sort.present? %>
     <%= hidden_field_tag :direction, @tdk_direction if @tdk_direction.present? %>
+    <%= hidden_field_tag :show_blank_optional_columns, "1" if show_blank_optional_columns %>
 
     <div class="tdk-workbook-toolbar">
       <div>
@@ -18,6 +36,11 @@
       </div>
       <div class="tdk-workbook-toolbar__actions">
         <div class="tdk-workbook-toolbar__meta" aria-label="Bank statement table summary">
+          <% if hidden_blank_optional_headers.any? || (show_blank_optional_columns && blank_optional_headers.any?) %>
+            <%= link_to show_blank_optional_columns ? "Hide blank optional columns" : "Show blank optional columns",
+                  admin_bas_job_path(@job, tdk_workbook_optional_columns_link_params(show_blank_optional: !show_blank_optional_columns)),
+                  class: "tdk-workbook-optional-columns-link" %>
+          <% end %>
           <span>Page <%= @tdk_page %> of <%= @tdk_total_pages %></span>
         </div>
         <button type="submit" class="btn-primary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
@@ -25,11 +48,11 @@
     </div>
 
     <div class="tdk-workbook-table-wrap">
-      <% column_width_styles = @active_tdk_workbook.processed_headers.index_with { |header| tdk_workbook_column_width_style(header, @tdk_workbook_rows) } %>
-      <table class="admin-table tdk-workbook-table">
+      <% column_width_styles = table_headers.index_with { |header| tdk_workbook_column_width_style(header, @tdk_workbook_rows) } %>
+      <table class="<%= table_classes %>">
         <thead>
           <tr>
-            <% @active_tdk_workbook.processed_headers.each do |header| %>
+            <% table_headers.each do |header| %>
               <%= tag.th class: tdk_workbook_column_class(header), style: column_width_styles[header] do %>
                 <% if tdk_workbook_sortable_header?(header) %>
                   <%= link_to admin_bas_job_path(@job, tdk_workbook_sort_link_params(header)),
@@ -49,7 +72,7 @@
         <tbody>
           <% @tdk_workbook_rows.each do |row| %>
             <tr data-source-row-number="<%= row.source_row_number %>">
-              <% @active_tdk_workbook.processed_headers.each do |header| %>
+              <% table_headers.each do |header| %>
                 <% value = tdk_workbook_display_value(row.row_data[header]) %>
                 <% column_class = tdk_workbook_column_class(header) %>
                 <% review_field = tdk_workbook_review_field?(header) %>
@@ -69,6 +92,7 @@
                 <% cell_classes = [
                   column_class,
                   ("tdk-workbook-cell--date" if date_field),
+                  ("tdk-workbook-cell--balance" if balance_field),
                   ("tdk-workbook-review-cell" if review_field)
                 ].compact.join(" ") %>
                 <%= tag.td class: cell_classes, style: column_width_styles[header] do %>

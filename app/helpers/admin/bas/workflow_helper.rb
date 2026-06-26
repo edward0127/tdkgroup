@@ -27,6 +27,7 @@ module Admin
       ].freeze
 
       PDF_CONTENT_TYPES = %w[application/pdf].freeze
+      TDK_WORKBOOK_OPTIONAL_DETAIL_HEADER_PATTERN = /\b(details?|narration|reference|memo|notes?)\b/.freeze
 
       def bas_workflow_steps(job:, documents_count:, imported_records_count:, proposed_matches_count:, needs_review_matches_count:, open_queries_count:, approval_blockers_count:, latest_report_snapshot:)
         matching_review_count = proposed_matches_count + needs_review_matches_count
@@ -241,6 +242,57 @@ module Admin
         end
       end
 
+      def tdk_workbook_table_headers(workbook, current_sort: nil, show_blank_optional: false)
+        headers = Array(workbook&.processed_headers).compact
+        filtered_headers = headers.reject do |header|
+          tdk_workbook_blank_optional_header?(workbook, header) &&
+            !show_blank_optional &&
+            !tdk_workbook_same_header?(header, current_sort)
+        end
+
+        priority = [
+          ->(header) { tdk_workbook_date_header?(header) },
+          ->(header) { BasTdk::WorkbookValues.normalize_header(header).include?("category") },
+          ->(header) { tdk_workbook_primary_amount_header?(header) },
+          ->(header) { BasTdk::WorkbookValues.normalize_header(header) == "gst" },
+          ->(header) { BasTdk::WorkbookValues.normalize_header(header).include?("description") },
+          ->(header) { tdk_workbook_balance_header?(header) },
+          ->(header) { tdk_workbook_optional_detail_header?(header) }
+        ]
+
+        remaining_headers = filtered_headers.each_with_index.to_a
+        ordered_headers = []
+
+        priority.each do |matcher|
+          matching_headers, other_headers = remaining_headers.partition { |(header, _index)| matcher.call(header) }
+          ordered_headers.concat(matching_headers.map(&:first))
+          remaining_headers = other_headers
+        end
+
+        ordered_headers.concat(remaining_headers.map(&:first))
+      end
+
+      def tdk_workbook_optional_detail_header?(header)
+        BasTdk::WorkbookValues.normalize_header(header).match?(TDK_WORKBOOK_OPTIONAL_DETAIL_HEADER_PATTERN)
+      end
+
+      def tdk_workbook_blank_optional_header?(workbook, header)
+        return false if workbook.blank?
+        return false unless tdk_workbook_optional_detail_header?(header)
+
+        cache_key = [ workbook&.id, header.to_s ]
+        @tdk_workbook_blank_optional_header_cache ||= {}
+        return @tdk_workbook_blank_optional_header_cache[cache_key] if @tdk_workbook_blank_optional_header_cache.key?(cache_key)
+
+        @tdk_workbook_blank_optional_header_cache[cache_key] = workbook.rows.all? do |row|
+          row.row_data[header].to_s.strip.blank?
+        end
+      end
+
+      def tdk_workbook_show_blank_optional_columns?
+        params[:show_blank_optional_columns].to_s == "1"
+      end
+
       def tdk_workbook_column_class(header)
         normalized = BasTdk::WorkbookValues.normalize_header(header)
         return "tdk-workbook-col--date" if normalized.include?("date")
@@ -249,7 +301,7 @@ module Admin
         return "tdk-workbook-col--balance" if tdk_workbook_balance_header?(header)
         return "tdk-workbook-col--amount" if normalized.match?(/\b(amount|debit|credit|net|gross|balance|paid)\b/)
         return "tdk-workbook-col--description" if normalized.include?("description")
-        return "tdk-workbook-col--details" if normalized.match?(/\b(details|narration|reference|memo)\b/)
+        return "tdk-workbook-col--details" if tdk_workbook_optional_detail_header?(header)
 
         "tdk-workbook-col--medium"
       end
@@ -258,13 +310,18 @@ module Admin
         return unless tdk_workbook_balance_header?(header)
 
         max_length = rows.to_a.map { |row| tdk_workbook_amount_input_value(row.row_data[header]).to_s.length }.max.to_i
-        ch = [[ max_length + 3, 13 ].max, 22 ].min
+        ch = [[ max_length + 3, 14 ].max, 22 ].min
         "--tdk-balance-input-width: #{ch}ch;"
       end
 
       def tdk_workbook_balance_header?(header)
         normalized = BasTdk::WorkbookValues.normalize_header(header)
         normalized == "balance" || normalized.include?("running balance")
+      end
+
+      def tdk_workbook_primary_amount_header?(header)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        BasTdk::WorkbookValues.amount_header?(header) && normalized != "gst" && !tdk_workbook_balance_header?(header)
       end
 
       def tdk_workbook_review_field?(header)
@@ -318,8 +375,9 @@ module Admin
           direction: tdk_workbook_sort_direction_for(header),
           page: 1,
           per_page: @tdk_rows_per_page,
-          anchor: "tdk-active-table"
-        }
+          anchor: "tdk-active-table",
+          show_blank_optional_columns: tdk_workbook_show_blank_optional_columns? ? "1" : nil
+        }.compact
       end
 
       def tdk_workbook_sort_indicator(header)
@@ -334,7 +392,19 @@ module Admin
           per_page: @tdk_rows_per_page,
           sort: @tdk_sort,
           direction: @tdk_direction,
-          anchor: "tdk-active-table"
+          anchor: "tdk-active-table",
+          show_blank_optional_columns: tdk_workbook_show_blank_optional_columns? ? "1" : nil
+        }.compact
+      end
+
+      def tdk_workbook_optional_columns_link_params(show_blank_optional:)
+        {
+          page: @tdk_page,
+          per_page: @tdk_rows_per_page,
+          sort: @tdk_sort,
+          direction: @tdk_direction,
+          anchor: "tdk-active-table",
+          show_blank_optional_columns: show_blank_optional ? "1" : nil
         }.compact
       end
 
@@ -367,6 +437,12 @@ module Admin
       end
 
       private
+
+      def tdk_workbook_same_header?(left, right)
+        return false if left.blank? || right.blank?
+
+        left.to_s == right.to_s || BasTdk::WorkbookValues.normalize_header(left) == BasTdk::WorkbookValues.normalize_header(right)
+      end
 
       def bas_workflow_status(locked:, completed:, action_required:)
         return "Locked/final" if locked

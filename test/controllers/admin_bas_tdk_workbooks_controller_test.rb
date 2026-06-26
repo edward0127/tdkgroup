@@ -235,16 +235,30 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_select "input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount.tdk-workbook-cell-input--balance"
     assert_includes response.body, "VISA DEBIT PURCHASE CARD XXXX / SAMPLE PARKING / EFFECTIVE DATE 05 MAR 2026"
     html = Nokogiri::HTML(response.body)
+    table = html.at_css("table.admin-table.tdk-workbook-table.tdk-workbook-table--has-balance")
+    assert table, "expected Balance workbooks to use the has-balance table modifier"
+    rendered_headers = table.css("thead th").map { |header| header.at_css(".tdk-workbook-sort-link span")&.text&.squish || header.text.squish }
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], rendered_headers.first(6)
+    assert_includes table["class"].to_s.split, "tdk-workbook-table--compact-balance"
+    refute_includes table["class"].to_s.split, "tdk-workbook-table--has-visible-details"
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], workbook.reload.processed_headers
     balance_header = html.at_css("th.tdk-workbook-col--balance")
     assert balance_header, "expected Balance header to use the dedicated Balance column class"
     assert_includes balance_header.text.squish, "Balance"
-    assert_match(/--tdk-balance-input-width:\s*13ch;/, balance_header["style"].to_s)
+    assert_match(/--tdk-balance-input-width:\s*14ch;/, balance_header["style"].to_s)
+    balance_sort_link = balance_header.at_css("a.tdk-workbook-sort-link")
+    assert balance_sort_link, "expected Balance header to keep its sorting link"
+    assert_equal "Balance", Rack::Utils.parse_query(URI.parse(balance_sort_link["href"]).query).fetch("sort")
+    details_header = html.css("th.tdk-workbook-col--details").find { |header| header.text.squish.include?("Details") }
+    assert_nil details_header, "expected blank Details header to be hidden by default"
     amount_header = html.css("th.tdk-workbook-col--amount").find { |header| header.text.squish.include?("Amount") }
     assert amount_header, "expected Amount header to keep the generic amount column class"
     assert_nil html.css("th.tdk-workbook-col--amount").find { |header| header.text.squish.include?("Balance") }
-    balance_cell = html.at_css("td.tdk-workbook-col--balance")
-    assert_match(/--tdk-balance-input-width:\s*13ch;/, balance_cell["style"].to_s)
-    assert html.at_css("td.tdk-workbook-col--balance input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount.tdk-workbook-cell-input--balance")
+    balance_cell = html.at_css("td.tdk-workbook-col--balance.tdk-workbook-cell--balance")
+    assert balance_cell, "expected Balance cells to use the dedicated Balance cell class"
+    assert_match(/--tdk-balance-input-width:\s*14ch;/, balance_cell["style"].to_s)
+    assert html.at_css("td.tdk-workbook-col--balance.tdk-workbook-cell--balance input[name='rows[#{first_row.id}][Balance]'].tdk-workbook-cell-input--amount.tdk-workbook-cell-input--balance")
+    assert_nil html.at_css("td.tdk-workbook-col--details textarea[name='rows[#{first_row.id}][Details]']"), "expected blank Details input to be hidden by default"
     amount_input = html.at_css("td.tdk-workbook-col--amount input[name='rows[#{first_row.id}][Amount]']")
     assert amount_input
     refute_includes amount_input["class"].to_s.split, "tdk-workbook-cell-input--balance"
@@ -262,7 +276,8 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
       rows: {
         first_row.id => {
           "Category" => "Parking",
-          "GST" => "0.35"
+          "GST" => "0.35",
+          "Balance" => "(70,986.43)"
         }
       }
     }
@@ -270,6 +285,9 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to admin_bas_job_path(job, page: 1, sort: "Balance", direction: "asc")
     assert_equal "Parking", first_row.reload.row_data.fetch("Category")
     assert_equal "0.35", first_row.row_data.fetch("GST")
+    assert_equal "(70,986.43)", first_row.row_data.fetch("Balance")
+    assert_equal "", first_row.row_data.fetch("Details")
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], workbook.reload.processed_headers
 
     assert_enqueued_with(job: BasTdkWorkbookExportJob) do
       post prepare_download_admin_bas_job_tdk_workbook_path(job, workbook)
@@ -285,7 +303,122 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Parking", downloaded_rows.second[1]
     assert_equal "4373.7", downloaded_rows.second[2]
     assert_equal "0.35", downloaded_rows.second[3]
-    assert_equal "68371.24", downloaded_rows.second[6]
+    assert_equal "", downloaded_rows.second[5]
+    assert_equal "-70986.43", downloaded_rows.second[6]
+  end
+
+  test "blank optional details column is hidden by default after display ordering" do
+    job = create_job(workflow_type: "tdk_group")
+    workbook = create_processed_balance_workbook(job, details_values: [ "", "   " ])
+    first_row = workbook.rows.ordered.first
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    table = html.at_css("table.admin-table.tdk-workbook-table")
+    assert table, "expected editable workbook table"
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], rendered_tdk_headers(html)
+    assert_includes table["class"].to_s.split, "tdk-workbook-table--has-balance"
+    assert_includes table["class"].to_s.split, "tdk-workbook-table--compact-balance"
+    refute_includes table["class"].to_s.split, "tdk-workbook-table--has-visible-details"
+    assert_nil html.at_css("textarea[name='rows[#{first_row.id}][Details]']")
+    assert_equal "Show blank optional columns", html.at_css(".tdk-workbook-optional-columns-link").text.squish
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], workbook.reload.processed_headers
+  end
+
+  test "optional details column remains visible when any row has data" do
+    job = create_job(workflow_type: "tdk_group")
+    workbook = create_processed_balance_workbook(job, details_values: [ "", "Customer reference" ])
+    first_row = workbook.rows.ordered.first
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    table = html.at_css("table.admin-table.tdk-workbook-table")
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Details" ], rendered_tdk_headers(html)
+    assert_includes table["class"].to_s.split, "tdk-workbook-table--has-visible-details"
+    refute_includes table["class"].to_s.split, "tdk-workbook-table--compact-balance"
+    assert html.at_css("td.tdk-workbook-col--details textarea[name='rows[#{first_row.id}][Details]']"), "expected Details to remain editable"
+  end
+
+  test "blank optional details column can be explicitly shown and toggle preserves table state" do
+    job = create_job(workflow_type: "tdk_group")
+    create_processed_balance_workbook(job, details_values: Array.new(12, ""))
+
+    get admin_bas_job_path(job, page: 2, per_page: 10, sort: "Amount", direction: "desc")
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], rendered_tdk_headers(html)
+    show_link = html.at_css(".tdk-workbook-optional-columns-link")
+    assert_equal "Show blank optional columns", show_link.text.squish
+    show_uri = URI.parse(show_link["href"])
+    show_params = Rack::Utils.parse_query(show_uri.query)
+    assert_equal "2", show_params.fetch("page")
+    assert_equal "10", show_params.fetch("per_page")
+    assert_equal "Amount", show_params.fetch("sort")
+    assert_equal "desc", show_params.fetch("direction")
+    assert_equal "1", show_params.fetch("show_blank_optional_columns")
+
+    get admin_bas_job_path(job, page: 2, per_page: 10, sort: "Amount", direction: "desc", show_blank_optional_columns: "1")
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Details" ], rendered_tdk_headers(html)
+    assert html.at_css("td.tdk-workbook-col--details textarea"), "expected explicitly shown Details inputs to render"
+    assert html.at_css("form input[name='show_blank_optional_columns'][value='1']")
+    hide_link = html.at_css(".tdk-workbook-optional-columns-link")
+    assert_equal "Hide blank optional columns", hide_link.text.squish
+    hide_uri = URI.parse(hide_link["href"])
+    hide_params = Rack::Utils.parse_query(hide_uri.query)
+    assert_equal "2", hide_params.fetch("page")
+    assert_equal "10", hide_params.fetch("per_page")
+    assert_equal "Amount", hide_params.fetch("sort")
+    assert_equal "desc", hide_params.fetch("direction")
+    assert_not hide_params.key?("show_blank_optional_columns")
+  end
+
+  test "current sort optional details column is not hidden even when blank" do
+    job = create_job(workflow_type: "tdk_group")
+    create_processed_balance_workbook(job, details_values: [ "", "" ])
+
+    get admin_bas_job_path(job, sort: "Details", direction: "asc")
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Details" ], rendered_tdk_headers(html)
+    assert_includes html.at_css("table.tdk-workbook-table")["class"].to_s.split, "tdk-workbook-table--has-visible-details"
+  end
+
+  test "hidden blank details values are not wiped when saving visible balance fields" do
+    job = create_job(workflow_type: "tdk_group")
+    workbook = create_processed_balance_workbook(job, details_values: [ "   ", "" ])
+    first_row = workbook.rows.ordered.first
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_nil Nokogiri::HTML(response.body).at_css("textarea[name='rows[#{first_row.id}][Details]']")
+
+    patch update_rows_admin_bas_job_tdk_workbook_path(job, workbook), params: {
+      page: 1,
+      rows: {
+        first_row.id => {
+          "Category" => "Parking",
+          "GST" => "0.35",
+          "Balance" => "166,187.25"
+        }
+      }
+    }
+
+    assert_redirected_to admin_bas_job_path(job, page: 1)
+    first_row.reload
+    assert_equal "Parking", first_row.row_data.fetch("Category")
+    assert_equal "0.35", first_row.row_data.fetch("GST")
+    assert_equal "166,187.25", first_row.row_data.fetch("Balance")
+    assert_equal "   ", first_row.row_data.fetch("Details")
   end
 
   test "PDF upload stores cleaned scanned OCR descriptions in workbook row data" do
@@ -818,7 +951,11 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-status-detail\s*\{[^}]*background: #f8fafc;/m, css)
     assert_match(/\.tdk-status-detail--wide\s*\{[^}]*grid-column: 1 \/ -1;/m, css)
     assert_match(/\.tdk-workbook-table\s*\{[^}]*width: 100%;[^}]*table-layout: fixed;[^}]*font-size: 0\.875rem/m, css)
-    assert_match(/\.tdk-workbook-table\s*\{[^}]*min-width: 92rem/m, css)
+    assert_match(/\.tdk-workbook-table\s*\{[^}]*min-width: 0;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance\s*\{[^}]*min-width: 0;/m, css)
+    assert_match(/\.tdk-workbook-table--has-visible-details\s*\{[^}]*min-width: 88rem;/m, css)
+    assert_no_match(/\.tdk-workbook-table--has-balance\s*\{[^}]*min-width: 84rem/m, css)
+    assert_no_match(/\.tdk-workbook-table--compact-balance\s*\{[^}]*min-width: 84rem/m, css)
     assert_no_match(/\.tdk-workbook-table\s*\{[^}]*width: max-content/m, css)
     assert_match(/\.tdk-workbook-table-wrap\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: visible/m, css)
     assert_no_match(/\.tdk-workbook-table-wrap\s*\{[^}]*max-height/m, css)
@@ -832,17 +969,29 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 14%;[^}]*min-width: 9\.75rem/m, css)
     assert_match(/\.tdk-workbook-col--category\s*\{[^}]*width: 14%;[^}]*min-width: 9\.5rem/m, css)
     assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 10\.5%/m, css)
-    assert_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: var\(--tdk-balance-input-width, 14ch\);[^}]*min-width: var\(--tdk-balance-input-width, 14ch\)/m, css)
+    assert_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 13rem;[^}]*min-width: 12rem/m, css)
     assert_no_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 10\.5%/m, css)
+    assert_no_match(/\.tdk-workbook-table--has-balance[^{]*\.tdk-workbook-(?:col--balance|cell--balance)[^{]*\{[^}]*position:\s*sticky/m, css)
+    assert_no_match(/\.tdk-workbook-table--has-balance[^{]*\.tdk-workbook-(?:col--balance|cell--balance)[^{]*\{[^}]*right:\s*0/m, css)
     assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 29%/m, css)
+    assert_match(/\.tdk-workbook-table--has-balance \.tdk-workbook-col--details\s*\{[^}]*width: 16rem;[^}]*min-width: 14rem/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--date\s*\{[^}]*width: 13%;[^}]*min-width: 0;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--category\s*\{[^}]*width: 15%;[^}]*min-width: 0;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--amount\s*\{[^}]*width: 12%;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--gst\s*\{[^}]*width: 9%;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--description\s*\{[^}]*width: 36%;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--balance\s*\{[^}]*width: 15%;[^}]*min-width: 0;/m, css)
     assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--amount,\s*\.tdk-workbook-table th\.tdk-workbook-col--balance\s*\{[^}]*text-align: right/m, css)
     assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--date,\s*\.tdk-workbook-table \.tdk-workbook-cell--date\s*\{[^}]*padding-right: 0\.95rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--date\s*\{[^}]*min-width: 8\.5rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--amount\s*\{[^}]*text-align: right/m, css)
-    assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: var\(--tdk-balance-input-width, 14ch\)/m, css)
+    assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: var\(--tdk-balance-input-width, 12ch\)/m, css)
+    assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*text-align: right;[^}]*font-variant-numeric: tabular-nums/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: 0;[^}]*width: 100%;/m, css)
     assert_match(/\.tdk-workbook-sort-link\s*\{[^}]*display: inline-flex/m, css)
     assert_match(/\.tdk-workbook-page-selectors\s*\{[^}]*display: inline-flex/m, css)
-    assert_match(/\.tdk-workbook-toolbar__actions\s*\{[^}]*display: flex;[^}]*justify-content: flex-end/m, css)
+    assert_match(/\.tdk-workbook-toolbar\s*\{[^}]*max-width: 100%;[^}]*overflow: visible;/m, css)
+    assert_match(/\.tdk-workbook-toolbar__actions\s*\{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*flex-shrink: 0;/m, css)
     assert_match(/\.tdk-workbook-toolbar__actions \.btn-primary\s*\{[^}]*white-space: nowrap/m, css)
   end
 
@@ -905,6 +1054,12 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     Nokogiri::HTML(body).css("#tdk-active-table tbody tr").map { |row| row["data-source-row-number"].to_i }
   end
 
+  def rendered_tdk_headers(html)
+    html.css("#tdk-active-table table.tdk-workbook-table thead th").map do |header|
+      header.at_css(".tdk-workbook-sort-link span")&.text&.squish || header.text.squish
+    end
+  end
+
   def login_as_admin
     with_modified_env("ADMIN_USERNAME" => "tdk-workbook-admin", "ADMIN_PASSWORD" => "secret-password") do
       post admin_login_path, params: { username: "tdk-workbook-admin", password: "secret-password" }
@@ -954,6 +1109,39 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
           "Amount" => (index + 1).to_s,
           "GST" => "",
           "Description" => "#{description_prefix} #{index + 1}"
+        }
+      )
+    end
+
+    workbook
+  end
+
+  def create_processed_balance_workbook(job, details_values:, version_number: 1)
+    workbook = job.tdk_workbooks.create!(
+      status: "processed",
+      source_filename: "synthetic-balance.xlsx",
+      sheet_name: "Bank Report",
+      header_row_number: 4,
+      original_headers: [ "Date", "Amount", "Description", "Details", "Balance" ],
+      processed_headers: [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ],
+      row_count: details_values.size,
+      version_number: version_number,
+      processed_at: Time.current,
+      processed_by: "tdk-workbook-admin"
+    )
+
+    details_values.each_with_index do |details, index|
+      workbook.rows.create!(
+        position: index + 1,
+        source_row_number: index + 5,
+        row_data: {
+          "Date" => "2026-03-#{((index % 28) + 1).to_s.rjust(2, "0")}",
+          "Category" => "",
+          "Amount" => (index + 1).to_s,
+          "GST" => "",
+          "Description" => "Synthetic balance row #{index + 1}",
+          "Details" => details,
+          "Balance" => index.even? ? "(70,986.43)" : "166,187.25"
         }
       )
     end

@@ -1,18 +1,19 @@
-Implemented and verified.
+Implemented the TDK BAS table fix.
 
-Changes made:
-- Added adaptive Balance column/input sizing in [workflow_helper.rb](C:/Users/edward/projects/tdkgroup/app/helpers/admin/bas/workflow_helper.rb), [_tdk_workbook_table.html.erb](C:/Users/edward/projects/tdkgroup/app/views/admin/bas/jobs/_tdk_workbook_table.html.erb), and [application.css](C:/Users/edward/projects/tdkgroup/app/assets/tailwind/application.css).
-- Added `tdk-workbook-cell-input--balance`, CSS min-width rules, and increased workbook table min-width to allow horizontal scrolling instead of clipping.
-- Improved scanned OCR description cleanup in [pdf_statement_parser.rb](C:/Users/edward/projects/tdkgroup/app/services/bas_tdk/pdf_statement_parser.rb): final footer truncation, trailing punctuation/noise scrub, safer VIC/NSW/QLD/ACT/TAS/SA/WA/NT split-ending repair, and stronger trailing lowercase/diacritic removal.
-- Added synthetic parser/controller tests confirming cleanup in parsed row data and persisted workbook `row_data`.
+Changed:
+- Optional blank Details-like columns are filtered from the browser table by default in [workflow_helper.rb](C:/Users/edward/projects/tdkgroup/app/helpers/admin/bas/workflow_helper.rb:242).
+- `Details/Narration/Reference/Memo/Notes` stay visible when populated, explicitly requested, or currently sorted.
+- Added Show/Hide blank optional columns toggle preserving `page`, `per_page`, `sort`, and `direction`.
+- Hidden optional columns no longer render inputs, so saves only submit visible fields.
+- Added compact Balance table classes/layout in [application.css](C:/Users/edward/projects/tdkgroup/app/assets/tailwind/application.css:2389).
+- Added regression coverage in [admin_bas_tdk_workbooks_controller_test.rb](C:/Users/edward/projects/tdkgroup/test/controllers/admin_bas_tdk_workbooks_controller_test.rb:312).
 
-Verification passed:
-- `bundle exec rails test`  
-  `439 runs, 4771 assertions, 0 failures, 0 errors`
-- `bundle exec rails zeitwerk:check`  
-  `All is good!`
-- `bundle exec rails tailwindcss:build`  
-  passed
-- Optional syntax checks passed for parser, helper, parser test, and controller test.
+Verification:
+- `ruby -c app/helpers/admin/bas/workflow_helper.rb` passed.
+- `ruby -c test/controllers/admin_bas_tdk_workbooks_controller_test.rb` passed.
+- `bundle exec rails test` passed: 444 runs, 4884 assertions.
+- `bundle exec rails zeitwerk:check` passed: “All is good!”
+- `bundle exec rails tailwindcss:build` passed.
+- `git diff --check` passed, with only existing CRLF normalization warnings.
 
-Notes: the test commands still emit existing Windows VIPS module warnings, Ruby `csv` default-gem warnings, and a tempfile finalizer warning, but all requested commands exited successfully.
+The Rails commands emitted Windows VIPS/tempfile warnings, but all requested commands exited successfully. `codex_summary.md` was already modified in the worktree and I left it alone.
