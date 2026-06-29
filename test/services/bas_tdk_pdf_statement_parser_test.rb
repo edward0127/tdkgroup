@@ -66,7 +66,7 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
   end
 
   test "Westpac Service Online OCR text joins noisy multiline descriptions conservatively" do
-    statement = parse_statement_text(<<~TEXT)
+    statement = parse_layout_text(<<~TEXT)
       Westpac Service Online
       Statement period 01/05/2026 to 31/05/2026
       Date Description Withdrawals Deposits Running Balance
@@ -97,7 +97,7 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
   end
 
   test "scanned OCR deposit osko descriptions prefer deposit direction" do
-    statement = parse_statement_text(<<~TEXT)
+    statement = parse_layout_text(<<~TEXT)
       Bank Service Online
       Statement period 01/02/2026 to 28/02/2026
       Date Description Withdrawals Deposits Running Balance
@@ -435,6 +435,122 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     end
   end
 
+  test "metadata reports poor balance continuity when parsed rows skip running balances" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction Debit Credit Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE FIRST ROW 10.00 $ $990.00 CR
+      02 Apr SAMPLE GAP ROW 5.00 $ $970.00 CR
+      03 Apr SAMPLE CREDIT ROW $20.00 $990.00 CR
+      04 Apr SAMPLE DEBIT ROW 10.00 $ $980.00 CR
+      05 Apr SAMPLE SECOND GAP ROW 5.00 $ $960.00 CR
+      06 Apr SAMPLE CREDIT TWO $10.00 $970.00 CR
+      07 Apr SAMPLE THIRD GAP ROW 8.00 $ $950.00 CR
+      08 Apr SAMPLE CREDIT THREE $25.00 $975.00 CR
+      09 Apr SAMPLE FOURTH GAP ROW 5.00 $ $960.00 CR
+      10 Apr SAMPLE CREDIT FOUR $10.00 $970.00 CR
+      11 Apr SAMPLE DEBIT TWO 20.00 $ $950.00 CR
+      12 Apr SAMPLE CREDIT FIVE $5.00 $955.00 CR
+    TEXT
+
+    metadata = statement.metadata
+    assert_equal 12, statement.rows.size
+    assert_operator metadata.fetch("balance_continuity_check_count"), :>=, 10
+    assert_operator metadata.fetch("balance_continuity_mismatch_count"), :>=, 3
+    assert_operator metadata.fetch("balance_continuity_mismatch_ratio"), :>, 0.05
+    assert_equal "poor_balance_continuity", metadata.fetch("quality")
+  end
+
+  test "metadata reports good balance continuity for complete debit credit balance rows" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction Debit Credit Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE DEBIT 10.00 $ $990.00 CR
+      02 Apr SAMPLE CREDIT $15.00 $1,005.00 CR
+      03 Apr SAMPLE DEBIT TWO 5.00 $ $1,000.00 CR
+    TEXT
+
+    metadata = statement.metadata
+    assert_equal 3, statement.rows.size
+    assert_equal 3, metadata.fetch("balance_continuity_check_count")
+    assert_equal 0, metadata.fetch("balance_continuity_mismatch_count")
+    assert_equal 0.0, metadata.fetch("balance_continuity_mismatch_ratio")
+    assert_equal 1.0, metadata.fetch("balance_continuity_coverage")
+    assert_equal "good", metadata.fetch("quality")
+  end
+
+  test "statement reconciliation matches opening plus row amounts to closing balance" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction Debit Credit Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE DEBIT 10.00 $ $990.00 CR
+      02 Apr SAMPLE CREDIT $15.00 $1,005.00 CR
+      03 Apr SAMPLE DEBIT TWO 5.00 $ $1,000.00 CR
+      03 Apr 2025 CLOSING BALANCE $1,000.00 CR
+    TEXT
+
+    metadata = statement.metadata
+    assert_equal 3, statement.rows.size
+    assert_equal 0, metadata.fetch("balance_continuity_mismatch_count")
+    assert_equal true, metadata.fetch("opening_balance_present")
+    assert_equal true, metadata.fetch("closing_balance_present")
+    assert_equal "matched", metadata.fetch("statement_reconciliation_status")
+    assert_equal "0.00", metadata.fetch("statement_reconciliation_delta_mismatch")
+    assert_equal "good", metadata.fetch("quality")
+  end
+
+  test "statement reconciliation detects missing rows even if parser returns some rows" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction Debit Credit Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE DEBIT 10.00 $ $990.00 CR
+      02 Apr SAMPLE CREDIT $15.00 $1,005.00 CR
+      03 Apr SAMPLE DEBIT TWO 5.00 $ $1,000.00 CR
+      03 Apr 2025 CLOSING BALANCE $980.00 CR
+    TEXT
+
+    metadata = statement.metadata
+    assert_equal 3, statement.rows.size
+    assert_equal "mismatch", metadata.fetch("statement_reconciliation_status")
+    refute_equal "good", metadata.fetch("quality")
+    assert_equal "20.00", metadata.fetch("statement_reconciliation_delta_mismatch")
+  end
+
+  test "candidate count handles multiline amount rows" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction Debit Credit Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE FIRST
+             DETAIL LINE
+             REFERENCE LINE
+             10.00 $ $990.00 CR
+      02 Apr SAMPLE SECOND
+             DETAIL LINE
+             REFERENCE LINE
+             $15.00 $1,005.00 CR
+      03 Apr SAMPLE THIRD
+             DETAIL LINE
+             REFERENCE LINE
+             5.00 $ $1,000.00 CR
+    TEXT
+
+    metadata = statement.metadata
+    assert_equal 3, statement.rows.size
+    assert_operator metadata.fetch("candidate_transaction_count"), :>=, statement.rows.size
+    assert_operator metadata.fetch("candidate_transaction_count"), :<=, statement.rows.size + 1
+    refute_equal "low_recall", metadata.fetch("quality")
+  end
+
   test "Westpac LT page 2 boundaries stop before closing balance fee summary and footer text" do
     statement = parse_pdf_text(<<~TEXT)
       Westpac Business One
@@ -472,6 +588,237 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     refute_includes imported_text, "Total Electronic Credits"
     refute_includes imported_text, "Electronic Debits"
     refute_includes imported_text, "THANK YOU FOR BANKING"
+  end
+
+  test "separate withdrawal and deposit columns import withdrawals as negative with continuation lines" do
+    statement = parse_pdf_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      01 DECEMBER 2024 TO 31 DECEMBER 2024
+      Date     Transaction Details                         Withdrawals ($)     Deposits ($)       Balance ($)
+      09 DEC   SAMPLE CREDIT TRANSACTION                            blank          265.86          1,178.79
+               FROM SAMPLE PAYMENT PROCESSOR
+      09 DEC   SAMPLE DEBIT TRANSACTION                              9.10           blank          1,169.69
+               SAMPLE MERCHANT LOCATION
+               EFFECTIVE DATE 05 DEC 2024
+      09 DEC   SAMPLE PAYMENT                                       14.50           blank          1,155.19
+               TO SAMPLE SOFTWARE PROVIDER
+      blank    TOTALS AT END OF PAGE                              $23.60         $265.86
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 3, rows.size
+
+    assert_equal "265.86", rows.first.fetch("Amount")
+    assert_equal "1178.79", rows.first.fetch("Balance")
+    assert_equal "-9.10", rows.second.fetch("Amount")
+    assert_equal "1169.69", rows.second.fetch("Balance")
+    assert_equal "-14.50", rows.third.fetch("Amount")
+    assert_equal "1155.19", rows.third.fetch("Balance")
+
+    imported_text = rows.map { |row| row.fetch("Description") }.join(" ")
+    refute_includes imported_text, "blank"
+    refute_includes imported_text, "TOTALS AT END OF PAGE"
+  end
+
+  test "separate debit credit column spans classify right aligned debit amounts before nearest-header fallback" do
+    header = "Date     Transaction Details          Withdrawals ($) Deposits ($) Balance ($)"
+    credit_start = header.index("Deposits")
+    balance_start = header.index("Balance")
+    amount = "123.45"
+    balance = "1,055.34"
+    description = "09 DEC   SAMPLE COLUMN POSITION DEBIT"
+    debit_line = description.ljust(credit_start - amount.length) + amount
+    debit_line = debit_line.ljust(balance_start) + balance
+
+    statement = parse_statement_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      01 DECEMBER 2024 TO 31 DECEMBER 2024
+      #{header}
+      #{debit_line}
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 1, rows.size
+    assert_equal "-123.45", rows.first.fetch("Amount")
+    assert_equal "1055.34", rows.first.fetch("Balance")
+  end
+
+  test "uses the current repeated header column positions when debit credit table shifts" do
+    first_header = positioned_pdf_line(
+      [ "Date", 0 ],
+      [ "Transaction", 5 ],
+      [ "Debit", 54 ],
+      [ "Credit", 68 ],
+      [ "Balance", 88 ]
+    )
+    second_header = positioned_pdf_line(
+      [ "Date", 0 ],
+      [ "Transaction", 5 ],
+      [ "Debit", 24 ],
+      [ "Credit", 38 ],
+      [ "Balance", 58 ]
+    )
+
+    statement = parse_pdf_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      #{first_header}
+      #{positioned_pdf_line([ "01 Apr 2025 OPENING BALANCE", 0 ], [ "$2,000.00 CR", 88 ])}
+      01 Apr SAMPLE ALPHA ROW
+      #{positioned_pdf_line([ "Reference A", 7 ], [ "125.00", 76 ], [ "$2,125.00 CR", 96 ])}
+      01 Apr SAMPLE BETA ROW
+      #{positioned_pdf_line([ "Reference B", 7 ], [ "33.00", 54 ], [ "$", 68 ], [ "$2,092.00 CR", 88 ])}
+
+      #{second_header}
+      02 Apr SAMPLE GAMMA ROW
+      #{positioned_pdf_line([ "Reference C", 7 ], [ "44.00", 24 ], [ "$", 38 ], [ "$2,048.00 CR", 58 ])}
+      02 Apr SAMPLE DELTA ROW
+      #{positioned_pdf_line([ "Reference D", 7 ], [ "$175.00", 44 ], [ "$2,223.00 CR", 64 ])}
+      #{positioned_pdf_line([ "02 Apr EPSILON ROW", 0 ], [ "11.50", 24 ], [ "$", 38 ], [ "$2,211.50 CR", 58 ])}
+      TOTALS AT END OF PERIOD
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 5, rows.size
+
+    assert_equal [ "125.00", "-33.00", "-44.00", "175.00", "-11.50" ], rows.map { |row| row.fetch("Amount") }
+    assert_equal [ "2125.00", "2092.00", "2048.00", "2223.00", "2211.50" ], rows.map { |row| row.fetch("Balance") }
+    assert_equal "SAMPLE ALPHA ROW Reference A", rows.first.fetch("Description")
+    assert_equal "EPSILON ROW", rows.last.fetch("Description")
+
+    imported_text = rows.map { |row| row.fetch("Description") }.join(" ")
+    refute_includes imported_text, "OPENING BALANCE"
+    refute_includes imported_text, "$"
+    refute_match(/\bblank\b/i, imported_text)
+    refute_match(/\b(?:CR|DR)\z/i, imported_text)
+  end
+
+  test "multiline amount rows are classified by debit credit columns without description keywords" do
+    header = positioned_pdf_line(
+      [ "Date", 0 ],
+      [ "Description", 8 ],
+      [ "Debit", 42 ],
+      [ "Credit", 56 ],
+      [ "Balance", 76 ]
+    )
+
+    statement = parse_pdf_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      #{header}
+      03 Apr ALPHA NEUTRAL
+      #{positioned_pdf_line([ "Reference A", 9 ], [ "12.00", 42 ], [ "$", 56 ], [ "$1,988.00 CR", 76 ])}
+      03 Apr BRAVO NEUTRAL
+      #{positioned_pdf_line([ "Reference B", 9 ], [ "34.00", 62 ], [ "$2,022.00 CR", 82 ])}
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 2, rows.size
+    assert_equal [ "-12.00", "34.00" ], rows.map { |row| row.fetch("Amount") }
+    assert_equal [ "1988.00", "2022.00" ], rows.map { |row| row.fetch("Balance") }
+    assert_equal "ALPHA NEUTRAL Reference A", rows.first.fetch("Description")
+    assert_equal "BRAVO NEUTRAL Reference B", rows.second.fetch("Description")
+  end
+
+  test "single header debit credit layout still parses with fallback header shape" do
+    header = positioned_pdf_line(
+      [ "Date", 0 ],
+      [ "Transaction", 8 ],
+      [ "Debit", 48 ],
+      [ "Credit", 62 ],
+      [ "Balance", 82 ]
+    )
+
+    statement = parse_pdf_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      #{header}
+      #{positioned_pdf_line([ "04 Apr SAMPLE ONE", 0 ], [ "21.00", 48 ], [ "$", 62 ], [ "$1,979.00 CR", 82 ])}
+      #{positioned_pdf_line([ "04 Apr SAMPLE TWO", 0 ], [ "55.00", 62 ], [ "$2,034.00 CR", 82 ])}
+      04 Apr SAMPLE THREE
+      #{positioned_pdf_line([ "Reference C", 8 ], [ "7.50", 48 ], [ "$", 62 ], [ "$2,026.50 CR", 82 ])}
+      TOTALS AT END OF PAGE
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 3, rows.size
+    assert_equal [ "-21.00", "55.00", "-7.50" ], rows.map { |row| row.fetch("Amount") }
+    assert_equal [ "1979.00", "2034.00", "2026.50" ], rows.map { |row| row.fetch("Balance") }
+    assert_equal "SAMPLE THREE Reference C", rows.third.fetch("Description")
+    refute_includes rows.map { |row| row.fetch("Description") }.join(" "), "TOTALS AT END"
+  end
+
+  test "split readable debit credit balance header imports multiline rows and skips technical page lines" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction
+      Debit
+      Credit
+      Balance
+      01 Apr 2025 OPENING BALANCE $770,419.32 CR
+      01 Apr CARD PURCHASE SAMPLE
+      Card xx0000
+      Value Date: 30/03/2025 33.00 $ $770,386.32 CR
+      01 Apr TRANSFER TO SAMPLE SUPPLIER
+      NetBank REF 3,411.72 $ $766,974.60 CR
+      01 Apr FAST TRANSFER FROM SAMPLE CUSTOMER
+      Repair $350.00 $767,324.60 CR
+      01 Apr POS 123456 01 APR $1,321.00 $768,645.60 CR
+      Statement 44 (Page 2 of 2)
+      Account Number 00000000
+      17013.40872.1.9 ZZ258R3 V06.00.37
+      *#*
+      02 Apr DIRECT CREDIT SAMPLE CUSTOMER $7,410.00 $776,055.60 CR
+      02 Apr CARD PURCHASE SAMPLE
+      Value Date: 01/04/2025 55.60 $ $776,000.00 CR
+      02 Apr 2025 CLOSING BALANCE $776,000.00 CR
+      Transaction Summary
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 6, rows.size
+    assert_equal [ "-33.00", "-3411.72", "350.00", "1321.00", "7410.00", "-55.60" ], rows.map { |row| row.fetch("Amount") }
+    assert_equal [ "770386.32", "766974.60", "767324.60", "768645.60", "776055.60", "776000.00" ], rows.map { |row| row.fetch("Balance") }
+
+    assert_equal "CARD PURCHASE SAMPLE Card xx0000 Value Date: 30/03/2025", rows.first.fetch("Description")
+    assert_equal "TRANSFER TO SAMPLE SUPPLIER NetBank REF", rows.second.fetch("Description")
+    assert_equal "FAST TRANSFER FROM SAMPLE CUSTOMER Repair", rows.third.fetch("Description")
+
+    imported_text = rows.map { |row| row.fetch("Description") }.join(" ")
+    refute_includes imported_text, "$"
+    refute_match(/\bCR\b/, imported_text)
+    refute_match(/\bDR\b/, imported_text)
+    refute_includes imported_text, "Statement 44"
+    refute_includes imported_text, "Account Number"
+    refute_includes imported_text, "ZZ258R3"
+    refute_includes imported_text, "V06.00.37"
+    refute_includes imported_text, "OPENING BALANCE"
+    refute_includes imported_text, "CLOSING BALANCE"
+    refute_includes imported_text, "Transaction Summary"
+  end
+
+  test "glued credit and debit balance suffixes set balance sign" do
+    statement = parse_layout_text(<<~TEXT)
+      SAMPLE BUSINESS STATEMENT
+      Statement period 1 Apr 2025 - 30 Jun 2025
+      Date Transaction
+      Debit
+      Credit
+      Balance
+      01 Apr 2025 OPENING BALANCE $1,000.00 CR
+      01 Apr SAMPLE CREDIT ROW $50.00 $1,050.00CR
+      02 Apr SAMPLE DEBIT ROW 25.00 $ $1,025.00 CR
+      03 Apr SAMPLE OVERDRAWN ROW 2,259.56 $ $1,234.56DR
+    TEXT
+
+    rows = statement.rows.map { |row| row.fetch(:data) }
+    assert_equal 3, rows.size
+    assert_equal [ "1050.00", "1025.00", "-1234.56" ], rows.map { |row| row.fetch("Balance") }
+    assert_equal [ "50.00", "-25.00", "-2259.56" ], rows.map { |row| row.fetch("Amount") }
+
+    descriptions = rows.map { |row| row.fetch("Description") }.join(" ")
+    refute_match(/\b(?:CR|DR)\b/, descriptions)
   end
 
   test "ANZ standalone blank tokens are removed from descriptions and still mark empty amount cells" do
@@ -563,6 +910,13 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
     rows.find { |row| row.fetch("Date") == date && row.fetch("Description") == description }
   end
 
+  def positioned_pdf_line(*cells)
+    cells.each_with_object(+"") do |(text, start), line|
+      line << " " while line.length < start
+      line << text
+    end
+  end
+
   def two_page_service_online_ocr_text
     <<~TEXT
       Service Online Page 1 of 2
@@ -596,6 +950,10 @@ class BasTdkPdfStatementParserTest < ActiveSupport::TestCase
 
   def parse_statement_text(text)
     BasTdk::PdfStatementParser.new(text: text, source_name: "synthetic OCR text").call
+  end
+
+  def parse_layout_text(text)
+    BasTdk::PdfStatementParser.new(text: text, source_name: "synthetic layout text").call
   end
 
   def parse_pdf_text(text)

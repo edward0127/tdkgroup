@@ -12,6 +12,7 @@ module TdkWorkbookHelper
 
   XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".freeze
   PDF_CONTENT_TYPE = "application/pdf".freeze
+  CSV_CONTENT_TYPE = "text/csv".freeze
   TDK_ACCOUNTING_FORMAT = '#,##0.00;[Red]_(\ \(#,##0.00\)'.freeze
 
   def tdk_xlsx_upload(rows, filename: "synthetic-tdk-bank.xlsx", sheet_name: "Bank Report", accounting_format_columns: [])
@@ -31,6 +32,12 @@ module TdkWorkbookHelper
   end
 
   def tdk_text_upload(content, filename: "synthetic-not-xlsx.txt", content_type: "text/plain")
+    path = Rails.root.join("tmp", "#{SecureRandom.hex}-#{filename}")
+    File.binwrite(path, content)
+    Rack::Test::UploadedFile.new(path.to_s, content_type, true, original_filename: filename)
+  end
+
+  def tdk_csv_upload(content, filename: "synthetic-tdk-bank.csv", content_type: CSV_CONTENT_TYPE)
     path = Rails.root.join("tmp", "#{SecureRandom.hex}-#{filename}")
     File.binwrite(path, content)
     Rack::Test::UploadedFile.new(path.to_s, content_type, true, original_filename: filename)

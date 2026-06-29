@@ -11,7 +11,7 @@ module Admin
 
       def create
         if uploaded_file.blank?
-          redirect_to admin_bas_job_path(@job), alert: "Upload a bank statement XLSX or PDF file."
+          redirect_to admin_bas_job_path(@job), alert: "Upload a bank statement Excel, CSV or PDF file."
           return
         end
 

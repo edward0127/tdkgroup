@@ -2,7 +2,7 @@
   <div class="admin-panel-heading">
     <div>
       <h2>Bank statement upload</h2>
-      <p class="admin-muted">Upload a bank statement Excel or PDF for review. Readable PDFs are processed directly; scanned PDFs can be processed when local OCR is available. Code Category/GST in the table, or download the latest Excel for bulk edits and upload it again when ready.</p>
+      <p class="admin-muted">Upload a bank statement Excel, CSV or PDF for review. Readable PDFs are processed directly; scanned PDFs can be processed when local OCR is available. Code Category/GST in the table, or download the latest Excel for bulk edits and upload it again when ready.</p>
     </div>
   </div>
 
@@ -13,9 +13,9 @@
           multipart: true,
           data: bas_submit_guard_data("Queueing bank statement upload") do |form| %>
       <div class="field tdk-upload-file-field">
-        <%= form.label :file, "Bank statement Excel or PDF file" %>
+        <%= form.label :file, "Bank statement Excel, CSV or PDF file" %>
         <%= form.file_field :file,
-              accept: ".xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf",
+              accept: ".xlsx,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/csv,application/vnd.ms-excel,application/pdf",
               required: true %>
       </div>
       <button type="submit" class="btn-primary" data-submit-guard-loading-text="Queueing bank statement upload">Upload statement</button>

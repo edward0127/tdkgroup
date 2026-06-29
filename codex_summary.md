@@ -1,19 +1,18 @@
-Implemented the TDK BAS table fix.
+Implemented the workbook width fix.
 
 Changed:
-- Optional blank Details-like columns are filtered from the browser table by default in [workflow_helper.rb](C:/Users/edward/projects/tdkgroup/app/helpers/admin/bas/workflow_helper.rb:242).
-- `Details/Narration/Reference/Memo/Notes` stay visible when populated, explicitly requested, or currently sorted.
-- Added Show/Hide blank optional columns toggle preserving `page`, `per_page`, `sort`, and `direction`.
-- Hidden optional columns no longer render inputs, so saves only submit visible fields.
-- Added compact Balance table classes/layout in [application.css](C:/Users/edward/projects/tdkgroup/app/assets/tailwind/application.css:2389).
-- Added regression coverage in [admin_bas_tdk_workbooks_controller_test.rb](C:/Users/edward/projects/tdkgroup/test/controllers/admin_bas_tdk_workbooks_controller_test.rb:312).
+- [tdk_resizable_table_controller.js](C:/Users/edward/projects/tdkgroup/app/javascript/controllers/tdk_resizable_table_controller.js:205): table width now comes from summed visible column widths, clears stale `min-width` when the table fits, hides top scrollbar, and resets scroll positions.
+- [workflow_helper.rb](C:/Users/edward/projects/tdkgroup/app/helpers/admin/bas/workflow_helper.rb:328): lowered min widths while keeping readable defaults, including Details `224px -> 128px min` and Description `320px -> 160px min`.
+- [application.css](C:/Users/edward/projects/tdkgroup/app/assets/tailwind/application.css:2484): removed the forced visible-Details wide min width and reduced CSS fallback mins so they do not fight `<colgroup>` widths.
+- [admin_bas_tdk_workbooks_controller_test.rb](C:/Users/edward/projects/tdkgroup/test/controllers/admin_bas_tdk_workbooks_controller_test.rb:868): added/updated coverage for helper widths, Details col metadata, no hardcoded `88rem`, dynamic scrollbar controller behavior, top scrollbar markup, pagination, save buttons, and no nested forms.
 
-Verification:
-- `ruby -c app/helpers/admin/bas/workflow_helper.rb` passed.
-- `ruby -c test/controllers/admin_bas_tdk_workbooks_controller_test.rb` passed.
-- `bundle exec rails test` passed: 444 runs, 4884 assertions.
-- `bundle exec rails zeitwerk:check` passed: “All is good!”
-- `bundle exec rails tailwindcss:build` passed.
-- `git diff --check` passed, with only existing CRLF normalization warnings.
+Validation passed:
+- `ruby -c app/helpers/admin/bas/workflow_helper.rb`
+- `node --check app/javascript/controllers/tdk_resizable_table_controller.js`
+- `bundle exec rails test test/controllers/admin_bas_workflow_ui_test.rb`
+- `bundle exec rails test test/controllers/admin_bas_tdk_workbooks_controller_test.rb`
+- `bundle exec rails test` - 500 runs, 5585 assertions
+- `bundle exec rails zeitwerk:check`
+- `bundle exec rails tailwindcss:build`
 
-The Rails commands emitted Windows VIPS/tempfile warnings, but all requested commands exited successfully. `codex_summary.md` was already modified in the worktree and I left it alone.
+There is no JS test runner in this repo, so the resize behavior is covered with static Rails assertions rather than browser-level drag tests. The test output still has existing VIPS/csv warnings, but no failures.

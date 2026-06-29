@@ -44,14 +44,14 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_select "h2", "Background bank statement status"
     assert_select "h2", text: "Current active bank statement", count: 0
     assert_select "h3", text: "Current active statement", count: 0
-    assert_includes response.body, "Upload a bank statement Excel or PDF for review."
+    assert_includes response.body, "Upload a bank statement Excel, CSV or PDF for review."
     assert_includes response.body, "scanned PDFs can be processed when local OCR is available"
     assert_includes response.body, "download the latest Excel for bulk edits"
     refute_includes response.body, "Only XLSX files are supported. A successful upload becomes the active bank statement version"
     assert_select ".tdk-statement-action-row .tdk-upload-form"
     assert_select ".tdk-statement-action-row .tdk-export-action-slot"
     assert_not_includes response.body, "Bank workbook review"
-    assert_select "input[type='file'][name='tdk_workbook[file]'][accept='.xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf']"
+    assert_select "input[type='file'][name='tdk_workbook[file]'][accept='.xlsx,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/csv,application/vnd.ms-excel,application/pdf']"
     assert_select "button", text: "Upload statement"
 
     assert_no_difference "BasBankTransaction.count" do
@@ -245,7 +245,10 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     balance_header = html.at_css("th.tdk-workbook-col--balance")
     assert balance_header, "expected Balance header to use the dedicated Balance column class"
     assert_includes balance_header.text.squish, "Balance"
-    assert_match(/--tdk-balance-input-width:\s*14ch;/, balance_header["style"].to_s)
+    balance_col = table.at_css("col.tdk-workbook-col--balance[data-column-key='balance']")
+    assert balance_col, "expected Balance width to be controlled by a colgroup column"
+    assert_equal "144", balance_col["data-default-width"]
+    assert_equal "128", balance_col["data-min-width"]
     balance_sort_link = balance_header.at_css("a.tdk-workbook-sort-link")
     assert balance_sort_link, "expected Balance header to keep its sorting link"
     assert_equal "Balance", Rack::Utils.parse_query(URI.parse(balance_sort_link["href"]).query).fetch("sort")
@@ -307,6 +310,173 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "-70986.43", downloaded_rows.second[6]
   end
 
+  test "admin can process CSV upload edit and export" do
+    job = create_job(workflow_type: "tdk_group")
+
+    assert_difference "BasTdkWorkbook.count", 1 do
+      assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+        post admin_bas_job_tdk_workbooks_path(job), params: {
+          tdk_workbook: {
+            file: tdk_csv_upload(<<~CSV)
+              2025-07-01,-33.00,Synthetic supplier payment,ignored extra
+              2025-07-02,120.50,Synthetic customer receipt,ignored extra
+              2025-07-03,-10.25,Synthetic card purchase
+            CSV
+          }
+        }
+      end
+    end
+
+    assert_redirected_to admin_bas_job_path(job)
+    queued = job.tdk_workbooks.recent.first
+    assert_equal "queued", queued.status
+    assert_equal "csv", queued.metadata.fetch("source_type")
+
+    perform_enqueued_jobs(only: BasTdkWorkbookProcessingJob)
+
+    workbook = job.tdk_workbooks.active_processed.first
+    assert_equal queued.id, workbook.id
+    assert_equal "processed", workbook.status
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description" ], workbook.processed_headers
+    assert_equal 3, workbook.rows.count
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    first_row = workbook.rows.ordered.first
+    html = Nokogiri::HTML(response.body)
+    amount_input = html.at_css("input[name='rows[#{first_row.id}][Amount]']")
+    assert_equal "(33.00)", amount_input["value"]
+    assert_includes response.body, "Synthetic supplier payment"
+
+    patch update_rows_admin_bas_job_tdk_workbook_path(job, workbook), params: {
+      page: 1,
+      rows: {
+        first_row.id => {
+          "Category" => "Supplies",
+          "GST" => "3.00"
+        }
+      }
+    }
+
+    assert_redirected_to admin_bas_job_path(job, page: 1)
+    first_row.reload
+    assert_equal "Supplies", first_row.row_data.fetch("Category")
+    assert_equal "3.00", first_row.row_data.fetch("GST")
+
+    assert_enqueued_with(job: BasTdkWorkbookExportJob) do
+      post prepare_download_admin_bas_job_tdk_workbook_path(job, workbook)
+    end
+    perform_enqueued_jobs(only: BasTdkWorkbookExportJob)
+
+    get download_admin_bas_job_tdk_workbook_path(job, workbook)
+
+    assert_response :success
+    downloaded_rows = tdk_downloaded_table_rows(response.body)
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description" ], downloaded_rows.first.first(5)
+    assert_equal "Supplies", downloaded_rows.second[1]
+    assert_equal "-33.0", downloaded_rows.second[2]
+    assert_equal "3.0", downloaded_rows.second[3]
+  end
+
+  test "CSV month-name dates are normalised for date inputs" do
+    job = create_job(workflow_type: "tdk_group")
+
+    assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+      post admin_bas_job_tdk_workbooks_path(job), params: {
+        tdk_workbook: {
+          file: tdk_csv_upload(<<~CSV)
+            Date,Amount,Transaction Details,Balance,Category
+            23 Jun 26,342.30,Synthetic credit,2961.92,Government payments
+            1 Jul 26,-42.42,Synthetic debit,2919.50,Transfers out
+          CSV
+        }
+      }
+    end
+
+    perform_enqueued_jobs(only: BasTdkWorkbookProcessingJob)
+
+    workbook = job.tdk_workbooks.active_processed.first
+    assert_equal "processed", workbook.status
+    credit_row, debit_row = workbook.rows.ordered.to_a
+    assert_equal "2026-06-23", credit_row.row_data.fetch("Date")
+    assert_equal "2026-07-01", debit_row.row_data.fetch("Date")
+    assert_equal "342.30", credit_row.row_data.fetch("Amount")
+    assert_equal "-42.42", debit_row.row_data.fetch("Amount")
+    assert_equal "2961.92", credit_row.row_data.fetch("Balance")
+    assert_equal "Government payments", credit_row.row_data.fetch("Category")
+    assert_equal "Synthetic credit", credit_row.row_data.fetch("Transaction Details")
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    html = Nokogiri::HTML(response.body)
+    assert html.at_css("input[type='date'][name='rows[#{credit_row.id}][Date]'][value='2026-06-23'].tdk-workbook-cell-input--date")
+    debit_amount_input = html.at_css("input[name='rows[#{debit_row.id}][Amount]'].tdk-workbook-cell-input--amount")
+    assert_equal "(42.42)", debit_amount_input["value"]
+  end
+
+  test "CSV content type variants are accepted for csv filenames" do
+    job = create_job(workflow_type: "tdk_group")
+    variants = [
+      "text/csv",
+      "application/csv",
+      "application/vnd.ms-excel",
+      "text/plain"
+    ]
+
+    assert_enqueued_jobs variants.size, only: BasTdkWorkbookProcessingJob do
+      assert_difference "BasTdkWorkbook.count", variants.size do
+        variants.each_with_index do |content_type, index|
+          post admin_bas_job_tdk_workbooks_path(job), params: {
+            tdk_workbook: {
+              file: tdk_csv_upload(
+                "Date,Amount,Description\n2025-07-01,10.00,Synthetic variant #{index + 1}\n",
+                filename: "synthetic-variant-#{index + 1}.csv",
+                content_type: content_type
+              )
+            }
+          }
+
+          assert_redirected_to admin_bas_job_path(job)
+        end
+      end
+    end
+
+    assert_equal variants.size, job.tdk_workbooks.where(status: "queued").count
+    assert_equal [ "csv" ], job.tdk_workbooks.map { |workbook| workbook.metadata.fetch("source_type") }.uniq
+  end
+
+  test "invalid CSV fails without replacing active processed workbook" do
+    job = create_job(workflow_type: "tdk_group")
+    active = create_processed_workbook(job, version_number: 1, description_prefix: "Active synthetic row")
+
+    assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+      post admin_bas_job_tdk_workbooks_path(job), params: {
+        tdk_workbook: {
+          file: tdk_csv_upload(<<~CSV)
+            Synthetic Business,Statement,Notes
+            Name,Project,Something
+          CSV
+        }
+      }
+    end
+
+    perform_enqueued_jobs(only: BasTdkWorkbookProcessingJob)
+
+    failed = job.tdk_workbooks.recent.first
+    assert_equal "failed", failed.status
+    assert_includes failed.processing_errors, BasTdk::WorkbookProcessor::FRIENDLY_HEADER_ERROR
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, job.tdk_workbooks.active_processed.first.id
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_includes response.body, "Active synthetic row 1"
+    assert_includes response.body, "This upload failed. The previous processed bank statement is still active."
+  end
+
   test "blank optional details column is hidden by default after display ordering" do
     job = create_job(workflow_type: "tdk_group")
     workbook = create_processed_balance_workbook(job, details_values: [ "", "   " ])
@@ -323,7 +493,9 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_includes table["class"].to_s.split, "tdk-workbook-table--compact-balance"
     refute_includes table["class"].to_s.split, "tdk-workbook-table--has-visible-details"
     assert_nil html.at_css("textarea[name='rows[#{first_row.id}][Details]']")
-    assert_equal "Show blank optional columns", html.at_css(".tdk-workbook-optional-columns-link").text.squish
+    assert_nil html.at_css(".tdk-workbook-optional-columns-link")
+    refute_includes html.text, "Show blank optional columns"
+    refute_includes html.text, "Hide blank optional columns"
     assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Details", "Balance" ], workbook.reload.processed_headers
   end
 
@@ -340,10 +512,20 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Details" ], rendered_tdk_headers(html)
     assert_includes table["class"].to_s.split, "tdk-workbook-table--has-visible-details"
     refute_includes table["class"].to_s.split, "tdk-workbook-table--compact-balance"
+    description_col = table.at_css("col.tdk-workbook-col--description[data-column-key='description']")
+    details_col = table.at_css("col.tdk-workbook-col--details[data-column-key='details']")
+    assert description_col, "expected Description width metadata"
+    assert details_col, "expected Details width metadata"
+    assert_equal "320", description_col["data-default-width"]
+    assert_equal "160", description_col["data-min-width"]
+    assert_operator description_col["data-default-width"].to_i, :>, description_col["data-min-width"].to_i
+    assert_equal "224", details_col["data-default-width"]
+    assert_equal "128", details_col["data-min-width"]
+    assert_operator details_col["data-default-width"].to_i, :>, details_col["data-min-width"].to_i
     assert html.at_css("td.tdk-workbook-col--details textarea[name='rows[#{first_row.id}][Details]']"), "expected Details to remain editable"
   end
 
-  test "blank optional details column can be explicitly shown and toggle preserves table state" do
+  test "blank optional details column can still be explicitly shown by table state" do
     job = create_job(workflow_type: "tdk_group")
     create_processed_balance_workbook(job, details_values: Array.new(12, ""))
 
@@ -352,15 +534,8 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     html = Nokogiri::HTML(response.body)
     assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], rendered_tdk_headers(html)
-    show_link = html.at_css(".tdk-workbook-optional-columns-link")
-    assert_equal "Show blank optional columns", show_link.text.squish
-    show_uri = URI.parse(show_link["href"])
-    show_params = Rack::Utils.parse_query(show_uri.query)
-    assert_equal "2", show_params.fetch("page")
-    assert_equal "10", show_params.fetch("per_page")
-    assert_equal "Amount", show_params.fetch("sort")
-    assert_equal "desc", show_params.fetch("direction")
-    assert_equal "1", show_params.fetch("show_blank_optional_columns")
+    assert_nil html.at_css(".tdk-workbook-optional-columns-link")
+    refute_includes html.text, "Show blank optional columns"
 
     get admin_bas_job_path(job, page: 2, per_page: 10, sort: "Amount", direction: "desc", show_blank_optional_columns: "1")
 
@@ -369,15 +544,8 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Details" ], rendered_tdk_headers(html)
     assert html.at_css("td.tdk-workbook-col--details textarea"), "expected explicitly shown Details inputs to render"
     assert html.at_css("form input[name='show_blank_optional_columns'][value='1']")
-    hide_link = html.at_css(".tdk-workbook-optional-columns-link")
-    assert_equal "Hide blank optional columns", hide_link.text.squish
-    hide_uri = URI.parse(hide_link["href"])
-    hide_params = Rack::Utils.parse_query(hide_uri.query)
-    assert_equal "2", hide_params.fetch("page")
-    assert_equal "10", hide_params.fetch("per_page")
-    assert_equal "Amount", hide_params.fetch("sort")
-    assert_equal "desc", hide_params.fetch("direction")
-    assert_not hide_params.key?("show_blank_optional_columns")
+    assert_nil html.at_css(".tdk-workbook-optional-columns-link")
+    refute_includes html.text, "Hide blank optional columns"
   end
 
   test "current sort optional details column is not hidden even when blank" do
@@ -697,7 +865,24 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "queued", active.reload.export_status
   end
 
-  test "editable table has anchored section and top and bottom save buttons in the update form" do
+  test "workbook text column minimum widths stay below readable defaults" do
+    helper = Object.new.extend(Admin::Bas::WorkflowHelper)
+
+    assert_equal 320, helper.tdk_workbook_column_default_width("Description")
+    assert_equal 160, helper.tdk_workbook_column_min_width("Description")
+    assert_operator helper.tdk_workbook_column_default_width("Description"), :>, helper.tdk_workbook_column_min_width("Description")
+
+    assert_equal 224, helper.tdk_workbook_column_default_width("Details")
+    assert_equal 128, helper.tdk_workbook_column_min_width("Details")
+    assert_operator helper.tdk_workbook_column_default_width("Details"), :>, helper.tdk_workbook_column_min_width("Details")
+
+    assert_equal 224, helper.tdk_workbook_column_default_width("Transaction Details")
+    assert_equal 128, helper.tdk_workbook_column_min_width("Transaction Details")
+    assert_equal 128, helper.tdk_workbook_column_min_width("Account Number")
+    assert_equal 128, helper.tdk_workbook_column_min_width("Transaction Type")
+  end
+
+  test "editable table has anchored section and top and bottom save buttons for the update form" do
     job = create_job(workflow_type: "tdk_group")
     workbook = create_processed_workbook(job, version_number: 1, row_count: 30)
 
@@ -708,10 +893,15 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     section = html.at_css("section#tdk-active-table.tdk-workbook-review-card")
     assert section, "expected editable table section with stable anchor"
     assert_includes section["data-controller"].to_s.split, "anchor-scroll"
+    assert_includes section["data-controller"].to_s.split, "tdk-resizable-table"
+    assert_match(/\Atdk-workbook-column-widths:#{workbook.id}:[a-f0-9]{16}\z/, section["data-tdk-resizable-table-storage-key-value"].to_s)
 
-    form = section.at_css("form[action='#{update_rows_admin_bas_job_tdk_workbook_path(job, workbook)}'][method='post']")
+    update_forms = section.css("form[action='#{update_rows_admin_bas_job_tdk_workbook_path(job, workbook)}'][method='post']").select do |candidate|
+      candidate.at_css("input[name='_method'][value='patch']")
+    end
+    assert_equal 1, update_forms.size
+    form = update_forms.first
     assert form, "expected anchored table section to contain update rows form"
-    assert form.at_css("input[name='_method'][value='patch']")
     assert form.at_css("input[name='page'][value='2']")
     assert form.at_css("input[name='per_page'][value='25']")
     assert form.at_css("input[name='sort'][value='source_row']")
@@ -719,18 +909,67 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_includes form["data-controller"].to_s.split, "submit-guard"
     assert_includes form["data-controller"].to_s.split, "tdk-save-scroll"
     assert_includes form["data-action"].to_s, "submit->tdk-save-scroll#store"
+    assert_empty html.css("form form")
+
+    top_scroll = section.at_css(".tdk-workbook-table-scrollbar-top[data-tdk-resizable-table-target='topScroll']")
+    assert top_scroll, "expected top horizontal scrollbar proxy"
+    assert top_scroll.at_css(".tdk-workbook-table-scrollbar-top__inner[data-tdk-resizable-table-target='topScrollInner']")
+    assert_includes top_scroll["data-action"].to_s, "scroll->tdk-resizable-table#scrollTableFromTop"
+    assert_nil top_scroll.ancestors("form").first
+
+    table_wrap = section.at_css(".tdk-workbook-table-wrap[data-tdk-resizable-table-target='tableWrap']")
+    assert table_wrap, "expected real table wrapper to remain rendered"
+    assert_includes table_wrap["data-action"].to_s, "scroll->tdk-resizable-table#scrollTopFromTable"
+    assert_equal form["id"], table_wrap.ancestors("form").first["id"]
 
     save_buttons = section.css("button[type='submit'][data-submit-guard-loading-text='Saving rows']").select do |button|
       button.text.squish == "Save visible rows"
     end
     assert_equal 2, save_buttons.size
 
-    top_button = form.at_css(".tdk-workbook-toolbar__actions button[type='submit']")
+    top_button = section.at_css(".tdk-workbook-toolbar__actions button[type='submit']")
     bottom_button = section.at_css(".tdk-workbook-table-footer .tdk-workbook-save-action button[type='submit']")
     assert_equal "Save visible rows", top_button.text.squish
     assert_equal "Save visible rows", bottom_button.text.squish
-    assert_equal form, top_button.ancestors("form").first
+    assert_equal form["id"], top_button["form"]
     assert_equal form["id"], bottom_button["form"]
+    assert_nil top_button.ancestors("form").first
+    assert_nil bottom_button.ancestors("form").first
+
+    table = table_wrap.at_css("table.tdk-workbook-table[data-tdk-resizable-table-target='table']")
+    assert table, "expected table target for scrollbar width measurement"
+    columns = table.css("colgroup col")
+    headers = table.css("thead th")
+    assert_equal headers.size, columns.size
+    columns.each do |column|
+      assert_equal "column", column["data-tdk-resizable-table-target"]
+      assert_match(/\A[a-z0-9_]+\z/, column["data-column-key"])
+      assert column["data-default-width"].to_i.positive?
+      assert column["data-min-width"].to_i.positive?
+    end
+
+    resize_handles = headers.css(".tdk-workbook-column-resize-handle")
+    assert_equal headers.size, resize_handles.size
+    resize_handles.each do |handle|
+      assert_equal "separator", handle["role"]
+      assert_match(/\A[a-z0-9_]+\z/, handle["data-column-key"])
+      assert_includes handle["data-action"].to_s, "pointerdown->tdk-resizable-table#startResize"
+      assert_includes handle["data-action"].to_s, "click->tdk-resizable-table#handleClick"
+    end
+
+    reset_button = section.at_css(".tdk-workbook-toolbar__actions button.tdk-workbook-reset-widths-button")
+    assert reset_button, "expected reset column widths control"
+    assert_equal "button", reset_button["type"]
+    assert_equal "Reset column widths", reset_button.text.squish
+    assert_equal "click->tdk-resizable-table#resetWidths", reset_button["data-action"]
+    assert_nil reset_button.ancestors("form").first
+
+    top_pagination_form = section.at_css(".tdk-workbook-toolbar .tdk-workbook-page-form")
+    bottom_pagination_form = section.at_css(".tdk-workbook-table-footer .tdk-workbook-page-form")
+    assert top_pagination_form, "expected top pagination form"
+    assert bottom_pagination_form, "expected bottom pagination form"
+    refute_includes top_pagination_form.ancestors("form").map { |ancestor| ancestor["id"] }, form["id"]
+    refute_includes bottom_pagination_form.ancestors("form").map { |ancestor| ancestor["id"] }, form["id"]
   end
 
   test "editable table renders date pickers formatted amounts and sortable header links" do
@@ -835,11 +1074,10 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_includes toolbar.text.squish, "Editable bank statement table"
     assert_includes toolbar.text.squish, "Rows 26-50 of 311"
 
-    meta = toolbar.at_css(".tdk-workbook-toolbar__meta")
-    assert meta, "expected toolbar meta area"
-    assert_equal [ "Page 2 of 13" ], meta.css("span").map { |span| span.text.squish }
-    refute_includes meta.text.squish, "Active v8"
-    refute_includes meta.text.squish, "311 rows"
+    assert_nil toolbar.at_css(".tdk-workbook-toolbar__meta")
+    assert_nil toolbar.at_css(".tdk-workbook-optional-columns-link")
+    refute_includes toolbar.text.squish, "Active v8"
+    refute_includes toolbar.text.squish, "311 rows"
 
     assert_nil html.at_css(".tdk-current-workbook-card"), "standalone current active panel should be removed"
     status_panel = html.at_css(".tdk-background-status-card")
@@ -859,34 +1097,39 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     refute_includes status_panel.text.squish, "Processed at"
   end
 
-  test "editable table pagination is at bottom with first previous next and last controls" do
+  test "editable table pagination renders full controls at top and bottom" do
     job = create_job(workflow_type: "tdk_group")
     workbook = create_processed_workbook(job, version_number: 1, row_count: 311)
 
     get admin_bas_job_path(job)
 
     assert_response :success
-    assert_select ".tdk-workbook-toolbar .tdk-workbook-pagination", count: 0
-    assert_select ".tdk-workbook-table-footer .tdk-workbook-pagination"
-    assert_select ".tdk-workbook-pagination .tdk-page-button.is-disabled[aria-label='First page']"
-    assert_select ".tdk-workbook-pagination .tdk-page-button.is-disabled[aria-label='Previous page']"
     html = Nokogiri::HTML(response.body)
+    section = html.at_css("section#tdk-active-table")
+    assert section
+    assert_tdk_pagination_controls(section.at_css(".tdk-workbook-toolbar"), id_suffix: "top")
+    assert_tdk_pagination_controls(section.at_css(".tdk-workbook-table-footer"), id_suffix: "bottom")
+    assert_equal 1, html.css("#tdk_page_select_top").size
+    assert_equal 1, html.css("#tdk_per_page_select_top").size
+    assert_equal 1, html.css("#tdk_page_select_bottom").size
+    assert_equal 1, html.css("#tdk_per_page_select_bottom").size
     assert_tdk_page_link(html, "Next page", job: job, page: 2)
     assert_tdk_page_link(html, "Last page", job: job, page: 13)
     assert_select "form[action='#{update_rows_admin_bas_job_tdk_workbook_path(job, workbook)}'] input[name='page'][value='1']"
-    assert_select ".tdk-workbook-page-form select[name='page']"
-    assert_select ".tdk-workbook-page-form select[name='per_page']" do
-      assert_select "option[value='10']"
-      assert_select "option[value='25'][selected='selected']"
-      assert_select "option[value='50']"
-      assert_select "option[value='100']"
+    assert_equal 2, html.css(".tdk-workbook-page-form select[name='page']").size
+    assert_equal 2, html.css(".tdk-workbook-page-form select[name='per_page']").size
+    html.css(".tdk-workbook-page-form select[name='per_page']").each do |select|
+      assert select.at_css("option[value='10']")
+      assert select.at_css("option[value='25'][selected='selected']")
+      assert select.at_css("option[value='50']")
+      assert select.at_css("option[value='100']")
     end
 
     get admin_bas_job_path(job, page: 4, per_page: 50, sort: "Amount", direction: "desc")
 
     assert_response :success
-    assert_select ".tdk-page-status", "Page 4 of 7"
     html = Nokogiri::HTML(response.body)
+    assert_equal 2, html.css(".tdk-page-status").select { |status| status.text.squish == "Page 4 of 7" }.size
     assert_tdk_page_link(html, "First page", job: job, page: 1, per_page: 50, sort: "Amount", direction: "desc")
     assert_tdk_page_link(html, "Previous page", job: job, page: 3, per_page: 50, sort: "Amount", direction: "desc")
     assert_tdk_page_link(html, "Next page", job: job, page: 5, per_page: 50, sort: "Amount", direction: "desc")
@@ -944,6 +1187,36 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes controller_source, "window.location.hash"
   end
 
+  test "resizable table controller persists safe column width preferences" do
+    controller_source = Rails.root.join("app/javascript/controllers/tdk_resizable_table_controller.js").read
+    index_source = Rails.root.join("app/javascript/controllers/index.js").read
+
+    assert_includes index_source, "eagerLoadControllersFrom(\"controllers\", application)"
+    assert_includes controller_source, "static targets = [\"column\", \"handle\", \"tableWrap\", \"topScroll\", \"topScrollInner\", \"table\"]"
+    assert_includes controller_source, "static values = { storageKey: String }"
+    assert_includes controller_source, "window.localStorage.setItem(this.storageKeyValue, JSON.stringify(widths))"
+    assert_includes controller_source, "window.localStorage.removeItem(this.storageKeyValue)"
+    assert_includes controller_source, "column.dataset.columnKey"
+    assert_includes controller_source, "pointermove"
+    assert_includes controller_source, "pointerup"
+    assert_includes controller_source, "scrollTableFromTop(event)"
+    assert_includes controller_source, "scrollTopFromTable(event)"
+    assert_includes controller_source, "applyDefaultWidths()"
+    assert_includes controller_source, "applyTableWidthFromColumns()"
+    assert_includes controller_source, "totalColumnWidth()"
+    assert_includes controller_source, "table.style.width = \"100%\""
+    assert_includes controller_source, "table.style.removeProperty(\"min-width\")"
+    assert_includes controller_source, "const hasOverflow = totalColumnWidth > clientWidth"
+    assert_includes controller_source, "topScrollInner.style.width = `${topScrollWidth}px`"
+    assert_includes controller_source, "topScroll.hidden = !hasOverflow"
+    assert_includes controller_source, "this.resetScrollPositions()"
+    assert_includes controller_source, "new ResizeObserver"
+    assert_includes controller_source, "window.addEventListener(\"resize\", this.boundRefreshTopScrollbar)"
+    assert_not_includes controller_source, "Math.max(wrapperWidth, totalWidth)"
+    assert_not_includes controller_source, "row_data"
+    assert_not_includes controller_source, "Transaction Details"
+  end
+
   test "editable table css is compact and avoids desktop truncation" do
     css = Rails.root.join("app/assets/tailwind/application.css").read
 
@@ -953,46 +1226,58 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_match(/\.tdk-workbook-table\s*\{[^}]*width: 100%;[^}]*table-layout: fixed;[^}]*font-size: 0\.875rem/m, css)
     assert_match(/\.tdk-workbook-table\s*\{[^}]*min-width: 0;/m, css)
     assert_match(/\.tdk-workbook-table--compact-balance\s*\{[^}]*min-width: 0;/m, css)
-    assert_match(/\.tdk-workbook-table--has-visible-details\s*\{[^}]*min-width: 88rem;/m, css)
+    assert_no_match(/\.tdk-workbook-table--has-visible-details\s*\{[^}]*min-width:/m, css)
+    assert_no_match(/min-width:\s*88rem/m, css)
     assert_no_match(/\.tdk-workbook-table--has-balance\s*\{[^}]*min-width: 84rem/m, css)
     assert_no_match(/\.tdk-workbook-table--compact-balance\s*\{[^}]*min-width: 84rem/m, css)
     assert_no_match(/\.tdk-workbook-table\s*\{[^}]*width: max-content/m, css)
+    assert_match(/\.tdk-workbook-table-scrollbar-top\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: hidden;[^}]*height: 16px;[^}]*margin-bottom: 6px/m, css)
+    assert_match(/\.tdk-workbook-table-scrollbar-top__inner\s*\{[^}]*height: 1px/m, css)
+    assert_match(/\.tdk-workbook-table-scrollbar-top\[hidden\]\s*\{[^}]*display: none/m, css)
     assert_match(/\.tdk-workbook-table-wrap\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: visible/m, css)
     assert_no_match(/\.tdk-workbook-table-wrap\s*\{[^}]*max-height/m, css)
-    assert_match(/\.tdk-workbook-table th\s*\{[^}]*padding: 0\.5rem;[^}]*font-size: 0\.75rem/m, css)
+    assert_match(/\.tdk-workbook-table th\s*\{[^}]*position: relative;[^}]*padding: 0\.5rem;[^}]*font-size: 0\.75rem/m, css)
     assert_match(/\.tdk-workbook-table td\s*\{[^}]*padding: 0\.35rem 0\.65rem 0\.35rem 0\.45rem/m, css)
     assert_no_match(/\.tdk-workbook-table td:first-child,\s*\.tdk-workbook-table th:first-child\s*\{[^}]*width: 5%/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input\s*\{[^}]*padding: 0\.4rem 0\.5rem;[^}]*font-size: 0\.875rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input:not\(\.tdk-workbook-cell-input--textarea\)\s*\{[^}]*min-height: 2\.25rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--textarea\s*\{[^}]*min-height: 2\.75rem/m, css)
     assert_match(/\.tdk-workbook-col--source\s*\{[^}]*width: 5%/m, css)
-    assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 14%;[^}]*min-width: 9\.75rem/m, css)
-    assert_match(/\.tdk-workbook-col--category\s*\{[^}]*width: 14%;[^}]*min-width: 9\.5rem/m, css)
-    assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 10\.5%/m, css)
-    assert_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 13rem;[^}]*min-width: 12rem/m, css)
+    assert_match(/\.tdk-workbook-col--date\s*\{[^}]*width: 9rem;[^}]*min-width: 9rem/m, css)
+    assert_match(/\.tdk-workbook-col--category\s*\{[^}]*width: 12rem;[^}]*min-width: 9rem/m, css)
+    assert_match(/\.tdk-workbook-col--gst\s*\{[^}]*width: 6rem;[^}]*min-width: 6rem/m, css)
+    assert_match(/\.tdk-workbook-col--amount\s*\{[^}]*width: 8rem;[^}]*min-width: 8rem/m, css)
+    assert_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 10rem;[^}]*min-width: 8rem/m, css)
     assert_no_match(/\.tdk-workbook-col--balance\s*\{[^}]*width: 10\.5%/m, css)
     assert_no_match(/\.tdk-workbook-table--has-balance[^{]*\.tdk-workbook-(?:col--balance|cell--balance)[^{]*\{[^}]*position:\s*sticky/m, css)
     assert_no_match(/\.tdk-workbook-table--has-balance[^{]*\.tdk-workbook-(?:col--balance|cell--balance)[^{]*\{[^}]*right:\s*0/m, css)
-    assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 29%/m, css)
-    assert_match(/\.tdk-workbook-table--has-balance \.tdk-workbook-col--details\s*\{[^}]*width: 16rem;[^}]*min-width: 14rem/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--date\s*\{[^}]*width: 13%;[^}]*min-width: 0;/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--category\s*\{[^}]*width: 15%;[^}]*min-width: 0;/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--amount\s*\{[^}]*width: 12%;/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--gst\s*\{[^}]*width: 9%;/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--description\s*\{[^}]*width: 36%;/m, css)
-    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--balance\s*\{[^}]*width: 15%;[^}]*min-width: 0;/m, css)
+    assert_match(/\.tdk-workbook-col--description\s*\{[^}]*width: 20rem;[^}]*min-width: 10rem/m, css)
+    assert_match(/\.tdk-workbook-col--details\s*\{[^}]*width: 14rem;[^}]*min-width: 8rem/m, css)
+    assert_match(/\.tdk-workbook-table--has-balance \.tdk-workbook-col--details\s*\{[^}]*width: 14rem;[^}]*min-width: 8rem/m, css)
+    assert_match(/\.tdk-workbook-col--medium\s*\{[^}]*width: 10rem;[^}]*min-width: 8rem/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--date\s*\{[^}]*width: 9rem;[^}]*min-width: 9rem;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--category\s*\{[^}]*width: 12rem;[^}]*min-width: 9rem;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--amount\s*\{[^}]*width: 8rem;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--gst\s*\{[^}]*width: 6rem;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--description\s*\{[^}]*width: 20rem;/m, css)
+    assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-col--balance\s*\{[^}]*width: 9rem;[^}]*min-width: 8rem;/m, css)
     assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--amount,\s*\.tdk-workbook-table th\.tdk-workbook-col--balance\s*\{[^}]*text-align: right/m, css)
+    assert_match(/\.tdk-workbook-column-resize-handle\s*\{[^}]*position: absolute;[^}]*cursor: col-resize;[^}]*touch-action: none;/m, css)
+    assert_match(/\.tdk-workbook-column-resize-handle::after\s*\{[^}]*border-left: 1px solid #c8d6e5;[^}]*content: "";/m, css)
+    assert_match(/\.tdk-workbook-table\.is-resizing,\s*\.tdk-workbook-table\.is-resizing \*\s*\{[^}]*cursor: col-resize;[^}]*user-select: none;/m, css)
     assert_match(/\.tdk-workbook-table th\.tdk-workbook-col--date,\s*\.tdk-workbook-table \.tdk-workbook-cell--date\s*\{[^}]*padding-right: 0\.95rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--date\s*\{[^}]*min-width: 8\.5rem/m, css)
     assert_match(/\.tdk-workbook-table \.tdk-workbook-cell-input--amount\s*\{[^}]*text-align: right/m, css)
-    assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: var\(--tdk-balance-input-width, 12ch\)/m, css)
+    assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: min\(100%, var\(--tdk-balance-input-width, 12ch\)\)/m, css)
     assert_match(/\.tdk-workbook-col--balance \.tdk-workbook-cell-input,\s*\.tdk-workbook-table \.tdk-workbook-cell-input--balance\s*\{[^}]*text-align: right;[^}]*font-variant-numeric: tabular-nums/m, css)
     assert_match(/\.tdk-workbook-table--compact-balance \.tdk-workbook-cell-input--balance\s*\{[^}]*min-width: 0;[^}]*width: 100%;/m, css)
     assert_match(/\.tdk-workbook-sort-link\s*\{[^}]*display: inline-flex/m, css)
     assert_match(/\.tdk-workbook-page-selectors\s*\{[^}]*display: inline-flex/m, css)
     assert_match(/\.tdk-workbook-toolbar\s*\{[^}]*max-width: 100%;[^}]*overflow: visible;/m, css)
-    assert_match(/\.tdk-workbook-toolbar__actions\s*\{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*flex-shrink: 0;/m, css)
+    assert_match(/\.tdk-workbook-toolbar__actions\s*\{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*flex: 1 1 420px;/m, css)
+    assert_match(/\.tdk-workbook-toolbar \.tdk-workbook-pagination-group\s*\{[^}]*justify-content: flex-end;/m, css)
     assert_match(/\.tdk-workbook-toolbar__actions \.btn-primary\s*\{[^}]*white-space: nowrap/m, css)
+    assert_match(/\.tdk-workbook-reset-widths-button\s*\{[^}]*white-space: nowrap/m, css)
   end
 
   test "tdk workflow header uses unified hero action group" do
@@ -1035,6 +1320,16 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  def assert_tdk_pagination_controls(scope, id_suffix:)
+    assert scope, "expected #{id_suffix} pagination scope"
+    assert scope.at_css(".tdk-workbook-pagination [aria-label='First page']"), "expected #{id_suffix} first page control"
+    assert scope.at_css(".tdk-workbook-pagination [aria-label='Previous page']"), "expected #{id_suffix} previous page control"
+    assert scope.at_css(".tdk-workbook-pagination [aria-label='Next page']"), "expected #{id_suffix} next page control"
+    assert scope.at_css(".tdk-workbook-pagination [aria-label='Last page']"), "expected #{id_suffix} last page control"
+    assert scope.at_css("select#tdk_page_select_#{id_suffix}[name='page']"), "expected #{id_suffix} page select"
+    assert scope.at_css("select#tdk_per_page_select_#{id_suffix}[name='per_page']"), "expected #{id_suffix} rows-per-page select"
+  end
 
   def assert_tdk_page_link(html, label, job:, page:, per_page: 25, sort: "source_row", direction: "asc")
     link = html.at_css(".tdk-workbook-pagination a[aria-label='#{label}']")

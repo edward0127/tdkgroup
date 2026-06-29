@@ -1,3 +1,5 @@
+require "digest"
+
 module Admin
   module Bas
     module WorkflowHelper
@@ -304,6 +306,41 @@ module Admin
         return "tdk-workbook-col--details" if tdk_workbook_optional_detail_header?(header)
 
         "tdk-workbook-col--medium"
+      end
+
+      def tdk_workbook_column_key(header)
+        BasTdk::WorkbookValues.normalize_header(header).presence&.tr(" ", "_") || "column"
+      end
+
+      def tdk_workbook_column_default_width(header, compact_balance: false)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        return 144 if normalized.include?("date")
+        return 190 if normalized == "category" || normalized.include?("category")
+        return 96 if normalized == "gst" || normalized.include?("gst")
+        return compact_balance ? 144 : 160 if tdk_workbook_balance_header?(header)
+        return 128 if normalized.match?(/\b(amount|debit|credit|net|gross|paid)\b/)
+        return 320 if normalized.include?("description")
+        return 224 if tdk_workbook_optional_detail_header?(header)
+
+        160
+      end
+
+      def tdk_workbook_column_min_width(header)
+        normalized = BasTdk::WorkbookValues.normalize_header(header)
+        return 144 if normalized.include?("date")
+        return 144 if normalized == "category" || normalized.include?("category")
+        return 96 if normalized == "gst" || normalized.include?("gst")
+        return 128 if tdk_workbook_balance_header?(header)
+        return 128 if normalized.match?(/\b(amount|debit|credit|net|gross|paid)\b/)
+        return 160 if normalized.include?("description")
+        return 128 if tdk_workbook_optional_detail_header?(header)
+
+        128
+      end
+
+      def tdk_workbook_column_width_storage_key(workbook, headers)
+        signature = Digest::SHA256.hexdigest(headers.map { |header| tdk_workbook_column_key(header) }.join("|")).first(16)
+        "tdk-workbook-column-widths:#{workbook&.id || "new"}:#{signature}"
       end
 
       def tdk_workbook_column_width_style(header, rows)
