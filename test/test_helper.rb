@@ -8,6 +8,10 @@ module ActiveSupport
     # Run tests in parallel with specified workers
     parallelize(workers: 1, with: :threads)
 
+    setup do
+      I18n.locale = I18n.default_locale
+    end
+
     # Setup all fixtures in test/fixtures/*.yml for all tests in alphabetical order.
     fixtures :all
 

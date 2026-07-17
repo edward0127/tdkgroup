@@ -1,4 +1,5 @@
 require "bigdecimal"
+require "digest"
 
 module BasTdk
   class CodingRunProcessor
@@ -7,6 +8,7 @@ module BasTdk
     FUZZY_MATCH_THRESHOLD = 0.94
     FUZZY_MATCH_MARGIN = 0.03
     MAX_FUZZY_CANDIDATES = 250
+    MIN_TEMPLATE_SUPPORT = 2
     STANDARD_GST_RATIO = BigDecimal("1") / 11
     STANDARD_GST_RATIO_TOLERANCE = BigDecimal("0.005")
     TIGHT_GST_RATIO_SPREAD = BigDecimal("0.0025")
@@ -20,8 +22,42 @@ module BasTdk
       :gst_consensus_status,
       :representative,
       :occurrences,
+      :match_kind,
+      :match_key,
       keyword_init: true
     )
+
+    ReferenceIndexes = Struct.new(
+      :exact_profiles,
+      :fuzzy_index,
+      :template_profiles,
+      :merchant_profiles,
+      :category_vocabulary,
+      keyword_init: true
+    )
+
+    CATEGORY_VOCABULARY_PATTERNS = {
+      "bank_fee" => [ /\Abank\s+fees?\z/i, /\Abank\s+charges?\z/i ],
+      "ato_payment" => [ /\Aato\z/i, /\Atax\s+payments?\z/i ],
+      "superannuation" => [ /\Asuper(?:annuation|\s+paid)?\z/i ],
+      "merchant_service_fee" => [ /\Amerchant\s+fees?\z/i, /\Acard\s+processing\s+fees?\z/i ],
+      "printing_stationery" => [ /\Astationery\z/i, /\Aprinting\z/i ],
+      "office_expenses" => [ /\Aoffice\s+expenses?\z/i, /\Astationery\z/i ],
+      "packaging" => [ /\Apackaging\z/i, /\Apacking\s+supplies?\z/i ],
+      "equipment" => [ /\Areplacements?\z/i, /\Aequipment(?:\s*(?:&|and)\s*assets?)?\z/i, /\Aassets?\z/i ],
+      "meals_entertainment" => [ /\Ameals?(?:\s*(?:&|and)\s*entertainment)?\z/i, /\Astaff\s+amen(?:it|tit)(?:y|ies)\z/i ],
+      "staff_amenities" => [ /\Astaff\s+amen(?:it|tit)(?:y|ies)\z/i ],
+      "rent_property" => [ /\A(?:rent|rental)(?:\s+(?:expense|exp|property))?\z/i, /\Aproperty\s+(?:rent|expense)\z/i ],
+      "repairs" => [ /\Arepairs?(?:\s*(?:&|and)\s*maintenance)?\z/i, /\Amaintenance(?:\s*(?:&|and)\s*repairs?)?\z/i ]
+    }.freeze
+    GST_HISTORY_SUPPRESSION_RULE_IDS = %w[
+      mixed_retailer
+      insurance_registration
+      meals_entertainment
+      staff_amenities
+      international
+      water_supply
+    ].freeze
 
     Proposal = Struct.new(
       :category,
@@ -55,10 +91,18 @@ module BasTdk
       return persist_reference_terminal_result(reference_result) unless reference_result.success?
 
       target_rows = @target_workbook.rows.ordered.to_a
-      exact_profiles, fuzzy_index = build_reference_indexes(reference_result.rows)
+      reference_indexes = build_reference_indexes(reference_result.rows)
+      validation_offset_row_ids = paired_validation_offset_row_ids(target_rows)
       previous_codings = previous_codings_for(target_rows)
       proposals = target_rows.to_h do |row|
-        [ row.id, proposal_for(row, exact_profiles, fuzzy_index) ]
+        [
+          row.id,
+          proposal_for(
+            row,
+            reference_indexes,
+            paired_validation_offset: validation_offset_row_ids.key?(row.id)
+          )
+        ]
       end
 
       apply_results!(
@@ -129,31 +173,94 @@ module BasTdk
     def build_reference_indexes(rows)
       grouped = rows.group_by { |row| [ row.normalized_description, row.direction ] }
       profiles = grouped.each_with_object({}) do |((normalized, direction), candidates), result|
-        next unless BasTdk::DescriptionNormalizer.matchable?(normalized)
+        next if normalized.blank?
 
-        categories = candidates.map { |row| row.category.to_s.strip }.uniq
-        next unless categories.one? && categories.first.present?
-
-        gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(candidates)
-
-        representative = candidates.min_by(&:source_row_number)
-        result[[ normalized, direction ]] = ReferenceProfile.new(
+        profile = reference_profile(
+          candidates,
           normalized_description: normalized,
           direction: direction,
-          category: categories.first,
-          gst_ratio: gst_ratio,
-          gst_treatment: gst_treatment,
-          gst_consensus_status: gst_consensus_status,
-          representative: representative,
-          occurrences: candidates.length
+          match_kind: "exact",
+          match_key: normalized
         )
+        result[[ normalized, direction ]] = profile if profile
       end
 
       fuzzy_index = Hash.new { |hash, token| hash[token] = [] }
       profiles.each_value do |profile|
+        next unless BasTdk::DescriptionNormalizer.matchable?(profile.normalized_description)
+
         profile.normalized_description.split.uniq.each { |token| fuzzy_index[token] << profile }
       end
-      [ profiles, fuzzy_index ]
+
+      template_profiles = evidence_profiles(
+        rows,
+        key_method: :template_keys,
+        match_kind: "template",
+        minimum_support: MIN_TEMPLATE_SUPPORT
+      )
+      merchant_profiles = evidence_profiles(
+        rows,
+        key_method: :merchant_keys,
+        match_kind: "merchant",
+        minimum_support: 1
+      )
+
+      ReferenceIndexes.new(
+        exact_profiles: profiles,
+        fuzzy_index: fuzzy_index,
+        template_profiles: template_profiles,
+        merchant_profiles: merchant_profiles,
+        category_vocabulary: rows.map { |row| row.category.to_s.strip }.compact_blank.tally
+      )
+    end
+
+    def evidence_profiles(rows, key_method:, match_kind:, minimum_support:)
+      grouped = Hash.new { |hash, key| hash[key] = [] }
+      rows.each do |row|
+        BasTdk::TransactionFingerprint.call(row.description).public_send(key_method).each do |key|
+          grouped[[ key, row.direction ]] << row
+        end
+      end
+
+      grouped.each_with_object({}) do |((key, direction), candidates), profiles|
+        next if candidates.length < minimum_support
+
+        profile = reference_profile(
+          candidates,
+          normalized_description: candidates.first.normalized_description,
+          direction: direction,
+          match_kind: match_kind,
+          match_key: key
+        )
+        profiles[[ key, direction ]] = profile if profile
+      end
+    end
+
+    def reference_profile(candidates, normalized_description:, direction:, match_kind:, match_key:)
+      category_groups = candidates.group_by { |row| normalized_category(row.category) }.reject { |category, _| category.blank? }
+      return unless category_groups.one?
+
+      category_rows = category_groups.values.first
+      category = category_rows.map { |row| row.category.to_s.strip }.tally.max_by { |label, count| [ count, label ] }.first
+      gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(candidates)
+      representative = candidates.min_by(&:source_row_number)
+
+      ReferenceProfile.new(
+        normalized_description: normalized_description,
+        direction: direction,
+        category: category,
+        gst_ratio: gst_ratio,
+        gst_treatment: gst_treatment,
+        gst_consensus_status: gst_consensus_status,
+        representative: representative,
+        occurrences: candidates.length,
+        match_kind: match_kind,
+        match_key: match_key
+      )
+    end
+
+    def normalized_category(value)
+      ActiveSupport::Inflector.transliterate(value.to_s).downcase.gsub(/[^a-z0-9]+/, " ").squish
     end
 
     def gst_consensus(candidates)
@@ -188,20 +295,227 @@ module BasTdk
       (sorted_ratios.fetch(middle - 1) + sorted_ratios.fetch(middle)) / 2
     end
 
-    def proposal_for(row, exact_profiles, fuzzy_index)
+    def proposal_for(row, reference_indexes, paired_validation_offset: false)
       row_data = row.row_data.to_h
       description = row_data["Description"].to_s
       amount = parse_decimal(row_data["Amount"])
       normalized = BasTdk::DescriptionNormalizer.call(description)
       direction = direction_for(amount)
+      fingerprint = BasTdk::TransactionFingerprint.call(description)
 
-      profile = exact_profiles[[ normalized, direction ]]
-      return previous_quarter_proposal(profile, amount, exact: true, similarity: 1.0) if profile
+      if paired_validation_offset
+        return paired_validation_offset_proposal(reference_indexes.category_vocabulary)
+      end
 
-      fuzzy_profile, similarity = fuzzy_profile_for(normalized, direction, fuzzy_index)
-      return previous_quarter_proposal(fuzzy_profile, amount, exact: false, similarity: similarity) if fuzzy_profile
+      profile = reference_indexes.exact_profiles[[ normalized, direction ]]
+      if profile
+        return previous_quarter_proposal_with_taxable_fallback(
+          profile,
+          amount,
+          exact: true,
+          similarity: 1.0,
+          description: description
+        )
+      end
 
-      rule_proposal(description, amount)
+      fuzzy_profile, similarity = fuzzy_profile_for(normalized, direction, reference_indexes.fuzzy_index)
+      if fuzzy_profile
+        return previous_quarter_proposal_with_taxable_fallback(
+          fuzzy_profile,
+          amount,
+          exact: false,
+          similarity: similarity,
+          description: description
+        )
+      end
+
+      merchant_evidence = evidence_profile_for(
+        fingerprint.merchant_keys,
+        direction,
+        reference_indexes.merchant_profiles
+      )
+      template_evidence = evidence_profile_for(
+        fingerprint.template_keys,
+        direction,
+        reference_indexes.template_profiles
+      )
+      combined_evidence = combine_evidence(merchant_evidence, template_evidence)
+      return conflicting_history_proposal if combined_evidence == :conflict
+
+      if combined_evidence
+        return previous_quarter_proposal_with_taxable_fallback(
+          combined_evidence,
+          amount,
+          exact: false,
+          similarity: evidence_confidence(combined_evidence),
+          description: description
+        )
+      end
+
+      rule_proposal(description, amount, reference_indexes.category_vocabulary)
+    end
+
+    def paired_validation_offset_row_ids(rows)
+      candidates = rows.filter_map do |row|
+        data = row.row_data.to_h
+        amount = parse_decimal(data["Amount"])
+        next if amount.nil? || amount.zero?
+
+        description = data["Description"].to_s
+        role = if description.match?(/\b(?:micro|test|verification)\s+deposits?\b/i)
+          "validation_deposit"
+        elsif description.match?(/\b(?:reversal|reversed)\b/i)
+          "reversal"
+        end
+        next if role.blank?
+
+        {
+          row: row,
+          amount: amount,
+          role: role,
+          identity_tokens: validation_identity_tokens(description)
+        }
+      end
+
+      candidates.group_by { |candidate| candidate.fetch(:amount).abs.round(2).to_s("F") }.each_with_object({}) do |(_amount, group), ids|
+        eligible_partners = Hash.new { |hash, row_id| hash[row_id] = [] }
+
+        group.combination(2) do |left, right|
+          next if left.fetch(:role) == right.fetch(:role)
+          next unless left.fetch(:amount).positive? != right.fetch(:amount).positive?
+          next unless strong_validation_identity_match?(left, right)
+
+          left_id = left.fetch(:row).id
+          right_id = right.fetch(:row).id
+          eligible_partners[left_id] << right_id
+          eligible_partners[right_id] << left_id
+        end
+
+        eligible_partners.each do |row_id, partner_ids|
+          next unless partner_ids.one?
+
+          partner_id = partner_ids.first
+          next unless eligible_partners.fetch(partner_id, []).one?
+          next unless eligible_partners.fetch(partner_id).first == row_id
+
+          ids[row_id] = true
+          ids[partner_id] = true
+        end
+      end
+    end
+
+    def validation_identity_tokens(description)
+      ignored = %w[
+        account australia business company debit deposit direct fast for from limited
+        micro payment reversal reversed services test transfer validation verification
+      ]
+      BasTdk::DescriptionNormalizer.tokens(description).select do |token|
+        token.match?(/\A[a-z]{4,}\z/) && ignored.exclude?(token)
+      end
+    end
+
+    def strong_validation_identity_match?(left, right)
+      shared_tokens = left.fetch(:identity_tokens) & right.fetch(:identity_tokens)
+      shared_tokens.length >= 2 || (shared_tokens.one? && shared_tokens.first.length >= 8)
+    end
+
+    def paired_validation_offset_proposal(category_vocabulary)
+      categories = category_vocabulary.keys.select do |category|
+        category.match?(/\A(?:offset|clearing|suspense|transfers?)\z/i)
+      end
+      category = if categories.map { |candidate| normalized_category(candidate) }.uniq.one?
+        categories.max_by { |candidate| [ category_vocabulary.fetch(candidate), candidate ] }
+      else
+        "Offset"
+      end
+
+      Proposal.new(
+        category: category,
+        gst_amount: nil,
+        gst_treatment: "unknown",
+        category_source: "rule",
+        gst_source: "unmatched",
+        category_confidence: 88.0,
+        gst_confidence: 0.0,
+        category_review_required: true,
+        gst_review_required: true,
+        warning_codes: [ "rule_suggestion_requires_review", "paired_validation_offset" ],
+        explanation: "This equal-and-opposite micro-deposit/reversal pair shares the same counterparty identity. It was suggested as an offset and left highlighted for review.",
+        reference_snapshot: {},
+        metadata: { "rule_id" => "paired_validation_offset" }
+      )
+    end
+
+    def evidence_profile_for(keys, direction, profiles)
+      candidates = keys.filter_map { |key| profiles[[ key, direction ]] }.uniq
+      merge_evidence_profiles(candidates)
+    end
+
+    def combine_evidence(*selections)
+      compact = selections.compact
+      return if compact.empty?
+      return :conflict if compact.include?(:conflict)
+
+      merge_evidence_profiles(compact)
+    end
+
+    def merge_evidence_profiles(candidates)
+      return if candidates.empty?
+      return :conflict if candidates.map { |profile| normalized_category(profile.category) }.uniq.many?
+
+      selected = candidates.max_by { |profile| evidence_profile_rank(profile) }
+      return selected if compatible_gst_evidence?(candidates)
+
+      selected.dup.tap do |profile|
+        profile.gst_ratio = nil
+        profile.gst_treatment = "needs_review"
+        profile.gst_consensus_status = "conflict"
+      end
+    end
+
+    def evidence_profile_rank(profile)
+      static_key = profile.match_key.to_s.exclude?(":")
+      [ profile.occurrences, static_key ? 1 : 0, profile.match_kind == "merchant" ? 1 : 0, profile.match_key.to_s.length ]
+    end
+
+    def compatible_gst_evidence?(profiles)
+      return false if profiles.any? { |profile| profile.gst_consensus_status == "conflict" }
+
+      ratios = profiles.map(&:gst_ratio)
+      return true if ratios.all?(&:nil?)
+      return false if ratios.any?(&:nil?)
+      return false if profiles.map(&:gst_treatment).uniq.many?
+
+      ratios.max - ratios.min <= TIGHT_GST_RATIO_SPREAD
+    end
+
+    def conflicting_history_proposal
+      Proposal.new(
+        category: nil,
+        gst_amount: nil,
+        gst_treatment: "needs_review",
+        category_source: "unmatched",
+        gst_source: "unmatched",
+        category_confidence: 0.0,
+        gst_confidence: 0.0,
+        category_review_required: true,
+        gst_review_required: true,
+        warning_codes: [ "historical_evidence_conflict" ],
+        explanation: "Different merchant or bank-template evidence points to conflicting historical coding. Both fields were left blank for review.",
+        reference_snapshot: {},
+        metadata: { "match_type" => "evidence_conflict" }
+      )
+    end
+
+    def evidence_confidence(profile)
+      case profile.match_kind
+      when "template"
+        [ 0.82 + ([ profile.occurrences, 20 ].min * 0.006), 0.94 ].min
+      when "merchant"
+        [ 0.78 + ([ profile.occurrences, 10 ].min * 0.012), 0.9 ].min
+      else
+        0.8
+      end
     end
 
     def fuzzy_profile_for(normalized, direction, fuzzy_index)
@@ -229,14 +543,15 @@ module BasTdk
     def previous_quarter_proposal(profile, amount, exact:, similarity:)
       source = exact ? "previous_quarter_exact" : "previous_quarter_fuzzy"
       gst_amount = if amount && profile.gst_ratio
-        (amount * profile.gst_ratio).round(2)
+        normalized_zero((amount * profile.gst_ratio).round(2))
       end
       warnings = []
-      warnings << "fuzzy_previous_quarter_match" unless exact
+      warnings << history_warning_code(profile, exact: exact) if history_warning_code(profile, exact: exact)
       if profile.gst_ratio.nil?
         warnings << (profile.gst_consensus_status == "conflict" ? "historical_gst_conflict" : "historical_gst_missing")
       end
-      review_required = !exact
+      review_required = !exact || profile.occurrences == 1
+      confidence = exact ? (review_required ? 92.0 : 100.0) : (similarity * 100).round(2)
 
       Proposal.new(
         category: profile.category,
@@ -244,27 +559,85 @@ module BasTdk
         gst_treatment: profile.gst_ratio.nil? ? "needs_review" : profile.gst_treatment,
         category_source: source,
         gst_source: gst_amount.nil? ? "unmatched" : source,
-        category_confidence: exact ? 100.0 : (similarity * 100).round(2),
-        gst_confidence: gst_amount.nil? ? 0.0 : (exact ? 100.0 : (similarity * 100).round(2)),
+        category_confidence: confidence,
+        gst_confidence: gst_amount.nil? ? 0.0 : confidence,
         category_review_required: review_required,
         gst_review_required: review_required || gst_amount.nil?,
         warning_codes: warnings,
-        explanation: if exact && profile.gst_ratio
+        explanation: if exact && profile.gst_ratio && !review_required
                        "Matched the same normalized description and transaction direction in the reference workbook. Historical category and GST treatment were consistent."
+                     elsif exact && profile.gst_ratio
+                       "Matched one same-direction historical transaction. The values were copied, but a single prior example is highlighted for review."
                      elsif exact
                        "Matched the same normalized description and transaction direction with a consistent historical category. Historical GST was missing or conflicted, so GST was left for review."
+                     elsif profile.match_kind == "template"
+                       "Matched a same-direction bank-description template used consistently in the reference workbook (#{profile.occurrences} examples). Review the history-derived suggestion before relying on it."
+                     elsif profile.match_kind == "merchant"
+                       "Matched a strong merchant identity used consistently in the reference workbook (#{profile.occurrences} #{'example'.pluralize(profile.occurrences)}). Review this cross-description suggestion before relying on it."
                      else
                        "High-similarity previous-quarter match (#{(similarity * 100).round(1)}%). Review both fields before relying on it."
                      end,
         reference_source_row_number: profile.representative.source_row_number,
         reference_snapshot: reference_snapshot(profile),
         metadata: {
-          "match_type" => exact ? "exact" : "fuzzy",
+          "match_type" => exact ? "exact" : (profile.match_kind.in?(%w[template merchant]) ? profile.match_kind : "fuzzy"),
           "match_similarity" => similarity.round(6),
           "reference_occurrences" => profile.occurrences,
           "gst_consensus_status" => profile.gst_consensus_status
-        }
+        }.merge(persisted_match_key_metadata(profile.match_key))
       )
+    end
+
+    def persisted_match_key_metadata(match_key)
+      key = match_key.to_s
+      return {} if key.blank?
+      return { "match_key" => key } unless key.include?(":")
+
+      {
+        "match_key_type" => key.split(":", 2).first,
+        "match_key_sha256" => Digest::SHA256.hexdigest(key)
+      }
+    end
+
+    def previous_quarter_proposal_with_taxable_fallback(profile, amount, exact:, similarity:, description:)
+      proposal = previous_quarter_proposal(profile, amount, exact: exact, similarity: similarity)
+      rule = BasTdk::CodingRuleEngine.new(description: description, amount: amount).call
+      if rule.rule_id.in?(GST_HISTORY_SUPPRESSION_RULE_IDS)
+        proposal.gst_amount = nil
+        proposal.gst_treatment = "needs_review"
+        proposal.gst_source = "unmatched"
+        proposal.gst_confidence = 0.0
+        proposal.gst_review_required = true
+        proposal.warning_codes = (proposal.warning_codes.to_a + rule.warning_codes.to_a + [ "historical_gst_suppressed" ]).uniq
+        proposal.explanation = "#{proposal.explanation} GST was left blank because this supplier can involve mixed or uncertain GST treatment; check the current tax invoice."
+        proposal.metadata = proposal.metadata.to_h.merge("gst_suppressed_by_rule_id" => rule.rule_id)
+        return proposal
+      end
+
+      return proposal if proposal.gst_amount.present?
+
+      return proposal unless rule.gst_treatment == "taxable" && rule.gst_amount.present?
+
+      proposal.gst_amount = normalized_zero(rule.gst_amount)
+      proposal.gst_treatment = "taxable"
+      proposal.gst_source = "rule"
+      proposal.gst_confidence = rule.gst_confidence
+      proposal.gst_review_required = true
+      proposal.warning_codes = (proposal.warning_codes.to_a + rule.warning_codes.to_a + [ "gst_rule_fallback" ]).uniq
+      proposal.explanation = "#{proposal.explanation} Historical GST was unavailable, so a conservative taxable-expense rule supplied GST for review."
+      proposal.metadata = proposal.metadata.to_h.merge("gst_fallback_rule_id" => rule.rule_id)
+      proposal
+    end
+
+    def history_warning_code(profile, exact:)
+      return "single_historical_match" if exact && profile.occurrences == 1
+      return if exact
+
+      case profile.match_kind
+      when "template" then "historical_template_match"
+      when "merchant" then "historical_merchant_match"
+      else "fuzzy_previous_quarter_match"
+      end
     end
 
     def reference_snapshot(profile)
@@ -280,24 +653,49 @@ module BasTdk
       )
     end
 
-    def rule_proposal(description, amount)
+    def rule_proposal(description, amount, category_vocabulary = {})
       rule = BasTdk::CodingRuleEngine.new(description: description, amount: amount).call
       source = rule.rule_id == "unmatched" ? "unmatched" : "rule"
+      category = category_for_rule(rule, category_vocabulary)
+      category_remapped = category.present? && category != rule.category
       Proposal.new(
-        category: rule.category,
-        gst_amount: rule.gst_amount,
+        category: category,
+        gst_amount: normalized_zero(rule.gst_amount),
         gst_treatment: rule.gst_treatment,
-        category_source: rule.category.present? ? source : "unmatched",
+        category_source: category.present? ? source : "unmatched",
         gst_source: rule.gst_amount.nil? ? "unmatched" : source,
         category_confidence: rule.category_confidence,
         gst_confidence: rule.gst_confidence,
         category_review_required: rule.category_review_required,
         gst_review_required: rule.gst_review_required,
         warning_codes: rule.warning_codes,
-        explanation: rule.explanation,
+        explanation: category_remapped ? "#{rule.explanation} Used the matching category name from the reference workbook: #{category}." : rule.explanation,
         reference_snapshot: {},
-        metadata: { "rule_id" => rule.rule_id }
+        metadata: {
+          "rule_id" => rule.rule_id,
+          "rule_default_category" => rule.category,
+          "category_vocabulary_remapped" => category_remapped
+        }
       )
+    end
+
+    def category_for_rule(rule, category_vocabulary)
+      patterns = CATEGORY_VOCABULARY_PATTERNS[rule.rule_id]
+      return rule.category if patterns.blank?
+
+      matches = category_vocabulary.keys.select do |category|
+        patterns.any? { |pattern| category.match?(pattern) }
+      end
+      grouped = matches.group_by { |category| normalized_category(category) }
+      return rule.category unless grouped.one?
+
+      grouped.values.first.max_by { |category| [ category_vocabulary.fetch(category), category ] }
+    end
+
+    def normalized_zero(value)
+      return if value.nil?
+
+      value.to_d.zero? ? BigDecimal("0") : value.to_d
     end
 
     def previous_codings_for(rows)

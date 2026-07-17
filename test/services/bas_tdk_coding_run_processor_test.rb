@@ -108,6 +108,26 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_equal 1, run.warning_count
   end
 
+  test "supplements missing historical GST only from a taxable expense rule" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Australia Post parcel", amount: "-11.50")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Australia Post parcel,Postage,-10.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_exact", coding.category_source
+    assert_equal "Postage", coding.suggested_category
+    assert_equal "rule", coding.gst_source
+    assert_equal BigDecimal("-1.05"), coding.suggested_gst_amount
+    assert_includes coding.warning_codes, "gst_rule_fallback"
+    assert coding.review_required?
+  end
+
   test "mixed zero-GST treatments are a conflict rather than a silent no-GST consensus" do
     job = create_job
     workbook = create_workbook(job)
@@ -128,6 +148,47 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_includes coding.explanation, "GST was missing or conflicted"
   end
 
+  test "leaves mixed-retailer GST blank even when one historical transaction was zero" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "WOOLWORTHS MILDURA Card xx4534", amount: "-23.25")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      WOOLWORTHS MILDURA Card xx4534,Purchase,-12.00,0.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Purchase", coding.suggested_category
+    assert_nil coding.suggested_gst_amount
+    assert_equal "needs_review", coding.gst_treatment
+    assert_equal "unmatched", coding.gst_source
+    assert_includes coding.warning_codes, "historical_gst_suppressed"
+    assert_includes coding.warning_codes, "mixed_or_unsafe_gst"
+    assert_equal "", row.reload.row_data.fetch("GST")
+  end
+
+  test "retains consistent historical commercial-rent GST while still highlighting the merchant match" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Transfer NetBank Shop Rent April", amount: "-121.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      DEFT NetBank Shop Rent January,Rental exp,-121.00,-11.00
+      DEFT NetBank Shop Rent February,Rental exp,-242.00,-22.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Rental exp", coding.suggested_category
+    assert_equal BigDecimal("-11"), coding.suggested_gst_amount
+    assert_equal "previous_quarter_fuzzy", coding.gst_source
+    assert_includes coding.warning_codes, "historical_merchant_match"
+    refute_includes coding.warning_codes, "historical_gst_suppressed"
+  end
+
   test "high-threshold fuzzy history is always highlighted for review" do
     job = create_job
     workbook = create_workbook(job)
@@ -144,6 +205,313 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert coding.category_review_required
     assert coding.gst_review_required
     assert_includes coding.warning_codes, "fuzzy_previous_quarter_match"
+  end
+
+  test "uses a repeated short exact history key before a generic rule category" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Account Fee", amount: "-10.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Account Fee,Bank charge,-10.00,0.00
+      Account Fee,Bank charge,-10.00,0.00
+      Account Fee,Bank charge,-10.00,0.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_exact", coding.category_source
+    assert_equal "Bank charge", coding.suggested_category
+    assert_equal BigDecimal("0"), coding.suggested_gst_amount
+    assert_equal "0.00", row.reload.row_data.fetch("GST")
+    refute coding.review_required?
+  end
+
+  test "learns a repeated bank narrative template from the reference workbook" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 4", amount: "54.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice 1,Sales,40.00,
+      Fast Transfer From BOB invoice 2,Sales,50.00,
+      Fast Transfer From CAROL invoice 3,Sales,60.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_fuzzy", coding.category_source
+    assert_equal "Sales", coding.suggested_category
+    assert_nil coding.suggested_gst_amount
+    assert coding.review_required?
+    assert_includes coding.warning_codes, "historical_template_match"
+    assert_equal "template", coding.metadata.fetch("match_type")
+  end
+
+  test "does not use a bank narrative template when historical categories conflict" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 5", amount: "54.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice 1,Sales,40.00,
+      Fast Transfer From BOB invoice 2,Sales,50.00,
+      Fast Transfer From CAROL invoice 3,Sales,60.00,
+      Fast Transfer From OWNER capital,Loan proceeds,70.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "unmatched", coding.category_source
+    assert_nil coding.suggested_category
+    assert_includes coding.warning_codes, "category_unclassified"
+  end
+
+  test "does not let one dynamic counterparty override a conflicting repeated payroll template" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Transfer To Alice CommBank App weekly pay", amount: "-100.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Transfer To Alice CommBank App owner dividend,Dividends,-100.00,0.00
+      Transfer To Bob CommBank App weekly pay,Salary,-100.00,
+      Transfer To Carol CommBank App weekly pay,Salary,-100.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "unmatched", coding.category_source
+    assert_nil coding.suggested_category
+    assert_nil coding.suggested_gst_amount
+    assert_includes coding.warning_codes, "historical_evidence_conflict"
+    assert_equal "evidence_conflict", coding.metadata.fetch("match_type")
+  end
+
+  test "keeps category but leaves GST blank when matching evidence disagrees on GST" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "BP purchase via ADYEN", amount: "-121.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      BP BUNDOORA,Supplies,-100.00,
+      ADYEN settlement,Supplies,-121.00,-11.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_fuzzy", coding.category_source
+    assert_equal "Supplies", coding.suggested_category
+    assert_nil coding.suggested_gst_amount
+    assert_includes coding.warning_codes, "historical_gst_conflict"
+    assert coding.review_required?
+  end
+
+  test "preserves an all-blank GST conflict when evidence profiles are merged" do
+    profile_class = BasTdk::CodingRunProcessor::ReferenceProfile
+    conflicted = profile_class.new(
+      category: "Sales",
+      gst_ratio: nil,
+      gst_treatment: "needs_review",
+      gst_consensus_status: "conflict",
+      occurrences: 2,
+      match_kind: "merchant",
+      match_key: "bp"
+    )
+    missing = profile_class.new(
+      category: "Sales",
+      gst_ratio: nil,
+      gst_treatment: "unknown",
+      gst_consensus_status: "missing",
+      occurrences: 3,
+      match_kind: "template",
+      match_key: "pos"
+    )
+
+    merged = BasTdk::CodingRunProcessor.allocate.send(:merge_evidence_profiles, [ conflicted, missing ])
+
+    assert_equal "Sales", merged.category
+    assert_nil merged.gst_ratio
+    assert_equal "needs_review", merged.gst_treatment
+    assert_equal "conflict", merged.gst_consensus_status
+  end
+
+  test "learns a strong merchant identity across different locations with review" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "BP AA DONCASTER 0056 DONCASTER AU", amount: "-84.24")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      BP BUNDOORA 0012 BUNDOORA AU,Petrol,-121.00,-11.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_fuzzy", coding.category_source
+    assert_equal "Petrol", coding.suggested_category
+    assert_equal BigDecimal("-7.66"), coding.suggested_gst_amount
+    assert coding.review_required?
+    assert_includes coding.warning_codes, "historical_merchant_match"
+    assert_equal "merchant", coding.metadata.fetch("match_type")
+  end
+
+  test "hashes a dynamic memo key before persisting coding metadata" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Transfer To DIFFERENT PERSON CommBank App Kiki", amount: "-37.50")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Transfer To WENG CAIMING CommBank App Kiki,Sales,-16.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Sales", coding.suggested_category
+    assert_equal "merchant", coding.metadata.fetch("match_type")
+    assert coding.metadata.fetch("match_key_type").start_with?("commbank_app_")
+    assert_match(/\A[0-9a-f]{64}\z/, coding.metadata.fetch("match_key_sha256"))
+    refute coding.metadata.key?("match_key")
+    refute_includes coding.metadata.to_json.downcase, "kiki"
+  end
+
+  test "highlights a single exact historical example instead of silently accepting it" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "KMART 1323", amount: "-80.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      KMART 1323,Shop expense,-80.00,-7.27
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_exact", coding.category_source
+    assert_equal "Shop expense", coding.suggested_category
+    assert coding.review_required?
+    assert_includes coding.warning_codes, "single_historical_match"
+  end
+
+  test "uses the client's historical chart name for a conservative rule" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Monthly plan fee", amount: "-10.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Unrelated banking charge,Bank charge,-22.00,0.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "rule", coding.category_source
+    assert_equal "Bank charge", coding.suggested_category
+    assert coding.metadata.fetch("category_vocabulary_remapped")
+    assert coding.review_required?
+  end
+
+  test "pairs an equal-and-opposite validation deposit and reversal as a reviewed offset" do
+    job = create_job
+    workbook = create_workbook(job)
+    debit = create_row(
+      workbook,
+      position: 1,
+      description: "Direct Debit 653030 Employment Hero DT.5kjvy5 Reversal",
+      amount: "-0.27"
+    )
+    credit = create_row(
+      workbook,
+      position: 2,
+      description: "Fast Transfer From Employment Hero Micro deposit for account verification",
+      amount: "0.27"
+    )
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Clearing check,Offset,-1.00,
+    CSV
+
+    process(run)
+
+    [ debit, credit ].each do |row|
+      coding = run.reload.row_codings.find_by!(workbook_row: row)
+      assert_equal "Offset", coding.suggested_category
+      assert_equal "rule", coding.category_source
+      assert_nil coding.suggested_gst_amount
+      assert_includes coding.warning_codes, "paired_validation_offset"
+      assert coding.review_required?
+    end
+  end
+
+  test "does not pair validation offsets when one row has multiple eligible partners" do
+    job = create_job
+    workbook = create_workbook(job)
+    rows = [
+      create_row(
+        workbook,
+        position: 1,
+        description: "Employment Hero micro deposit for verification alpha",
+        amount: "0.27"
+      ),
+      create_row(
+        workbook,
+        position: 2,
+        description: "Employment Hero micro deposit for verification beta",
+        amount: "0.27"
+      ),
+      create_row(
+        workbook,
+        position: 3,
+        description: "Employment Hero account verification reversal",
+        amount: "-0.27"
+      )
+    ]
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Clearing check,Offset,-1.00,
+    CSV
+
+    process(run)
+
+    rows.each do |row|
+      coding = run.reload.row_codings.find_by!(workbook_row: row)
+      refute_equal "Offset", coding.suggested_category
+      refute_includes coding.warning_codes, "paired_validation_offset"
+    end
+  end
+
+  test "does not pair validation offsets that share only a generic identity token" do
+    job = create_job
+    workbook = create_workbook(job)
+    debit = create_row(
+      workbook,
+      position: 1,
+      description: "Mildura Alpha micro deposit for verification",
+      amount: "0.27"
+    )
+    credit = create_row(
+      workbook,
+      position: 2,
+      description: "Mildura Beta verification reversal",
+      amount: "-0.27"
+    )
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Clearing check,Offset,-1.00,
+    CSV
+
+    process(run)
+
+    [ debit, credit ].each do |row|
+      coding = run.reload.row_codings.find_by!(workbook_row: row)
+      refute_equal "Offset", coding.suggested_category
+      refute_includes coding.warning_codes, "paired_validation_offset"
+    end
   end
 
   test "preserves existing manual values and later edits across coding runs" do

@@ -4,8 +4,10 @@ class BasTdkCodingRuleEngineTest < ActiveSupport::TestCase
   test "applies explicit deterministic no-GST rules but still requires review" do
     {
       "ATO BAS payment" => [ "Tax payments", "bas_excluded", "ato_payment" ],
+      "Tax Office Payments NetBank BPAY" => [ "Tax payments", "bas_excluded", "ato_payment" ],
       "Employee wages batch" => [ "Wages & salaries", "bas_excluded", "employee_wages" ],
       "Super clearing house" => [ "Superannuation", "bas_excluded", "superannuation" ],
+      "Transfer NetBank staff super" => [ "Superannuation", "bas_excluded", "superannuation" ],
       "Monthly account fee" => [ "Bank fees", "input_taxed", "bank_fee" ],
       "Account fee" => [ "Bank fees", "input_taxed", "bank_fee" ],
       "Internal transfer between accounts" => [ "Transfers", "bas_excluded", "explicit_transfer" ]
@@ -24,6 +26,7 @@ class BasTdkCodingRuleEngineTest < ActiveSupport::TestCase
   test "uses signed one-eleventh only for probable taxable outgoing expenses" do
     debit = rule("Adobe software subscription", -121)
     credit = rule("Adobe software subscription refund", 121)
+    packaging = rule("Weightman packging", -177.10)
 
     assert_equal "Software & subscriptions", debit.category
     assert_equal BigDecimal("-11"), debit.gst_amount
@@ -32,15 +35,32 @@ class BasTdkCodingRuleEngineTest < ActiveSupport::TestCase
     assert_includes debit.explanation, "business-use percentage"
     assert_equal "unmatched", credit.rule_id
     assert_nil credit.gst_amount
+    assert_equal "Packaging", packaging.category
+    assert_equal BigDecimal("-16.10"), packaging.gst_amount
+    assert_equal "packaging", packaging.rule_id
+  end
+
+  test "keeps an explicit merchant-service-fee refund signed and highlighted" do
+    suggestion = rule("Surcharge Refund On Merchant Card Fees", 87.78)
+
+    assert_equal "Merchant fees", suggestion.category
+    assert_equal BigDecimal("7.98"), suggestion.gst_amount
+    assert_equal "taxable", suggestion.gst_treatment
+    assert_equal "merchant_service_fee", suggestion.rule_id
+    assert suggestion.category_review_required
+    assert suggestion.gst_review_required
   end
 
   test "leaves GST blank for mixed or unsafe suppliers" do
     suggestion = rule("Woolworths supermarket", -110)
+    abbreviated = rule("SQ Minton GROC Solutions", -22)
 
     assert_equal "General expenses", suggestion.category
     assert_nil suggestion.gst_amount
     assert_equal "needs_review", suggestion.gst_treatment
     assert_includes suggestion.warning_codes, "mixed_or_unsafe_gst"
+    assert_equal "mixed_retailer", abbreviated.rule_id
+    assert_nil abbreviated.gst_amount
   end
 
   test "does not infer no GST for generic transaction fees or one-eleventh GST for water" do

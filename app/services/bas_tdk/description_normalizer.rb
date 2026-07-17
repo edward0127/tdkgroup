@@ -3,13 +3,15 @@ module BasTdk
     GENERIC_BANK_TOKENS = %w[
       bank banking card debit credit eft eftpos pos visa mastercard payment payments
       purchase transaction transfer tfr deposit withdrawal withdraw direct online
-      app mobile commbank cba anz nab westpac osko payid bpay ref reference receipt
+      app mobile commbank cba anz nab westpac netbank osko payid bpay ref reference receipt
       effective date value pending processed australia aus au pty ltd limited
       account accounts to from via
     ].freeze
 
     GENERIC_ONLY_TOKENS = (GENERIC_BANK_TOKENS + %w[to from via at on the and]).freeze
     MIN_MATCHABLE_LENGTH = 4
+    TEXTUAL_MONTH_PATTERN = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    MONTH_DAY_PATTERN = "(?:0?[1-9]|[12]\\d|3[01])"
 
     class << self
       def call(value)
@@ -56,13 +58,26 @@ module BasTdk
       end
 
       def remove_variable_noise(text)
-        text
+        cleaned = text
           .gsub(%r{\b\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4})\b}, " ")
           .gsub(%r{\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b}, " ")
+          .gsub(/\b#{MONTH_DAY_PATTERN}\s+#{TEXTUAL_MONTH_PATTERN}(?:\s+(?:19|20)\d{2})?\b/i, " ")
+          .gsub(/\b#{TEXTUAL_MONTH_PATTERN}\s+#{MONTH_DAY_PATTERN}(?:,?\s+(?:19|20)\d{2})?\b/i, " ")
           .gsub(/\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\b/i, " ")
           .gsub(/\b(?:xx+|\*{2,})\s*\d{2,6}\b/i, " ")
-          .gsub(/\b(?:ref(?:erence)?|receipt|trace|terminal|auth(?:orisation)?|serial|txn)\s*[:#-]?\s*[a-z0-9-]{4,}\b/i, " ")
+          .gsub(/\b(?:ref(?:erence)?|receipt|trace|terminal|auth(?:orisation)?|serial|txn)\b\s*[:#-]?\s*[a-z0-9-]{4,}\b/i, " ")
+          .gsub(/\bdoordashm[_-][a-z0-9]{6,}\b/i, "doordash")
           .gsub(/\b\d{6,}\b/, " ")
+
+        remove_adyen_random_ids(cleaned)
+      end
+
+      def remove_adyen_random_ids(text)
+        cleaned = text.dup
+        nearby_id = /(\badyen\b.{0,120}?)\b(?:swpe|xch)[a-z0-9]{8,}\b/i
+        cleaned.sub!(nearby_id, "\\1") while cleaned.match?(nearby_id)
+
+        cleaned
       end
 
       def tokenize(text)
