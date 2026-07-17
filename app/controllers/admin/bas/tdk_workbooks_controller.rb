@@ -1,6 +1,9 @@
 module Admin
   module Bas
     class TdkWorkbooksController < Admin::BaseController
+      class StaleWorkbookError < StandardError; end
+      class CodingInProgressError < StandardError; end
+
       TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
       TDK_SORT_DIRECTIONS = %w[asc desc].freeze
       COLUMN_MAPPING_ROLES = %w[
@@ -79,8 +82,13 @@ module Admin
       end
 
       def update_rows
-        unless @workbook.processed?
-          redirect_to admin_bas_job_path(@job), alert: "Only a processed TDK bank statement can be edited."
+        unless active_processed_workbook?(@workbook)
+          redirect_to admin_bas_job_path(@job), alert: "Only the active processed TDK bank statement can be edited."
+          return
+        end
+
+        if continue_to_coding? && newer_upload_blocks_coding?
+          redirect_to admin_bas_job_path(@job), alert: "Wait for the latest bank statement upload or complete its column mapping before continuing."
           return
         end
 
@@ -90,7 +98,7 @@ module Admin
           return
         end
 
-        updated_count = update_visible_rows
+        updated_count, superseded_coding_runs = update_visible_rows
         @workbook.invalidate_export! if updated_count.positive?
         create_audit_event(
           @workbook,
@@ -99,8 +107,25 @@ module Admin
           version_number: @workbook.version_number,
           updated_count: updated_count
         )
+        superseded_coding_runs.each do |superseded_coding_run|
+          create_audit_event(
+            superseded_coding_run,
+            "bas_tdk_coding_run_superseded_after_statement_edit",
+            bas_tdk_coding_run_id: superseded_coding_run.id,
+            target_workbook_id: @workbook.id,
+            reason: "Bank statement rows changed after coding suggestions were generated."
+          )
+        end
 
-        redirect_to admin_bas_job_path(@job, tdk_table_redirect_params), notice: "Saved #{updated_count} visible rows."
+        if continue_to_coding?
+          redirect_to admin_bas_job_path(@job, tdk_step: "coding"), notice: "Saved #{updated_count} visible rows. Continue with Category & GST coding."
+        else
+          redirect_to admin_bas_job_path(@job, tdk_table_redirect_params), notice: "Saved #{updated_count} visible rows."
+        end
+      rescue StaleWorkbookError
+        redirect_to admin_bas_job_path(@job), alert: "A newer bank statement is now active. Your stale page was not saved."
+      rescue CodingInProgressError
+        redirect_to admin_bas_job_path(@job), alert: "Wait for Category & GST suggestion processing to finish before editing the bank statement."
       end
 
       def prepare_download
@@ -224,6 +249,32 @@ module Admin
         workbook.processed? && @job.tdk_workbooks.active_processed.first&.id == workbook.id
       end
 
+      def active_processed_workbook_fresh?(workbook)
+        BasTdkWorkbook.where(bas_job_id: @job.id).active_processed.first&.id == workbook.id
+      end
+
+      def supersede_processed_coding_runs!
+        reason = "Bank statement rows changed after coding suggestions were generated. Generate Category & GST suggestions again."
+        @workbook.coding_runs.processed.recent.to_a.each do |coding_run|
+          coding_run.lock!
+          coding_run.update!(
+            status: "superseded",
+            superseded_at: Time.current,
+            row_errors: Array(coding_run.row_errors) | [ reason ],
+            metadata: coding_run.metadata.to_h.merge("superseded_reason" => reason)
+          )
+        end
+      end
+
+      def continue_to_coding?
+        params[:commit_action].to_s == "continue_to_coding"
+      end
+
+      def newer_upload_blocks_coding?
+        latest = @job.tdk_workbooks.recent.first
+        latest.present? && latest.id != @workbook.id && latest.status.in?(%w[queued processing needs_mapping])
+      end
+
       def next_version_number
         @job.tdk_workbooks.maximum(:version_number).to_i + 1
       end
@@ -253,23 +304,41 @@ module Admin
         allowed_headers = @workbook.processed_headers
         submitted_rows = row_update_params
         updated_count = 0
+        superseded_coding_runs = []
 
-        BasTdkWorkbookRow.transaction do
-          @workbook.rows.where(id: submitted_rows.keys).find_each do |row|
-            submitted_data = submitted_rows[row.id.to_s] || {}
-            permitted_data = submitted_data.slice(*allowed_headers)
-            next if permitted_data.empty?
+        @job.with_lock do
+          @workbook.lock!
+          raise StaleWorkbookError unless active_processed_workbook_fresh?(@workbook)
+          raise CodingInProgressError if @workbook.coding_runs.running.exists?
 
-            row_data = row.row_data.deep_dup
-            permitted_data.each do |header, value|
-              row_data[header] = normalized_row_update_value(header, value)
+          BasTdkWorkbookRow.transaction do
+            @workbook.rows.where(id: submitted_rows.keys).find_each do |row|
+              row.lock!
+              submitted_data = submitted_rows[row.id.to_s] || {}
+              permitted_data = submitted_data.slice(*allowed_headers)
+              next if permitted_data.empty?
+
+              row_data = row.row_data.deep_dup
+              changed = false
+              permitted_data.each do |header, value|
+                normalized_value = normalized_row_update_value(header, value)
+                normalized_existing = normalized_row_update_value(header, row_data[header])
+                next if normalized_existing == normalized_value
+
+                row_data[header] = normalized_value
+                changed = true
+              end
+              next unless changed
+
+              row.update!(row_data: row_data)
+              updated_count += 1
             end
-            row.update!(row_data: row_data)
-            updated_count += 1
+
+            superseded_coding_runs = supersede_processed_coding_runs! if updated_count.positive?
           end
         end
 
-        updated_count
+        [ updated_count, superseded_coding_runs ]
       end
 
       def invalid_amount_update
@@ -308,6 +377,13 @@ module Admin
       end
 
       def normalized_row_update_value(header, value)
+        if BasTdk::WorkbookValues.date_header?(header)
+          text = value.to_s
+          return "" if text.strip.blank?
+
+          return BasTdk::WorkbookValues.iso_date_value(value).presence || text
+        end
+
         return BasTdk::WorkbookValues.clean_excel_decimal_noise(value) unless BasTdk::WorkbookValues.amount_header?(header)
         return "" if value.to_s.strip.blank?
 

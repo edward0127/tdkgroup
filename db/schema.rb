@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_22_013000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_011000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -381,6 +381,68 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_013000) do
     t.index ["status"], name: "index_bas_report_snapshots_on_status"
   end
 
+  create_table "bas_tdk_coding_runs", force: :cascade do |t|
+    t.integer "bas_job_id", null: false
+    t.json "column_mapping", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.integer "data_start_row"
+    t.integer "header_row_number"
+    t.json "metadata", default: {}, null: false
+    t.json "original_headers", default: [], null: false
+    t.datetime "processed_at"
+    t.datetime "processing_finished_at"
+    t.datetime "processing_started_at"
+    t.integer "reference_row_count", default: 0, null: false
+    t.string "requested_by"
+    t.integer "reviewed_count", default: 0, null: false
+    t.integer "row_count", default: 0, null: false
+    t.json "row_errors", default: [], null: false
+    t.string "ruleset_version"
+    t.string "sheet_name"
+    t.string "source_filename"
+    t.string "status", default: "queued", null: false
+    t.integer "suggestion_count", default: 0, null: false
+    t.datetime "superseded_at"
+    t.integer "target_workbook_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "version_number", default: 1, null: false
+    t.integer "warning_count", default: 0, null: false
+    t.index ["bas_job_id"], name: "index_bas_tdk_coding_runs_on_bas_job_id"
+    t.index ["status"], name: "index_bas_tdk_coding_runs_on_status"
+    t.index ["target_workbook_id", "version_number"], name: "index_bas_tdk_coding_runs_on_workbook_and_version", unique: true
+    t.index ["target_workbook_id"], name: "index_bas_tdk_coding_runs_on_target_workbook_id"
+  end
+
+  create_table "bas_tdk_row_codings", force: :cascade do |t|
+    t.integer "bas_tdk_coding_run_id", null: false
+    t.integer "bas_tdk_workbook_row_id", null: false
+    t.decimal "category_confidence", precision: 5, scale: 2
+    t.boolean "category_review_required", default: true, null: false
+    t.string "category_source", default: "unmatched", null: false
+    t.datetime "created_at", null: false
+    t.text "explanation"
+    t.decimal "gst_confidence", precision: 5, scale: 2
+    t.boolean "gst_review_required", default: true, null: false
+    t.string "gst_source", default: "unmatched", null: false
+    t.string "gst_treatment", default: "unknown", null: false
+    t.json "metadata", default: {}, null: false
+    t.json "reference_snapshot", default: {}, null: false
+    t.integer "reference_source_row_number"
+    t.string "review_status", default: "needs_review", null: false
+    t.datetime "reviewed_at"
+    t.string "reviewed_by"
+    t.string "suggested_category"
+    t.decimal "suggested_gst_amount", precision: 14, scale: 2
+    t.datetime "updated_at", null: false
+    t.json "warning_codes", default: [], null: false
+    t.index ["bas_tdk_coding_run_id", "bas_tdk_workbook_row_id"], name: "index_bas_tdk_row_codings_on_run_and_row", unique: true
+    t.index ["bas_tdk_coding_run_id", "category_source"], name: "index_bas_tdk_row_codings_on_run_and_category_source"
+    t.index ["bas_tdk_coding_run_id", "gst_source"], name: "index_bas_tdk_row_codings_on_run_and_gst_source"
+    t.index ["bas_tdk_coding_run_id", "review_status"], name: "index_bas_tdk_row_codings_on_run_and_review_status"
+    t.index ["bas_tdk_coding_run_id"], name: "index_bas_tdk_row_codings_on_bas_tdk_coding_run_id"
+    t.index ["bas_tdk_workbook_row_id"], name: "index_bas_tdk_row_codings_on_bas_tdk_workbook_row_id"
+  end
+
   create_table "bas_tdk_workbook_rows", force: :cascade do |t|
     t.integer "bas_tdk_workbook_id", null: false
     t.datetime "created_at", null: false
@@ -498,6 +560,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_013000) do
   add_foreign_key "bas_payroll_summaries", "bas_jobs"
   add_foreign_key "bas_queries", "bas_jobs"
   add_foreign_key "bas_report_snapshots", "bas_jobs"
+  add_foreign_key "bas_tdk_coding_runs", "bas_jobs"
+  add_foreign_key "bas_tdk_coding_runs", "bas_tdk_workbooks", column: "target_workbook_id"
+  add_foreign_key "bas_tdk_row_codings", "bas_tdk_coding_runs"
+  add_foreign_key "bas_tdk_row_codings", "bas_tdk_workbook_rows"
   add_foreign_key "bas_tdk_workbook_rows", "bas_tdk_workbooks"
   add_foreign_key "bas_tdk_workbooks", "bas_documents", column: "source_bas_document_id"
   add_foreign_key "bas_tdk_workbooks", "bas_jobs"

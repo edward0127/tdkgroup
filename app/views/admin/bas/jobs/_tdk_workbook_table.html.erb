@@ -32,7 +32,19 @@
             id_suffix: "top",
             aria_label: "Bank statement table top pagination" %>
       <button type="button" class="btn-secondary tdk-workbook-reset-widths-button" data-action="click->tdk-resizable-table#resetWidths">Reset column widths</button>
-      <button type="submit" form="<%= save_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+      <button type="submit" form="<%= save_form_id %>" class="btn-secondary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+      <% if @tdk_step_two_available %>
+        <button type="submit"
+          form="<%= save_form_id %>"
+          name="commit_action"
+          value="continue_to_coding"
+          class="btn-primary"
+          data-submit-guard-loading-text="Saving and continuing">Next: Category &amp; GST</button>
+      <% elsif @tdk_step_two_blocked_reason.present? %>
+        <span class="btn-primary is-disabled tdk-workbook-continue-disabled"
+          aria-disabled="true"
+          title="<%= @tdk_step_two_blocked_reason %>">Next: Category &amp; GST</span>
+      <% end %>
     </div>
   </div>
 
@@ -168,7 +180,19 @@
           id_suffix: "bottom",
           aria_label: "Bank statement table bottom pagination" %>
     <div class="tdk-workbook-save-action">
-      <button type="submit" form="<%= save_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+      <button type="submit" form="<%= save_form_id %>" class="btn-secondary" data-submit-guard-loading-text="Saving rows">Save visible rows</button>
+      <% if @tdk_step_two_available %>
+        <button type="submit"
+          form="<%= save_form_id %>"
+          name="commit_action"
+          value="continue_to_coding"
+          class="btn-primary"
+          data-submit-guard-loading-text="Saving and continuing">Next: Category &amp; GST</button>
+      <% elsif @tdk_step_two_blocked_reason.present? %>
+        <span class="btn-primary is-disabled tdk-workbook-continue-disabled"
+          aria-disabled="true"
+          title="<%= @tdk_step_two_blocked_reason %>">Next: Category &amp; GST</span>
+      <% end %>
     </div>
   </div>
 </section>

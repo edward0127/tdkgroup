@@ -43,6 +43,23 @@ module Admin
         [ "Category", "category" ],
         [ "GST", "gst" ]
       ].freeze
+      TDK_CODING_MAPPING_ROLE_OPTIONS = [
+        [ "Ignore this column", "ignore" ],
+        [ "Description", "description" ],
+        [ "Category", "category" ],
+        [ "Amount", "amount" ],
+        [ "Debit / withdrawal", "debit" ],
+        [ "Credit / deposit", "credit" ],
+        [ "GST", "gst" ]
+      ].freeze
+      TDK_CODING_FILTER_OPTIONS = [
+        [ "All", "all" ],
+        [ "Needs review", "needs_review" ],
+        [ "Prior-quarter matches", "prior_match" ],
+        [ "Rules", "rules" ],
+        [ "Manual", "manual" ],
+        [ "Unclassified", "unclassified" ]
+      ].freeze
 
       def bas_workflow_steps(job:, documents_count:, imported_records_count:, proposed_matches_count:, needs_review_matches_count:, open_queries_count:, approval_blockers_count:, latest_report_snapshot:)
         matching_review_count = proposed_matches_count + needs_review_matches_count
@@ -88,14 +105,14 @@ module Admin
             title: "Step 6: Snapshot / approve / lock",
             description: "Save the draft report, approve final figures, then lock the job.",
             status: if locked
-              "Locked/final"
-            elsif latest_report_snapshot&.final?
-              "Completed"
-            elsif latest_report_snapshot.present?
-              "Action required"
-            else
-              "Waiting"
-            end,
+                      "Locked/final"
+                    elsif latest_report_snapshot&.final?
+                      "Completed"
+                    elsif latest_report_snapshot.present?
+                      "Action required"
+                    else
+                      "Waiting"
+                    end,
             action_label: latest_report_snapshot.present? ? "Open latest snapshot" : "Calculate BAS report",
             action_path: latest_report_snapshot.present? ? admin_bas_job_report_snapshot_path(job, latest_report_snapshot) : admin_bas_job_report_path(job)
           }
@@ -280,6 +297,138 @@ module Admin
         source_header.present? ? "#{column_label} — #{source_header}" : column_label
       end
 
+      def tdk_coding_detection(run)
+        detection = run&.metadata&.fetch("column_detection", nil)
+        detection.is_a?(Hash) ? detection : {}
+      end
+
+      def tdk_coding_detection_columns(run)
+        Array(tdk_coding_detection(run)["columns"]).select { |column| column.is_a?(Hash) }
+      end
+
+      def tdk_coding_mapping_source_column(column)
+        raw = column["source_column"] || column["index"]
+        source_column = Integer(raw, exception: false)
+        source_column = 1 if source_column == 0
+        source_column
+      end
+
+      def tdk_coding_mapping_source_label(column)
+        source_column = tdk_coding_mapping_source_column(column)
+        column_label = source_column.present? ? "Column #{tdk_spreadsheet_column_name(source_column - 1)}" : "Source column"
+        header = column["source_header"].presence || column["header"].presence || column["label"].presence
+        header.present? ? "#{column_label} — #{header}" : column_label
+      end
+
+      def tdk_coding_mapping_samples(column)
+        Array(column["samples"] || column["sample_values"]).compact_blank.first(5)
+      end
+
+      def tdk_coding_mapping_role_options
+        TDK_CODING_MAPPING_ROLE_OPTIONS
+      end
+
+      def tdk_coding_mapping_suggested_role(run, column)
+        index = tdk_coding_mapping_source_column(column).to_s
+        confirmed_mapping = run&.column_mapping
+        confirmed_role = if confirmed_mapping.is_a?(Hash)
+          confirmed_mapping.find { |_role, source_index| source_index.to_s == index }&.first
+        end
+        suggestions = tdk_coding_detection(run)["suggested_mapping"]
+        suggestion = suggestions[index] if suggestions.is_a?(Hash)
+        suggestion ||= column["suggested_role"]
+        candidate_roles = Array(column["candidate_roles"])
+        suggestion ||= candidate_roles.first if candidate_roles.one?
+        suggestion = confirmed_role if confirmed_role.present?
+        allowed = TDK_CODING_MAPPING_ROLE_OPTIONS.map(&:last)
+
+        allowed.include?(suggestion.to_s) ? suggestion.to_s : "ignore"
+      end
+
+      def tdk_coding_filter_options
+        TDK_CODING_FILTER_OPTIONS
+      end
+
+      def tdk_coding_filter_link_params(filter)
+        {
+          tdk_step: "coding",
+          coding_filter: filter == "all" ? nil : filter,
+          coding_page: 1,
+          coding_per_page: @tdk_coding_per_page,
+          anchor: "tdk-coding-review"
+        }.compact
+      end
+
+      def tdk_coding_page_link_params(page)
+        {
+          tdk_step: "coding",
+          coding_filter: @tdk_coding_filter == "all" ? nil : @tdk_coding_filter,
+          coding_page: page,
+          coding_per_page: @tdk_coding_per_page,
+          anchor: "tdk-coding-review"
+        }.compact
+      end
+
+      def tdk_coding_source_label(source)
+        case source.to_s
+        when "previous_quarter_exact"
+          "Prior-quarter exact match"
+        when "previous_quarter_fuzzy"
+          "Prior-quarter similar match"
+        when "rule"
+          "Rule suggestion"
+        when "manual"
+          "Manual"
+        else
+          "Unclassified"
+        end
+      end
+
+      def tdk_coding_source_class(source)
+        case source.to_s
+        when "previous_quarter_exact", "previous_quarter_fuzzy"
+          "is-history"
+        when "rule"
+          "is-rule"
+        when "manual"
+          "is-manual"
+        else
+          "is-unclassified"
+        end
+      end
+
+      def tdk_coding_field_classes(coding, field)
+        source = coding.public_send("#{field}_source")
+        review_required = coding.public_send("#{field}_review_required")
+        [
+          "tdk-coding-field",
+          "tdk-coding-field--#{source.to_s.tr("_", "-")}",
+          ("tdk-coding-field--warning" if review_required)
+        ].compact.join(" ")
+      end
+
+      def tdk_coding_category_value(coding)
+        coding.suggested_category.presence || coding.workbook_row.row_data["Category"].to_s
+      end
+
+      def tdk_coding_gst_value(coding)
+        value = coding.suggested_gst_amount
+        value = coding.workbook_row.row_data["GST"] if value.nil?
+        BasTdk::WorkbookValues.amount_input_value(value)
+      end
+
+      def tdk_coding_confidence_label(value)
+        return if value.blank?
+
+        "#{value.to_d.round}% confidence"
+      end
+
+      def tdk_coding_row_range_label
+        return "Rows 0 of 0" if @tdk_coding_total_rows.to_i.zero?
+
+        "Rows #{@tdk_coding_row_start}-#{@tdk_coding_row_end} of #{@tdk_coding_total_rows}"
+      end
+
       def tdk_column_mapping_samples(column)
         Array(column["samples"]).compact_blank.first(5)
       end
@@ -414,7 +563,7 @@ module Admin
         return unless tdk_workbook_balance_header?(header)
 
         max_length = rows.to_a.map { |row| tdk_workbook_amount_input_value(row.row_data[header]).to_s.length }.max.to_i
-        ch = [[ max_length + 3, 14 ].max, 22 ].min
+        ch = [ [ max_length + 3, 14 ].max, 22 ].min
         "--tdk-balance-input-width: #{ch}ch;"
       end
 

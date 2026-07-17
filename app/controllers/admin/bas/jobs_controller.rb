@@ -6,6 +6,7 @@ module Admin
       BAS_WORKSPACE_TABS = %w[overview documents matching report audit ai].freeze
       TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
       TDK_SORT_DIRECTIONS = %w[asc desc].freeze
+      TDK_CODING_FILTERS = %w[all needs_review prior_match rules manual unclassified].freeze
 
       def index
         @jobs = BasJob.includes(:bas_client, :report_snapshots).order(period_end: :desc, id: :desc)
@@ -133,6 +134,17 @@ module Admin
         @latest_tdk_workbook_operation = @latest_tdk_workbook
         @active_tdk_workbook = @job.tdk_workbooks.active_processed.first
         @tdk_summary_workbook = @active_tdk_workbook
+        prepare_tdk_step_state
+        prepare_tdk_coding_workflow
+
+        if @tdk_step == "coding"
+          prepare_empty_tdk_statement_rows
+        else
+          prepare_tdk_statement_rows
+        end
+      end
+
+      def prepare_tdk_statement_rows
         @tdk_per_page_options = TDK_ROWS_PER_PAGE_OPTIONS
         @tdk_rows_per_page = tdk_rows_per_page
         @tdk_sort = tdk_sort_param
@@ -146,6 +158,117 @@ module Admin
         @tdk_row_start = @tdk_total_rows.positive? ? ((@tdk_page - 1) * @tdk_rows_per_page) + 1 : 0
         @tdk_row_end = [ @tdk_page * @tdk_rows_per_page, @tdk_total_rows ].min
         @tdk_workbook_rows = sorted_rows.slice((@tdk_page - 1) * @tdk_rows_per_page, @tdk_rows_per_page) || []
+      end
+
+      def prepare_empty_tdk_statement_rows
+        @tdk_per_page_options = TDK_ROWS_PER_PAGE_OPTIONS
+        @tdk_rows_per_page = tdk_rows_per_page
+        @tdk_sort = "source_row"
+        @tdk_sort_param_valid = false
+        @tdk_direction = "asc"
+        @tdk_total_rows = 0
+        @tdk_total_pages = 1
+        @tdk_page = 1
+        @tdk_row_start = 0
+        @tdk_row_end = 0
+        @tdk_workbook_rows = []
+      end
+
+      def prepare_tdk_step_state
+        @tdk_step_two_blocked_reason = tdk_step_two_blocked_reason
+        @tdk_step_two_available = @active_tdk_workbook.present? && @tdk_step_two_blocked_reason.blank?
+        requested_step = params[:tdk_step].to_s
+        @tdk_step = requested_step == "coding" && @tdk_step_two_available ? "coding" : "statement"
+      end
+
+      def tdk_step_two_blocked_reason
+        return if @active_tdk_workbook.blank?
+        return unless @latest_tdk_workbook_operation.present? && @latest_tdk_workbook_operation.id != @active_tdk_workbook.id
+
+        case @latest_tdk_workbook_operation.status
+        when "queued", "processing"
+          "Wait for the latest bank statement upload to finish before continuing."
+        when "needs_mapping"
+          "Confirm the latest bank statement column mapping before continuing."
+        end
+      end
+
+      def prepare_tdk_coding_workflow
+        coding_runs = @job.tdk_coding_runs
+        coding_runs = coding_runs.where(target_workbook: @active_tdk_workbook) if @active_tdk_workbook.present?
+        @latest_tdk_coding_run = coding_runs.recent.first
+        @active_tdk_coding_run = coding_runs.processed.recent.first
+        @tdk_step_two_completed = @active_tdk_coding_run.present? &&
+          @latest_tdk_coding_run&.id == @active_tdk_coding_run.id &&
+          @active_tdk_coding_run.row_count.positive? &&
+          @active_tdk_coding_run.warning_count.zero?
+
+        if @tdk_step == "coding"
+          prepare_tdk_coding_rows
+        else
+          prepare_empty_tdk_coding_rows
+        end
+      end
+
+      def prepare_tdk_coding_rows
+        @tdk_coding_filter = TDK_CODING_FILTERS.include?(params[:coding_filter].to_s) ? params[:coding_filter].to_s : "all"
+        @tdk_coding_per_page = coding_rows_per_page
+        base_scope = if @active_tdk_coding_run.present?
+          @active_tdk_coding_run.row_codings.joins(:workbook_row)
+        else
+          BasTdkRowCoding.none.joins(:workbook_row)
+        end
+
+        @tdk_coding_filter_counts = TDK_CODING_FILTERS.index_with do |filter|
+          filter_tdk_codings(base_scope, filter).count
+        end
+        filtered_scope = filter_tdk_codings(base_scope, @tdk_coding_filter)
+        @tdk_coding_total_rows = @tdk_coding_filter_counts.fetch(@tdk_coding_filter)
+        @tdk_coding_total_pages = [ (@tdk_coding_total_rows.to_f / @tdk_coding_per_page).ceil, 1 ].max
+        @tdk_coding_page = params.fetch(:coding_page, 1).to_i.clamp(1, @tdk_coding_total_pages)
+        @tdk_coding_row_start = @tdk_coding_total_rows.positive? ? ((@tdk_coding_page - 1) * @tdk_coding_per_page) + 1 : 0
+        @tdk_coding_row_end = [ @tdk_coding_page * @tdk_coding_per_page, @tdk_coding_total_rows ].min
+        @tdk_row_codings = filtered_scope
+          .order("bas_tdk_workbook_rows.position ASC", "bas_tdk_row_codings.id ASC")
+          .offset((@tdk_coding_page - 1) * @tdk_coding_per_page)
+          .limit(@tdk_coding_per_page)
+          .includes(:workbook_row)
+          .to_a
+      end
+
+      def prepare_empty_tdk_coding_rows
+        @tdk_coding_filter = "all"
+        @tdk_coding_per_page = coding_rows_per_page
+        @tdk_coding_filter_counts = TDK_CODING_FILTERS.index_with { 0 }
+        @tdk_coding_total_rows = 0
+        @tdk_coding_total_pages = 1
+        @tdk_coding_page = 1
+        @tdk_coding_row_start = 0
+        @tdk_coding_row_end = 0
+        @tdk_row_codings = []
+      end
+
+      def coding_rows_per_page
+        requested = params[:coding_per_page].to_i
+        TDK_ROWS_PER_PAGE_OPTIONS.include?(requested) ? requested : 25
+      end
+
+      def filter_tdk_codings(codings, filter)
+        case filter
+        when "needs_review"
+          codings.where(category_review_required: true).or(codings.where(gst_review_required: true))
+        when "prior_match"
+          sources = %w[previous_quarter_exact previous_quarter_fuzzy]
+          codings.where(category_source: sources).or(codings.where(gst_source: sources))
+        when "rules"
+          codings.where(category_source: "rule").or(codings.where(gst_source: "rule"))
+        when "manual"
+          codings.where(category_source: "manual").or(codings.where(gst_source: "manual"))
+        when "unclassified"
+          codings.where(category_source: "unmatched").or(codings.where(gst_source: "unmatched"))
+        else
+          codings
+        end
       end
 
       def tdk_rows_per_page

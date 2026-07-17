@@ -190,7 +190,7 @@ class AdminBasJobsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".tdk-workflow-badge", "TDK Group BAS"
     assert_select "h2", "Step 1 — Bank statement review"
     assert_select "strong", "Bank statement review"
-    assert_select "strong", "Category summary"
+    assert_select "strong", "Category & GST coding"
     assert_select "strong", "BAS summary"
     assert_select "strong", "Final review / export"
     assert_select "nav.bas-workspace-tabs", count: 0

@@ -1,0 +1,102 @@
+<% coding_form_id = dom_id(run, :coding_review_form) %>
+<section id="tdk-coding-review" class="bas-panel-block tdk-workbook-review-card tdk-coding-review-card">
+  <div class="tdk-coding-review-heading">
+    <div>
+      <h2>Category &amp; GST suggestions</h2>
+      <p class="admin-muted"><%= tdk_coding_row_range_label %></p>
+    </div>
+    <div class="tdk-coding-review-heading__actions">
+      <button type="submit" form="<%= coding_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving review">Save reviewed rows</button>
+    </div>
+  </div>
+
+  <div class="tdk-coding-summary" aria-label="Coding review summary">
+    <div><span>Total rows</span><strong><%= run.row_count %></strong></div>
+    <div><span>Suggestions</span><strong><%= run.suggestion_count %></strong></div>
+    <div class="is-warning"><span>Needs review</span><strong><%= run.warning_count %></strong></div>
+    <div class="is-reviewed"><span>Reviewed</span><strong><%= run.reviewed_count %></strong></div>
+  </div>
+
+  <p class="tdk-coding-review-notice">Rule-based and uncertain values are working-paper suggestions, not final tax advice. Review the highlighted fields before continuing.</p>
+
+  <nav class="tdk-coding-filters" aria-label="Filter Category and GST suggestions">
+    <% tdk_coding_filter_options.each do |label, filter| %>
+      <%= link_to admin_bas_job_path(@job, tdk_coding_filter_link_params(filter)),
+            class: [ "tdk-coding-filter", ("is-active" if @tdk_coding_filter == filter) ],
+            aria: (@tdk_coding_filter == filter ? { current: "page" } : {}) do %>
+        <span><%= label %></span><strong><%= @tdk_coding_filter_counts.fetch(filter, 0) %></strong>
+      <% end %>
+    <% end %>
+  </nav>
+
+  <%= form_with url: update_rows_admin_bas_job_tdk_coding_run_path(@job, run),
+        method: :patch,
+        id: coding_form_id,
+        class: "admin-form admin-form--wide tdk-coding-review-form",
+        data: bas_submit_guard_data("Saving review") do %>
+    <%= hidden_field_tag :coding_filter, @tdk_coding_filter %>
+    <%= hidden_field_tag :coding_page, @tdk_coding_page %>
+    <%= hidden_field_tag :coding_per_page, @tdk_coding_per_page %>
+
+    <% if @tdk_row_codings.any? %>
+      <div class="tdk-workbook-table-wrap tdk-coding-table-wrap">
+        <table class="admin-table tdk-coding-table">
+          <thead>
+            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>GST</th><th>Suggestion source &amp; warning</th><th>Review</th></tr>
+          </thead>
+          <tbody>
+            <% @tdk_row_codings.each do |coding| %>
+              <% row = coding.workbook_row %>
+              <%= tag.tr class: ("tdk-coding-row--needs-review" if coding.review_required?), data: { source_row_number: row.source_row_number } do %>
+                <td class="tdk-coding-readonly"><%= tdk_workbook_display_value(row.row_data["Date"]) %></td>
+                <td class="tdk-coding-description"><%= tdk_workbook_display_value(row.row_data["Description"]) %></td>
+                <td class="tdk-coding-amount"><%= tdk_workbook_amount_input_value(row.row_data["Amount"]) %></td>
+                <td>
+                  <%= text_field_tag "codings[#{coding.id}][category]", tdk_coding_category_value(coding),
+                        class: tdk_coding_field_classes(coding, :category),
+                        aria: { label: "Category for source row #{row.source_row_number || row.position}" } %>
+                  <% if coding.category_review_required %><span class="tdk-coding-field-warning">Category needs review</span><% end %>
+                </td>
+                <td>
+                  <%= text_field_tag "codings[#{coding.id}][gst]", tdk_coding_gst_value(coding),
+                        class: tdk_coding_field_classes(coding, :gst),
+                        inputmode: "decimal",
+                        pattern: tdk_workbook_amount_input_pattern,
+                        title: tdk_workbook_amount_input_title,
+                        aria: { label: "GST for source row #{row.source_row_number || row.position}" } %>
+                  <% if coding.gst_review_required %><span class="tdk-coding-field-warning">GST needs review</span><% end %>
+                </td>
+                <td class="tdk-coding-provenance">
+                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.category_source) %>">Category: <%= tdk_coding_source_label(coding.category_source) %></span><small><%= tdk_coding_confidence_label(coding.category_confidence) %></small></div>
+                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.gst_source) %>">GST: <%= tdk_coding_source_label(coding.gst_source) %></span><small><%= tdk_coding_confidence_label(coding.gst_confidence) %></small></div>
+                  <% if coding.reference_source_row_number.present? %><p>Matched reference row <%= coding.reference_source_row_number %></p><% end %>
+                  <% if coding.explanation.present? %><p><%= coding.explanation %></p><% end %>
+                  <% if Array(coding.warning_codes).any? %><p class="tdk-coding-warning-codes"><%= Array(coding.warning_codes).map(&:humanize).join(" · ") %></p><% end %>
+                </td>
+                <td class="tdk-coding-review-control">
+                  <%= hidden_field_tag "codings[#{coding.id}][reviewed]", "0" %>
+                  <label><%= check_box_tag "codings[#{coding.id}][reviewed]", "1", coding.reviewed? %><span>Reviewed</span></label>
+                  <small><%= coding.review_status.humanize %></small>
+                </td>
+              <% end %>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <div class="tdk-coding-empty-state"><strong>No rows match this filter.</strong><p>Choose another filter to continue reviewing suggestions.</p></div>
+    <% end %>
+  <% end %>
+
+  <div class="tdk-coding-review-footer">
+    <div class="admin-muted"><%= tdk_coding_row_range_label %></div>
+    <div class="tdk-workbook-pagination" aria-label="Coding review pagination">
+      <% previous_page = [ @tdk_coding_page - 1, 1 ].max %>
+      <% next_page = [ @tdk_coding_page + 1, @tdk_coding_total_pages ].min %>
+      <% if @tdk_coding_page > 1 %><%= link_to "‹", admin_bas_job_path(@job, tdk_coding_page_link_params(previous_page)), class: "tdk-page-button", aria: { label: "Previous coding page" } %><% else %><span class="tdk-page-button is-disabled" aria-disabled="true">‹</span><% end %>
+      <span class="tdk-page-status">Page <%= @tdk_coding_page %> of <%= @tdk_coding_total_pages %></span>
+      <% if @tdk_coding_page < @tdk_coding_total_pages %><%= link_to "›", admin_bas_job_path(@job, tdk_coding_page_link_params(next_page)), class: "tdk-page-button", aria: { label: "Next coding page" } %><% else %><span class="tdk-page-button is-disabled" aria-disabled="true">›</span><% end %>
+    </div>
+    <div class="tdk-workbook-save-action"><button type="submit" form="<%= coding_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving review">Save reviewed rows</button></div>
+  </div>
+</section>

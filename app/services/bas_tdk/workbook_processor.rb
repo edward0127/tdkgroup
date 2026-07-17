@@ -7,6 +7,7 @@ module BasTdk
     HEADERLESS_MIN_CONFIDENT_RATIO = 0.6
     MAX_STATEMENT_COLUMNS = 256
     HEADERLESS_HEADERS = [ "Date", "Amount", "Description" ].freeze
+    HEADERLESS_AMOUNT_LABEL_PATTERN = /\A(?:refund|reversal)\s+/i.freeze
     XLSX_CONTENT_TYPES = %w[
       application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
     ].freeze
@@ -1068,7 +1069,7 @@ module BasTdk
     end
 
     def headerless_amount_like?(value)
-      BasTdk::WorkbookValues.parse_amount(value).present?
+      headerless_amount_decimal(value).present?
     end
 
     def headerless_description_like?(value)
@@ -1081,10 +1082,15 @@ module BasTdk
     end
 
     def headerless_amount_value(value)
-      decimal = BasTdk::WorkbookValues.parse_amount(value)
+      decimal = headerless_amount_decimal(value)
       return display_value(value, header: "Amount") if decimal.blank?
 
       BasTdk::WorkbookValues.fixed_decimal(decimal.round(2), 2)
+    end
+
+    def headerless_amount_decimal(value)
+      BasTdk::WorkbookValues.parse_amount(value) ||
+        BasTdk::WorkbookValues.parse_amount(value.to_s.strip.sub(HEADERLESS_AMOUNT_LABEL_PATTERN, ""))
     end
 
     def source_rows(sheet, header_row_number, last_column)

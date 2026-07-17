@@ -1,0 +1,85 @@
+<% detection = tdk_coding_detection(run) %>
+<% columns = tdk_coding_detection_columns(run) %>
+<section id="tdk-coding-mapping" class="tdk-column-mapping-card tdk-coding-mapping-card">
+  <div class="tdk-column-mapping-heading">
+    <div>
+      <p class="eyebrow">Action required</p>
+      <h2>Confirm prior-quarter reference columns</h2>
+      <p class="admin-muted">Map Description, Category and either Amount or both Debit/Credit. GST is optional.</p>
+    </div>
+    <span class="tdk-status-pill is-warning">Needs mapping</span>
+  </div>
+
+  <div class="tdk-column-mapping-guidance">
+    <strong>Required mapping</strong>
+    <span>One Description, one Category, and one Amount — or a Debit/Credit pair. Map GST when the reference contains it.</span>
+  </div>
+
+  <% if columns.any? && !@job.locked? %>
+    <%= form_with url: confirm_mapping_admin_bas_job_tdk_coding_run_path(@job, run),
+          method: :patch,
+          class: "tdk-column-mapping-form",
+          data: bas_submit_guard_data("Confirming mapping") do %>
+      <% header_row_number = detection["header_row_number"].presence || run.header_row_number.presence || 1 %>
+      <% data_start_row = detection["data_start_row"].presence || run.data_start_row.presence || 2 %>
+      <div class="tdk-column-mapping-row-settings">
+        <div class="field">
+          <%= label_tag "coding_mapping_header_row_number", "Header row" %>
+          <%= number_field_tag "coding_mapping[header_row_number]", header_row_number,
+                id: "coding_mapping_header_row_number", min: 1, step: 1, required: true %>
+          <span>Row containing the source column names.</span>
+        </div>
+        <div class="field">
+          <%= label_tag "coding_mapping_data_start_row", "First data row" %>
+          <%= number_field_tag "coding_mapping[data_start_row]", data_start_row,
+                id: "coding_mapping_data_start_row", min: 1, step: 1, required: true %>
+          <span>First transaction row to include in matching.</span>
+        </div>
+      </div>
+      <div class="admin-table-wrap tdk-column-mapping-table-wrap">
+        <table class="admin-table tdk-column-mapping-table">
+          <thead><tr><th>Source column</th><th>Sample values</th><th>Use as</th></tr></thead>
+          <tbody>
+            <% columns.each do |column| %>
+              <% source_column = tdk_coding_mapping_source_column(column) %>
+              <tr>
+                <td><strong><%= tdk_coding_mapping_source_label(column) %></strong></td>
+                <td><div class="tdk-column-mapping-samples"><%= tdk_coding_mapping_samples(column).join(" · ").presence || "No sample values" %></div></td>
+                <td><%= select_tag "coding_mapping[columns][#{source_column}]",
+                      options_for_select(tdk_coding_mapping_role_options, tdk_coding_mapping_suggested_role(run, column)),
+                      class: "tdk-column-mapping-select",
+                      aria: { label: "Role for #{tdk_coding_mapping_source_label(column)}" } %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% preview_rows = Array(detection["preview_rows"]) %>
+      <% if preview_rows.any? %>
+        <div class="tdk-column-preview">
+          <h3>Reference preview</h3>
+          <p class="admin-muted">Use these rows to check the proposed mapping.</p>
+          <div class="admin-table-wrap tdk-column-preview-table-wrap">
+            <table class="admin-table tdk-column-preview-table">
+              <thead><tr><th>Row</th><% columns.each do |column| %><th><%= tdk_coding_mapping_source_label(column) %></th><% end %></tr></thead>
+              <tbody>
+                <% preview_rows.first(5).each do |preview| %>
+                  <tr><td><%= preview["row_number"] %></td><% Array(preview["values"]).first(columns.size).each do |value| %><td><%= value %></td><% end %></tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <% end %>
+
+      <div class="tdk-column-mapping-actions">
+        <button type="submit" class="btn-primary" data-submit-guard-loading-text="Confirming mapping">Confirm mapping &amp; generate suggestions</button>
+      </div>
+    <% end %>
+  <% elsif @job.locked? %>
+    <p class="tdk-column-mapping-locked">This BAS job is locked. Unlock it before confirming the reference mapping.</p>
+  <% else %>
+    <p class="tdk-column-mapping-locked">No reference columns are available to map. Upload the reference again.</p>
+  <% end %>
+</section>

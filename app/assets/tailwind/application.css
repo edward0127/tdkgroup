@@ -1911,6 +1911,36 @@ form.is-submitting {
   background: #f8fafc;
 }
 
+.tdk-stepper__step.is-available {
+  border-color: #b9dff1;
+  background: #ffffff;
+}
+
+.tdk-stepper__step.is-complete {
+  border-color: #86cfa0;
+  background: linear-gradient(180deg, #ffffff, #f0fdf4);
+}
+
+.tdk-stepper__step.is-complete > span {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.tdk-stepper__link {
+  display: block;
+  border-radius: 5px;
+}
+
+.tdk-stepper__link:hover strong,
+.tdk-stepper__link:focus-visible strong {
+  color: var(--tdk-accent-ink);
+}
+
+.tdk-stepper__link:focus-visible {
+  outline: 3px solid rgba(24, 166, 220, 0.22);
+  outline-offset: 4px;
+}
+
 .tdk-workflow-heading,
 .tdk-workflow-card,
 .tdk-workflow-grid,
@@ -2009,6 +2039,363 @@ form.is-submitting {
   gap: 16px;
 }
 
+.tdk-coding-step,
+.tdk-coding-setup-grid,
+.tdk-coding-reference-card,
+.tdk-coding-status-card,
+.tdk-coding-review-card,
+.tdk-coding-review-form,
+.tdk-coding-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tdk-coding-step__heading,
+.tdk-coding-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tdk-coding-step__heading > div,
+.tdk-coding-review-heading > div {
+  min-width: 0;
+}
+
+.tdk-coding-reference-note,
+.tdk-coding-review-notice {
+  border: 1px solid #b9dff1;
+  border-radius: 8px;
+  padding: 11px 13px;
+  color: #0f3a54;
+  background: #f0f9fd;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.tdk-coding-reference-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.tdk-coding-reference-form .admin-field,
+.tdk-coding-reference-form input[type="file"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.tdk-coding-reference-form .btn-primary {
+  justify-self: start;
+}
+
+.tdk-coding-target-note {
+  margin-top: 14px;
+  overflow-wrap: anywhere;
+}
+
+.tdk-coding-status-details {
+  margin-top: 14px;
+}
+
+.tdk-coding-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 120px;
+  margin-top: 16px;
+  border: 1px dashed #b9d1e8;
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--muted);
+  background: #f8fafc;
+  text-align: left;
+}
+
+.tdk-coding-empty-state strong,
+.tdk-coding-empty-state p {
+  display: block;
+}
+
+.tdk-coding-empty-state p {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.tdk-coding-review-card {
+  margin-top: 16px;
+}
+
+.tdk-coding-review-heading {
+  margin-bottom: 14px;
+}
+
+.tdk-coding-review-heading__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.tdk-coding-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tdk-coding-summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #d6e4f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.tdk-coding-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.tdk-coding-summary strong {
+  color: var(--navy);
+  font-size: 22px;
+}
+
+.tdk-coding-summary .is-warning {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.tdk-coding-summary .is-warning strong {
+  color: #9a3412;
+}
+
+.tdk-coding-summary .is-reviewed {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.tdk-coding-summary .is-reviewed strong {
+  color: #166534;
+}
+
+.tdk-coding-review-notice {
+  border-color: #fed7aa;
+  color: #7c2d12;
+  background: #fff7ed;
+}
+
+.tdk-coding-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.tdk-coding-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid #c8d6e5;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--navy);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.tdk-coding-filter strong {
+  min-width: 22px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: #edf4fb;
+  text-align: center;
+  font-size: 11px;
+}
+
+.tdk-coding-filter:hover,
+.tdk-coding-filter.is-active {
+  border-color: #5fb8d7;
+  background: var(--tdk-light-blue-soft);
+}
+
+.tdk-coding-filter.is-active {
+  box-shadow: inset 0 0 0 1px rgba(24, 166, 220, 0.2);
+}
+
+.tdk-coding-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tdk-coding-table {
+  width: 100%;
+  min-width: 1180px;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.tdk-coding-table th:nth-child(1) { width: 105px; }
+.tdk-coding-table th:nth-child(2) { width: 220px; }
+.tdk-coding-table th:nth-child(3) { width: 105px; text-align: right; }
+.tdk-coding-table th:nth-child(4) { width: 180px; }
+.tdk-coding-table th:nth-child(5) { width: 120px; }
+.tdk-coding-table th:nth-child(6) { width: 330px; }
+.tdk-coding-table th:nth-child(7) { width: 110px; }
+
+.tdk-coding-table td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.tdk-coding-table tr.tdk-coding-row--needs-review td {
+  background: #fffdf8;
+}
+
+.tdk-coding-readonly,
+.tdk-coding-description,
+.tdk-coding-amount {
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.tdk-coding-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tdk-coding-field {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid #a9ccdc;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: var(--ink);
+  background: #fbfdff;
+  font-weight: 750;
+}
+
+.tdk-coding-field--warning {
+  border-color: #e8a84f;
+  background: #fffaf0;
+  box-shadow: inset 3px 0 0 rgba(217, 119, 6, 0.42);
+}
+
+.tdk-coding-field:focus {
+  border-color: #5fb8d7;
+  outline: 3px solid rgba(24, 166, 220, 0.18);
+}
+
+.tdk-coding-field-warning {
+  display: block;
+  margin-top: 5px;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.tdk-coding-provenance {
+  display: grid;
+  gap: 8px;
+}
+
+.tdk-coding-provenance > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tdk-coding-provenance small,
+.tdk-coding-provenance p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tdk-coding-source-badge {
+  display: inline-flex;
+  max-width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #475569;
+  background: #f1f5f9;
+  font-size: 10px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.tdk-coding-source-badge.is-history {
+  border-color: #86efac;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.tdk-coding-source-badge.is-rule {
+  border-color: #fdba74;
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.tdk-coding-source-badge.is-manual {
+  border-color: #93c5fd;
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.tdk-coding-source-badge.is-unclassified {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.tdk-coding-warning-codes {
+  color: #9a3412 !important;
+  font-weight: 850;
+}
+
+.tdk-coding-review-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--navy);
+  font-weight: 850;
+}
+
+.tdk-coding-review-control input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.tdk-coding-review-control small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tdk-coding-review-footer {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(0, auto) minmax(150px, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .tdk-column-mapping-card {
   min-width: 0;
   margin-top: 16px;
@@ -2063,6 +2450,24 @@ form.is-submitting {
 
 .tdk-column-mapping-form {
   margin-top: 14px;
+}
+
+.tdk-column-mapping-row-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.tdk-column-mapping-row-settings .field {
+  min-width: 0;
+}
+
+.tdk-column-mapping-row-settings .field > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.4;
 }
 
 .tdk-column-mapping-form,
@@ -2902,6 +3307,14 @@ form.is-submitting {
 .tdk-workbook-save-action {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.tdk-workbook-continue-disabled {
+  cursor: not-allowed;
+  white-space: nowrap;
 }
 
 .admin-submit-row--inline {
@@ -3281,7 +3694,8 @@ form.is-submitting {
 
   .tdk-stepper,
   .tdk-workflow-grid,
-  .tdk-workbook-summary {
+  .tdk-workbook-summary,
+  .tdk-coding-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -3371,14 +3785,35 @@ form.is-submitting {
   .bas-inline-action,
   .tdk-stepper,
   .tdk-workflow-grid,
-  .tdk-workbook-summary {
+  .tdk-workbook-summary,
+  .tdk-coding-summary,
+  .tdk-coding-review-footer,
+  .tdk-column-mapping-row-settings {
     grid-template-columns: 1fr;
   }
 
   .tdk-workflow-hero,
   .tdk-workflow-header-card,
-  .tdk-column-mapping-heading {
+  .tdk-column-mapping-heading,
+  .tdk-coding-step__heading,
+  .tdk-coding-review-heading {
     flex-direction: column;
+  }
+
+  .tdk-coding-step__heading .btn-secondary,
+  .tdk-coding-review-heading__actions,
+  .tdk-coding-review-heading__actions .btn-primary,
+  .tdk-coding-reference-form .btn-primary {
+    width: 100%;
+  }
+
+  .tdk-coding-filters {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tdk-coding-filter {
+    width: 100%;
   }
 
   .tdk-workflow-hero-actions,

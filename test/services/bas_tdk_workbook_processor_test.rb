@@ -191,6 +191,20 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     end
   end
 
+  test "keeps a headerless transaction when a labelled refund amount contains one signed number" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      2025-07-01,-33.00,Synthetic supplier payment
+      2025-07-02,120.50,Synthetic customer receipt
+      2025-07-03,refund -37.50,Synthetic bank refund
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal 3, workbook.row_count
+    refund = workbook.rows.ordered.last
+    assert_equal "-37.50", refund.row_data.fetch("Amount")
+    assert_equal "Synthetic bank refund", refund.row_data.fetch("Description")
+  end
+
   test "infers reordered headerless CSV columns and running balance" do
     workbook = process_upload(tdk_csv_upload(<<~CSV))
       Newest sale,1030.00,2025-01-05,10.00

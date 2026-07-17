@@ -138,6 +138,13 @@ Rails.application.routes.draw do
             get :status
           end
         end
+        resources :tdk_coding_runs, only: [ :create ] do
+          member do
+            patch :confirm_mapping
+            patch :update_rows
+            get :status
+          end
+        end
         resources :document_conversion_runs, only: [ :index, :show, :create ] do
           member do
             post :confirm_import

@@ -88,6 +88,10 @@ class BasJob < ApplicationRecord
     class_name: "BasTdkWorkbook",
     dependent: :destroy,
     inverse_of: :bas_job
+  has_many :tdk_coding_runs,
+    class_name: "BasTdkCodingRun",
+    dependent: :destroy,
+    inverse_of: :bas_job
 
   before_validation :copy_defaults_from_client, on: :create
   before_validation :generate_quarter_label

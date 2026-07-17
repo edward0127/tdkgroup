@@ -139,7 +139,14 @@ export default class extends Controller {
   }
 
   get submitButtons() {
-    return Array.from(this.element.querySelectorAll("button[type='submit'], button:not([type]), input[type='submit']"))
+    const nestedButtons = Array.from(
+      this.element.querySelectorAll("button[type='submit'], button:not([type]), input[type='submit']")
+    )
+    const associatedButtons = Array.from(
+      document.querySelectorAll("button[form], input[type='submit'][form]")
+    ).filter((button) => button.form === this.element)
+
+    return Array.from(new Set([...nestedButtons, ...associatedButtons]))
   }
 
   get firstEnabledSubmitButton() {

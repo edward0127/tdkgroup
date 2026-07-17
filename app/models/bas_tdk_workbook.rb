@@ -12,6 +12,11 @@ class BasTdkWorkbook < ApplicationRecord
     class_name: "BasTdkWorkbookRow",
     dependent: :destroy,
     inverse_of: :bas_tdk_workbook
+  has_many :coding_runs,
+    class_name: "BasTdkCodingRun",
+    foreign_key: :target_workbook_id,
+    dependent: :destroy,
+    inverse_of: :target_workbook
   has_one_attached :source_file, dependent: :purge_later
   has_one_attached :export_file, dependent: :purge_later
 
