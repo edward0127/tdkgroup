@@ -61,8 +61,12 @@ module BasTdk
         return Date.strptime(match[1], "%Y-%m-%d")
       end
 
-      if (match = text.match(/\A(\d{1,2}\/\d{1,2}\/\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\z/i))
-        return Date.strptime(match[1], "%d/%m/%Y")
+      if (match = text.match(/\A(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\z/i))
+        return Date.new(normalized_bank_statement_year(match[:year]), match[:month].to_i, match[:day].to_i)
+      end
+
+      if (match = text.match(/\A(?<year>\d{4})\/(?<month>\d{1,2})\/(?<day>\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\z/i))
+        return Date.new(match[:year].to_i, match[:month].to_i, match[:day].to_i)
       end
 
       if (date = parse_month_name_date(text))
@@ -89,11 +93,15 @@ module BasTdk
 
       return unless amount_text_format?(text)
 
+      accounting_sign = amount_accounting_sign(text)
       negative_parentheses = text.match?(/\A\(.+\)\z/)
       normalized = normalize_amount_text(text).delete(",")
 
       decimal = BigDecimal(normalized)
-      negative_parentheses ? -decimal.abs : decimal
+      return -decimal.abs if accounting_sign == :debit || negative_parentheses
+      return decimal.abs if accounting_sign == :credit
+
+      decimal
     rescue ArgumentError
       nil
     end
@@ -185,11 +193,21 @@ module BasTdk
 
     def normalize_amount_text(text)
       normalized = text.to_s.strip
+      normalized = normalized.sub(/\s*(?:CR|DR)\z/i, "").strip
+      normalized = normalized.delete_suffix("-").strip if normalized.end_with?("-")
       normalized = normalized.delete_prefix("(").delete_suffix(")").strip if normalized.match?(/\A\(.+\)\z/)
       normalized = normalized.delete_prefix("+").strip if normalized.start_with?("+$")
       normalized = normalized.sub(/\A([-+])\$/, "\\1")
       normalized = normalized.sub(/\A\$([-+])/, "\\1")
       normalized.delete_prefix("$").strip
+    end
+
+    def amount_accounting_sign(text)
+      stripped = text.to_s.strip
+      return :debit if stripped.match?(/DR\z/i) || stripped.end_with?("-")
+      return :credit if stripped.match?(/CR\z/i)
+
+      nil
     end
   end
 end

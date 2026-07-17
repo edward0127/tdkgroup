@@ -49,7 +49,8 @@ export default class extends Controller {
         return response.json()
       })
       .then((payload) => {
-        const shouldReload = this.shouldReloadAfterActiveWorkbookChange(payload)
+        const shouldReload = this.shouldReloadAfterActiveWorkbookChange(payload) ||
+          this.shouldReloadAfterMappingRequired(payload)
         this.render(payload)
 
         if (shouldReload) {
@@ -67,7 +68,7 @@ export default class extends Controller {
   render(payload) {
     this.updateStatus(payload)
     this.updateExport(payload)
-    this.updateErrors(payload.processing_errors || [])
+    this.updateErrors(payload.processing_errors || [], payload.mapping_required)
     this.updateActiveNotice(payload)
   }
 
@@ -114,7 +115,7 @@ export default class extends Controller {
     }
   }
 
-  updateErrors(errors) {
+  updateErrors(errors, mappingRequired = false) {
     if (!this.hasErrorsTarget) return
 
     if (errors.length === 0) {
@@ -124,7 +125,7 @@ export default class extends Controller {
     }
 
     const title = document.createElement("strong")
-    title.textContent = "Processing errors"
+    title.textContent = mappingRequired ? "Column mapping required" : "Processing errors"
     const list = document.createElement("ul")
     errors.forEach((error) => {
       const item = document.createElement("li")
@@ -141,6 +142,12 @@ export default class extends Controller {
 
     if (payload.status === "failed" && payload.active_workbook_id && payload.active_workbook_id !== payload.id) {
       this.activeNoticeTarget.textContent = "This upload failed. The previous processed bank statement is still active."
+      this.activeNoticeTarget.classList.remove("is-empty")
+    } else if (payload.mapping_required && payload.active_workbook_id) {
+      this.activeNoticeTarget.textContent = "This upload needs column mapping confirmation. The previous processed bank statement is still active."
+      this.activeNoticeTarget.classList.remove("is-empty")
+    } else if (payload.mapping_required) {
+      this.activeNoticeTarget.textContent = "Confirm the column mapping below to continue processing this upload."
       this.activeNoticeTarget.classList.remove("is-empty")
     } else {
       this.activeNoticeTarget.textContent = ""
@@ -169,6 +176,13 @@ export default class extends Controller {
     return !this.reloadTriggered && this.activeWorkbookChanged(payload)
   }
 
+  shouldReloadAfterMappingRequired(payload) {
+    if (this.reloadTriggered || !payload.mapping_required) return false
+
+    const initialStatus = this.hasInitialStatusValue ? this.initialStatusValue : ""
+    return initialStatus !== "needs_mapping"
+  }
+
   activeWorkbookChanged(payload) {
     const payloadActiveId = payload.active_workbook_id ? String(payload.active_workbook_id) : ""
     if (!payloadActiveId) return false
@@ -185,6 +199,11 @@ export default class extends Controller {
 
   reloadAfterActiveWorkbookChange(payload) {
     this.storeAutoRefreshScroll()
+    if (payload.workflow_url) {
+      window.location.assign(this.urlWithCacheBust(payload.workflow_url))
+      return
+    }
+
     window.location.assign(this.urlWithCacheBust(payload.active_table_url || window.location.href))
   }
 
@@ -216,6 +235,8 @@ export default class extends Controller {
         return "is-success"
       case "failed":
         return "is-danger"
+      case "needs_mapping":
+        return "is-warning"
       case "queued":
       case "processing":
         return "is-working"

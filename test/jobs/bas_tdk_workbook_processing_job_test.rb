@@ -66,6 +66,61 @@ class BasTdkWorkbookProcessingJobTest < ActiveJob::TestCase
     assert_equal "processed", workbook.reload.status
   end
 
+  test "processing job records mapping required without treating it as a failure" do
+    job = create_job
+    previous = create_processed_workbook(job, version_number: 1)
+    workbook = create_queued_workbook(job, tdk_xlsx_upload(workbook_rows), version_number: 2)
+    processor = Object.new
+    processor.define_singleton_method(:call) do
+      workbook.update!(
+        status: "needs_mapping",
+        processing_finished_at: Time.current,
+        metadata: workbook.metadata.merge(
+          "column_detection" => {
+            "max_row" => 5,
+            "data_start_row" => 3,
+            "columns" => []
+          }
+        )
+      )
+    end
+
+    original_new = BasTdk::WorkbookProcessor.method(:new)
+    BasTdk::WorkbookProcessor.define_singleton_method(:new) { |**_kwargs| processor }
+    begin
+      BasTdkWorkbookProcessingJob.perform_now(workbook_id: workbook.id, actor_username: "job-test")
+    ensure
+      BasTdk::WorkbookProcessor.define_singleton_method(:new, original_new)
+    end
+
+    assert_equal "needs_mapping", workbook.reload.status
+    assert_equal previous.id, job.tdk_workbooks.active_processed.first.id
+    assert_equal "processed", previous.reload.status
+    assert_equal "bas_tdk_workbook_column_mapping_required", BasAuditEvent.recent.first.event_type
+    refute job.audit_events.where(event_type: "bas_tdk_workbook_processing_failed", auditable: workbook).exists?
+  end
+
+  test "processing job records an out of order completion as superseded rather than failed" do
+    job = create_job
+    workbook = create_queued_workbook(job, tdk_xlsx_upload(workbook_rows), version_number: 1)
+    processor = Object.new
+    processor.define_singleton_method(:call) do
+      workbook.update!(status: "superseded", processing_finished_at: Time.current, superseded_at: Time.current)
+    end
+
+    original_new = BasTdk::WorkbookProcessor.method(:new)
+    BasTdk::WorkbookProcessor.define_singleton_method(:new) { |**_kwargs| processor }
+    begin
+      BasTdkWorkbookProcessingJob.perform_now(workbook_id: workbook.id, actor_username: "job-test")
+    ensure
+      BasTdk::WorkbookProcessor.define_singleton_method(:new, original_new)
+    end
+
+    assert_equal "superseded", workbook.reload.status
+    assert_equal "bas_tdk_workbook_processing_superseded", BasAuditEvent.recent.first.event_type
+    refute job.audit_events.where(event_type: "bas_tdk_workbook_processing_failed", auditable: workbook).exists?
+  end
+
   private
 
   def create_job

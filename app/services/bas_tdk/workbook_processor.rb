@@ -5,6 +5,7 @@ module BasTdk
     HEADERLESS_REQUIRED_COLUMN_COUNT = 3
     HEADERLESS_MIN_CONFIDENT_ROWS = 3
     HEADERLESS_MIN_CONFIDENT_RATIO = 0.6
+    MAX_STATEMENT_COLUMNS = 256
     HEADERLESS_HEADERS = [ "Date", "Amount", "Description" ].freeze
     XLSX_CONTENT_TYPES = %w[
       application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
@@ -22,7 +23,8 @@ module BasTdk
         "trans date",
         "value date",
         "posting date",
-        "posted date"
+        "posted date",
+        "effective date"
       ],
       amount: [
         "amount",
@@ -40,21 +42,30 @@ module BasTdk
         "deposit amount",
         "deposits",
         "paid in",
-        "paid out"
+        "paid out",
+        "money in",
+        "money out"
       ],
       description: [
         "description",
+        "transaction description",
+        "transaction details",
         "transaction",
         "details",
+        "detail",
+        "narrative",
         "narration",
-        "transaction description",
-        "transaction details"
+        "memo",
+        "particulars",
+        "payee",
+        "merchant"
       ]
     }.freeze
     DATE_HEADER_ALIASES = HEADER_ALIASES.fetch(:date).freeze
     DIRECT_AMOUNT_ALIASES = [
       "amount",
-      "transaction amount"
+      "transaction amount",
+      "signed amount"
     ].freeze
     DEBIT_AMOUNT_ALIASES = [
       "debit",
@@ -63,7 +74,12 @@ module BasTdk
       "withdrawal",
       "withdrawals",
       "withdrawal amount",
-      "paid out"
+      "withdrawals amount",
+      "paid out",
+      "money out",
+      "dr",
+      "dr amount",
+      "debit amt"
     ].freeze
     CREDIT_AMOUNT_ALIASES = [
       "credit",
@@ -72,16 +88,45 @@ module BasTdk
       "deposit",
       "deposits",
       "deposit amount",
-      "paid in"
+      "deposits amount",
+      "paid in",
+      "money in",
+      "cr",
+      "cr amount",
+      "credit amt"
+    ].freeze
+    DESCRIPTION_ALIASES = HEADER_ALIASES.fetch(:description).freeze
+    BALANCE_ALIASES = [
+      "balance",
+      "running balance",
+      "account balance",
+      "current balance",
+      "closing balance",
+      "available balance",
+      "ledger balance",
+      "statement balance"
     ].freeze
     CATEGORY_ALIASES = %w[category categories].freeze
-    GST_ALIASES = %w[gst gst-code gst code tax].freeze
+    GST_ALIASES = [ "gst", "gst code", "tax", "tax code" ].freeze
+    COLUMN_MAPPING_ROLES = %w[
+      ignore keep date description amount debit credit balance details category gst
+    ].freeze
+    COLUMN_MAPPING_SINGLETON_ROLES = %w[
+      date description amount debit credit balance details category gst
+    ].freeze
+    COLUMN_MAPPING_REQUIRED_MESSAGE = "We could not identify the bank statement columns with enough confidence. Confirm the suggested column mapping below to continue processing.".freeze
     FRIENDLY_HEADER_ERROR = "Could not find a bank transaction table. Expected headers such as Date, Amount and Description, or a headerless CSV where the first three columns are Date, Amount and Description.".freeze
+    EMPTY_TRANSACTION_ERROR = "No bank transactions were found below the recognised headers. Check the file and upload it again.".freeze
+    CONFIRMED_COLUMN_MAPPING_ERROR = "The confirmed column mapping did not produce any valid bank transactions. Check the mapping and source rows, then try again.".freeze
+    MAPPED_ROW_ERROR = "Some transaction-like rows could not be read using the selected column mapping.".freeze
     READABLE_PDF_UNRELIABLE_MESSAGE = "This readable PDF could not be parsed reliably. Please upload an XLSX export or a clearer bank statement PDF.".freeze
     LOCAL_PDF_TEXT_MODES = %i[layout layout_nopgbrk raw table fixed].freeze
     PDF_AMOUNT_COVERAGE_MINIMUM = 0.95
     PDF_BALANCE_COVERAGE_MINIMUM = 0.90
     PDF_RECONCILIATION_QUALITY_ROW_MINIMUM = 3
+    HEADER_CURRENCY_QUALIFIER_PATTERN = /\s+(?:in\s+)?(?:aud|usd|nzd|gbp|eur|cad|sgd|hkd|jpy|cny|local currency)\z/.freeze
+
+    class ColumnMappingParseError < StandardError; end
 
     ParsedWorkbook = Struct.new(
       :sheet_name,
@@ -213,9 +258,20 @@ module BasTdk
       return persist_failed(workbook, [ SUPPORTED_UPLOAD_ERROR ]) unless supported_upload?
 
       parsed = parse_uploaded_statement
-      return persist_failed(workbook, [ FRIENDLY_HEADER_ERROR ]) if parsed.blank?
+      if parsed.blank?
+        return persist_needs_mapping(workbook) if @column_detection_metadata.present? && source_type.in?(%i[csv xlsx])
+
+        return persist_failed(workbook, [ FRIENDLY_HEADER_ERROR ])
+      end
+      return persist_failed(workbook, [ EMPTY_TRANSACTION_ERROR ]) unless parsed_transaction_rows?(parsed)
 
       persist_processed(workbook, parsed)
+    rescue ColumnMappingParseError => e
+      if column_mapping_override_present?
+        persist_needs_mapping(workbook, messages: [ e.message ])
+      else
+        persist_failed(workbook, [ e.message ])
+      end
     rescue BasTdk::PdfStatementParser::ParseError => e
       persist_failed(workbook, [ e.message ])
     rescue BasTdk::RawXlsxReader::ReadError => e
@@ -466,13 +522,68 @@ module BasTdk
     def parse_statement_sheet(sheet:, sheet_name:, metadata_prefix:)
       return nil if sheet_name.blank?
 
+      if column_mapping_override_present?
+        override = normalized_column_mapping_override(sheet)
+        raise ColumnMappingParseError, CONFIRMED_COLUMN_MAPPING_ERROR if override.blank?
+
+        parsed = build_column_mapped_workbook(
+          sheet: sheet,
+          sheet_name: sheet_name,
+          header_row_number: override.fetch(:header_row_number),
+          data_start_row: override.fetch(:data_start_row),
+          mapping: override.fetch(:mapping)
+        )
+        if parsed.present?
+          record_column_mapping_metadata(metadata_prefix, strategy: "user_override", parsed: parsed, mapping: override.fetch(:mapping))
+          return parsed
+        end
+
+        raise ColumnMappingParseError, CONFIRMED_COLUMN_MAPPING_ERROR
+      end
+
       header_row_number = detect_header_row(sheet)
       if header_row_number.present?
         record_headered_sheet_metadata(metadata_prefix, header_row_number)
         return build_parsed_workbook(sheet: sheet, sheet_name: sheet_name, header_row_number: header_row_number)
       end
 
-      build_headerless_first_three_columns_workbook(sheet: sheet, sheet_name: sheet_name, metadata_prefix: metadata_prefix)
+      detection = BasTdk::StatementColumnDetector.new(sheet: sheet).call
+      enhanced_mapping = detection.auto? && enhanced_column_mapping?(detection.mapping)
+      if enhanced_mapping
+        parsed = build_column_mapped_workbook(
+          sheet: sheet,
+          sheet_name: sheet_name,
+          header_row_number: detection.header_row_number,
+          data_start_row: detection.data_start_row,
+          mapping: detection.mapping
+        )
+        if parsed.present?
+          @column_detection_metadata = detection.metadata
+          record_column_mapping_metadata(metadata_prefix, strategy: "inferred_columns", parsed: parsed, mapping: detection.mapping)
+          return parsed
+        end
+      end
+
+      legacy = build_headerless_first_three_columns_workbook(sheet: sheet, sheet_name: sheet_name, metadata_prefix: metadata_prefix)
+      return legacy if legacy.present?
+
+      if detection.auto?
+        parsed = build_column_mapped_workbook(
+          sheet: sheet,
+          sheet_name: sheet_name,
+          header_row_number: detection.header_row_number,
+          data_start_row: detection.data_start_row,
+          mapping: detection.mapping
+        )
+        if parsed.present?
+          @column_detection_metadata = detection.metadata
+          record_column_mapping_metadata(metadata_prefix, strategy: "inferred_columns", parsed: parsed, mapping: detection.mapping)
+          return parsed
+        end
+      end
+
+      @column_detection_metadata = detection.metadata if detection.needs_mapping?
+      nil
     end
 
     def uploaded_file_path
@@ -490,9 +601,10 @@ module BasTdk
     def detect_header_row(sheet)
       max_row = [ sheet.last_row.to_i, HEADER_SCAN_LIMIT ].min
       return if max_row.zero?
+      scanned_column_count = [ sheet.last_column.to_i, MAX_STATEMENT_COLUMNS ].min
 
       candidates = (1..max_row).filter_map do |row_number|
-        values = row_values(sheet, row_number, sheet.last_column.to_i)
+        values = row_values(sheet, row_number, scanned_column_count)
         score = header_score(values)
         next if score.zero?
 
@@ -504,9 +616,12 @@ module BasTdk
 
     def header_score(values)
       normalized = values.map { |value| normalize_header(value) }.compact_blank
-      return 0 unless HEADER_ALIASES.all? { |_, aliases| (normalized & aliases).any? }
+      roles = normalized.filter_map { |header| semantic_header_role(header) }
+      return 0 unless roles.include?(:date)
+      return 0 unless roles.include?(:description)
+      return 0 unless (roles & %i[amount debit credit]).any?
 
-      HEADER_ALIASES.sum { |_, aliases| (normalized & aliases).any? ? 10 : 0 } + normalized.size
+      roles.uniq.size * 10 + normalized.size
     end
 
     def record_headered_sheet_metadata(metadata_prefix, header_row_number)
@@ -554,7 +669,7 @@ module BasTdk
     end
 
     def build_parsed_workbook(sheet:, sheet_name:, header_row_number:)
-      last_column = sheet.last_column.to_i
+      last_column = [ sheet.last_column.to_i, MAX_STATEMENT_COLUMNS ].min
       original_headers = row_values(sheet, header_row_number, last_column)
       source_rows = source_rows(sheet, header_row_number, last_column)
       mapped = map_headers(original_headers)
@@ -589,7 +704,7 @@ module BasTdk
       processed_headers = headered_processed_headers(mapped.fetch(:headers), split_amount_mapping)
       processed_headers = append_detail_header(processed_headers, detail_header) if detail_header.present?
       processed_headers = ensure_required_columns(processed_headers)
-      processed_headers = standard_transaction_header_order(processed_headers) if split_amount_mapping.present?
+      processed_headers = standard_transaction_header_order(processed_headers)
 
       rows.each do |row|
         if detail_header.present? && detail_values_by_row[row.fetch(:position)].present?
@@ -610,6 +725,244 @@ module BasTdk
       )
     end
 
+    def build_column_mapped_workbook(sheet:, sheet_name:, header_row_number:, data_start_row:, mapping:)
+      available_column_count = [ sheet.last_column.to_i, MAX_STATEMENT_COLUMNS ].min
+      mapping = normalize_column_mapping(mapping, available_column_count)
+      return if mapping.blank? || !valid_column_mapping?(mapping)
+      return if data_start_row.to_i < 1 || data_start_row.to_i > sheet.last_row.to_i
+      return if header_row_number.present? && (header_row_number.to_i < 1 || header_row_number.to_i >= data_start_row.to_i)
+
+      last_column = [ mapping.keys.max.to_i + 1, available_column_count ].min
+      original_headers = if header_row_number.present?
+        row_values(sheet, header_row_number.to_i, last_column)
+      else
+        (0...last_column).map { |index| "Column #{spreadsheet_column_name(index + 1)}" }
+      end
+      keep_headers = mapped_keep_headers(mapping, original_headers, header_row_number.present?)
+      processed_headers = mapped_processed_headers(mapping, keep_headers)
+      rows = []
+      invalid_row_numbers = []
+
+      statement_row_numbers(sheet, data_start_row).each do |row_number|
+        values = row_values(sheet, row_number, last_column)
+        next if values.all?(&:blank?)
+
+        date_value = mapped_date_value(values, mapping)
+        description_value = mapped_role_value(values, mapping, "description")
+        amount_value = mapped_transaction_amount(values, mapping)
+        if date_value.blank? || description_value.blank? || amount_value.blank?
+          invalid_row_numbers << row_number if mapped_transaction_like_row?(values, mapping)
+          next
+        end
+
+        data = {
+          "Date" => date_value,
+          "Amount" => amount_value,
+          "Description" => description_value
+        }
+        data["Category"] = mapped_role_value(values, mapping, "category") if mapping.value?("category")
+        data["GST"] = mapped_role_value(values, mapping, "gst") if mapping.value?("gst")
+        data["Balance"] = mapped_balance_value(values, mapping) if mapping.value?("balance")
+        data["Details"] = mapped_role_value(values, mapping, "details") if mapping.value?("details")
+        keep_headers.each do |index, header|
+          data[header] = display_value(values[index], header: header)
+        end
+        processed_headers.each { |header| data[header] = "" unless data.key?(header) }
+
+        rows << {
+          position: rows.length + 1,
+          source_row_number: row_number,
+          data: data
+        }
+      end
+      raise ColumnMappingParseError, mapped_row_error_message(invalid_row_numbers) if invalid_row_numbers.any?
+      return if rows.blank?
+
+      ParsedWorkbook.new(
+        sheet_name: sheet_name,
+        header_row_number: header_row_number,
+        original_headers: original_headers,
+        processed_headers: processed_headers,
+        rows: rows
+      )
+    end
+
+    def normalize_column_mapping(mapping, last_column)
+      return {} unless mapping.respond_to?(:each)
+
+      mapping.each_with_object({}) do |(raw_index, raw_role), normalized|
+        index = Integer(raw_index, exception: false)
+        role = raw_role.to_s
+        next if index.blank? || index.negative? || index >= last_column
+        next unless COLUMN_MAPPING_ROLES.include?(role)
+
+        normalized[index] = role
+      end
+    end
+
+    def valid_column_mapping?(mapping)
+      roles = mapping.values
+      return false unless roles.count("date") == 1
+      return false unless roles.count("description") == 1
+      return false if COLUMN_MAPPING_SINGLETON_ROLES.any? { |role| roles.count(role) > 1 }
+
+      direct_amount = roles.count("amount") == 1
+      split_amount = roles.any? { |role| role.in?(%w[debit credit]) }
+      direct_amount ^ split_amount
+    end
+
+    def normalized_column_mapping_override(sheet)
+      override = @workbook&.metadata&.fetch("column_mapping_override", nil)
+      return unless override.is_a?(Hash)
+
+      header_row_number = optional_mapping_row_number(override["header_row_number"])
+      data_start_row = optional_mapping_row_number(override["data_start_row"])
+      mapping = normalize_column_mapping(override["columns"], [ sheet.last_column.to_i, MAX_STATEMENT_COLUMNS ].min)
+      return if data_start_row.blank? || data_start_row > sheet.last_row.to_i
+      return if header_row_number.present? && (header_row_number > sheet.last_row.to_i || data_start_row <= header_row_number)
+      return unless valid_column_mapping?(mapping)
+
+      {
+        header_row_number: header_row_number,
+        data_start_row: data_start_row,
+        mapping: mapping.transform_keys(&:to_s)
+      }
+    end
+
+    def column_mapping_override_present?
+      @workbook&.metadata&.key?("column_mapping_override")
+    end
+
+    def optional_mapping_row_number(value)
+      return if value.blank?
+
+      number = Integer(value, exception: false)
+      number if number&.positive?
+    end
+
+    def mapped_processed_headers(mapping, keep_headers)
+      headers = [ "Date", "Amount", "Description" ]
+      headers << "Category" if mapping.value?("category")
+      headers << "GST" if mapping.value?("gst")
+      headers << "Balance" if mapping.value?("balance")
+      headers << "Details" if mapping.value?("details")
+      headers.concat(keep_headers.values)
+      standard_transaction_header_order(ensure_required_columns(headers.uniq))
+    end
+
+    def mapped_keep_headers(mapping, original_headers, source_has_header)
+      used_headers = Hash.new(0)
+      %w[Date Category Amount GST Description Balance Details].each { |header| used_headers[header] = 1 }
+
+      mapping.select { |_, role| role == "keep" }.keys.sort.each_with_object({}) do |index, headers|
+        source_header = source_has_header ? original_headers[index].to_s.strip : ""
+        source_header = "Column #{spreadsheet_column_name(index + 1)}" if source_header.blank?
+        headers[index] = unique_header(source_header, used_headers)
+      end
+    end
+
+    def mapped_date_value(values, mapping)
+      index = mapping.key("date")
+      bank_statement_iso_date_value(values[index]).presence
+    end
+
+    def mapped_role_value(values, mapping, role)
+      index = mapping.key(role)
+      return "" if index.blank?
+
+      display_value(values[index])
+    end
+
+    def mapped_transaction_amount(values, mapping)
+      if (index = mapping.key("amount"))
+        return normalized_mapped_amount(values[index])
+      end
+
+      debit = first_mapped_amount(values, mapping, "debit")
+      credit = first_mapped_amount(values, mapping, "credit")
+      decimal = if credit.present? && debit.present?
+        credit.abs - debit.abs
+      elsif credit.present?
+        credit.abs
+      elsif debit.present?
+        -debit.abs
+      end
+      decimal.present? ? BasTdk::WorkbookValues.fixed_decimal(decimal.round(2), 2) : ""
+    end
+
+    def first_mapped_amount(values, mapping, role)
+      mapping.select { |_, mapped_role| mapped_role == role }.keys.sort.each do |index|
+        decimal = BasTdk::WorkbookValues.parse_amount(values[index])
+        return decimal if decimal.present?
+      end
+      nil
+    end
+
+    def mapped_balance_value(values, mapping)
+      index = mapping.key("balance")
+      return "" if index.blank? || display_value(values[index]).blank?
+
+      normalized_mapped_amount(values[index]).presence || display_value(values[index])
+    end
+
+    def normalized_mapped_amount(value)
+      decimal = BasTdk::WorkbookValues.parse_amount(value)
+      return "" if decimal.blank?
+
+      BasTdk::WorkbookValues.fixed_decimal(decimal.round(2), 2)
+    end
+
+    def mapped_transaction_like_row?(values, mapping)
+      core_values = [
+        values[mapping.key("date")],
+        values[mapping.key("description")],
+        *mapped_amount_source_values(values, mapping)
+      ]
+
+      core_values.count { |value| display_value(value).present? } >= 2
+    end
+
+    def mapped_amount_source_values(values, mapping)
+      mapping.filter_map do |index, role|
+        values[index] if role.in?(%w[amount debit credit])
+      end
+    end
+
+    def mapped_row_error_message(row_numbers)
+      listed_rows = row_numbers.first(10).join(", ")
+      remaining_count = row_numbers.size - 10
+      suffix = remaining_count.positive? ? " and #{remaining_count} more" : ""
+      "#{MAPPED_ROW_ERROR} Source rows: #{listed_rows}#{suffix}. Check the mapping and source values, then try again."
+    end
+
+    def enhanced_column_mapping?(mapping)
+      normalized = mapping.to_h.transform_keys(&:to_s).transform_values(&:to_s)
+      core_is_legacy = normalized["0"] == "date" && normalized["1"] == "amount" && normalized["2"] == "description"
+      extra_roles = normalized.except("0", "1", "2").values - [ "ignore" ]
+
+      !core_is_legacy || extra_roles.any? || normalized.values.any? { |role| role.in?(%w[debit credit balance]) }
+    end
+
+    def record_column_mapping_metadata(metadata_prefix, strategy:, parsed:, mapping:)
+      metadata = {
+        "#{metadata_prefix}_header_strategy" => strategy,
+        "#{metadata_prefix}_data_start_row" => parsed.rows.first&.fetch(:source_row_number),
+        "#{metadata_prefix}_column_mapping" => mapping.transform_keys(&:to_s).transform_values(&:to_s)
+      }
+      metadata["#{metadata_prefix}_header_row_number"] = parsed.header_row_number if parsed.header_row_number.present?
+      merge_sheet_parse_metadata(metadata_prefix, metadata)
+    end
+
+    def spreadsheet_column_name(number)
+      label = +""
+      current = number.to_i
+      while current.positive?
+        current, remainder = (current - 1).divmod(26)
+        label.prepend((65 + remainder).chr)
+      end
+      label
+    end
+
     def build_headerless_first_three_columns_workbook(sheet:, sheet_name:, metadata_prefix: "xlsx")
       candidate = headerless_first_three_columns_candidate(sheet)
       return if candidate.blank?
@@ -617,7 +970,7 @@ module BasTdk
       processed_headers = ensure_required_columns(HEADERLESS_HEADERS.dup)
       rows = []
 
-      (candidate.data_start_row..sheet.last_row.to_i).each do |row_number|
+      statement_row_numbers(sheet, candidate.data_start_row).each do |row_number|
         values = row_values(sheet, row_number, HEADERLESS_REQUIRED_COLUMN_COUNT)
         next if values.all?(&:blank?)
         next unless headerless_transaction_row?(values)
@@ -683,7 +1036,7 @@ module BasTdk
     def headerless_sample_rows(sheet, data_start_row)
       rows = []
 
-      (data_start_row..sheet.last_row.to_i).each do |row_number|
+      statement_row_numbers(sheet, data_start_row).each do |row_number|
         values = row_values(sheet, row_number, HEADERLESS_REQUIRED_COLUMN_COUNT)
         next if values.all?(&:blank?)
 
@@ -711,7 +1064,7 @@ module BasTdk
     end
 
     def headerless_date_like?(value)
-      BasTdk::WorkbookValues.parse_date(value).present?
+      bank_statement_date_value(value).present?
     end
 
     def headerless_amount_like?(value)
@@ -724,7 +1077,7 @@ module BasTdk
     end
 
     def headerless_date_value(value)
-      BasTdk::WorkbookValues.iso_date_value(value).presence || display_value(value, header: "Date")
+      bank_statement_iso_date_value(value).presence || display_value(value, header: "Date")
     end
 
     def headerless_amount_value(value)
@@ -737,9 +1090,23 @@ module BasTdk
     def source_rows(sheet, header_row_number, last_column)
       return [] if sheet.last_row.to_i <= header_row_number
 
-      ((header_row_number + 1)..sheet.last_row.to_i).map do |row_number|
+      statement_row_numbers(sheet, header_row_number + 1).map do |row_number|
         [ row_number, row_values(sheet, row_number, last_column) ]
       end
+    end
+
+    def statement_row_numbers(sheet, start_row)
+      first_row = start_row.to_i
+      last_row = sheet.last_row.to_i
+      return [] unless first_row.positive? && last_row >= first_row
+
+      populated_rows = sheet.cells_by_row if sheet.respond_to?(:cells_by_row)
+      return (first_row..last_row) unless populated_rows.respond_to?(:keys)
+
+      populated_rows.keys.filter_map do |raw_row_number|
+        row_number = Integer(raw_row_number, exception: false)
+        row_number if row_number && row_number >= first_row && row_number <= last_row
+      end.sort
     end
 
     def split_amount_mapping(named_columns)
@@ -811,15 +1178,15 @@ module BasTdk
     end
 
     def direct_amount_header?(header)
-      DIRECT_AMOUNT_ALIASES.include?(normalize_header(header))
+      semantic_header_role(header) == :amount
     end
 
     def debit_amount_header?(header)
-      DEBIT_AMOUNT_ALIASES.include?(normalize_header(header))
+      semantic_header_role(header) == :debit
     end
 
     def credit_amount_header?(header)
-      CREDIT_AMOUNT_ALIASES.include?(normalize_header(header))
+      semantic_header_role(header) == :credit
     end
 
     def standard_transaction_header_order(headers)
@@ -828,8 +1195,8 @@ module BasTdk
         ->(header) { CATEGORY_ALIASES.include?(normalize_header(header)) },
         ->(header) { normalize_header(header) == "amount" },
         ->(header) { GST_ALIASES.include?(normalize_header(header)) },
-        ->(header) { HEADER_ALIASES.fetch(:description).include?(normalize_header(header)) },
-        ->(header) { normalize_header(header) == "balance" },
+        ->(header) { normalize_header(header) == "description" },
+        ->(header) { semantic_header_role(header) == :balance },
         ->(header) { normalize_header(header) == "details" }
       ]
 
@@ -849,6 +1216,7 @@ module BasTdk
       used_headers = {}
       named_columns = []
       blank_column_indices = []
+      primary_description_index = primary_description_column_index(original_headers)
 
       original_headers.each_with_index do |header, index|
         header = header.to_s.strip
@@ -857,7 +1225,11 @@ module BasTdk
           next
         end
 
-        normalized = normalize_required_header(header)
+        normalized = if semantic_header_role(header) == :description && index != primary_description_index
+          header
+        else
+          normalize_required_header(header)
+        end
         safe_header = unique_header(normalized, used_headers)
         named_columns << { index: index, header: safe_header }
       end
@@ -869,10 +1241,18 @@ module BasTdk
       }
     end
 
+    def primary_description_column_index(headers)
+      headers.each_index
+        .select { |index| semantic_header_role(headers[index]) == :description }
+        .min_by do |index|
+          normalized = semantic_normalized_header(headers[index])
+          [ DESCRIPTION_ALIASES.index(normalized) || DESCRIPTION_ALIASES.length, index ]
+        end
+    end
+
     def normalize_required_header(header)
-      normalized = normalize_header(header)
-      return "Category" if CATEGORY_ALIASES.include?(normalized)
-      return "GST" if GST_ALIASES.include?(normalized)
+      canonical = canonical_header_for_role(semantic_header_role(header))
+      return canonical if canonical.present?
 
       header.to_s.strip
     end
@@ -935,7 +1315,7 @@ module BasTdk
 
     def display_value(value, header: nil)
       if header.present? && date_header?(header)
-        date_value = BasTdk::WorkbookValues.iso_date_value(value)
+        date_value = bank_statement_iso_date_value(value)
         return date_value if date_value.present?
       end
 
@@ -956,8 +1336,68 @@ module BasTdk
       end
     end
 
+    def bank_statement_iso_date_value(value)
+      bank_statement_date_value(value)&.iso8601.to_s
+    end
+
+    def bank_statement_date_value(value)
+      parsed = BasTdk::WorkbookValues.parse_date(value)
+      return parsed if parsed.present?
+
+      text = value.to_s.strip
+      if (match = text.match(/\A(\d{1,2})\/(\d{1,2})\/(\d{2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\z/i))
+        return Date.new(2000 + match[3].to_i, match[2].to_i, match[1].to_i)
+      end
+
+      if (match = text.match(/\A(\d{4})\/(\d{1,2})\/(\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?\z/i))
+        Date.new(match[1].to_i, match[2].to_i, match[3].to_i)
+      end
+    rescue ArgumentError
+      nil
+    end
+
+    def parsed_transaction_rows?(parsed)
+      parsed.rows.any? do |row|
+        data = row.fetch(:data)
+        bank_statement_date_value(data["Date"]).present? &&
+          BasTdk::WorkbookValues.parse_amount(data["Amount"]).present? &&
+          display_value(data["Description"]).present?
+      end
+    end
+
     def date_header?(header)
-      DATE_HEADER_ALIASES.include?(normalize_header(header))
+      semantic_header_role(header) == :date
+    end
+
+    def semantic_header_role(header)
+      normalized = semantic_normalized_header(header)
+      return :category if CATEGORY_ALIASES.include?(normalized)
+      return :gst if GST_ALIASES.include?(normalized)
+      return :date if DATE_HEADER_ALIASES.include?(normalized)
+      return :balance if BALANCE_ALIASES.include?(normalized)
+      return :debit if DEBIT_AMOUNT_ALIASES.include?(normalized)
+      return :credit if CREDIT_AMOUNT_ALIASES.include?(normalized)
+      return :amount if DIRECT_AMOUNT_ALIASES.include?(normalized)
+      return :description if DESCRIPTION_ALIASES.include?(normalized)
+
+      nil
+    end
+
+    def semantic_normalized_header(header)
+      normalize_header(header).sub(/\s+\d+\z/, "").sub(HEADER_CURRENCY_QUALIFIER_PATTERN, "")
+    end
+
+    def canonical_header_for_role(role)
+      {
+        date: "Date",
+        description: "Description",
+        amount: "Amount",
+        debit: "Debit",
+        credit: "Credit",
+        balance: "Balance",
+        category: "Category",
+        gst: "GST"
+      }[role]
     end
 
     def excel_serial_date(value)
@@ -977,8 +1417,11 @@ module BasTdk
     end
 
     def persist_processed(workbook, parsed)
-      BasTdkWorkbook.transaction do
+      attach_upload(workbook)
+
+      @bas_job.with_lock do
         now = Time.current
+        workbook.reload if workbook.persisted?
         workbook.rows.delete_all if workbook.persisted?
 
         workbook.assign_attributes(
@@ -1002,9 +1445,12 @@ module BasTdk
           )
         end
 
-        @bas_job.tdk_workbooks.processed.where.not(id: workbook.id).update_all(status: "superseded", superseded_at: now, updated_at: now)
+        newer_processed = @bas_job.tdk_workbooks.processed
+          .where("version_number > ?", workbook.version_number)
+          .recent
+          .first
+
         workbook.assign_attributes(
-          status: "processed",
           processed_at: now,
           processing_finished_at: now,
           export_status: "not_started",
@@ -1013,8 +1459,24 @@ module BasTdk
           export_started_at: nil,
           export_finished_at: nil
         )
+
+        if newer_processed.present?
+          workbook.assign_attributes(
+            status: "superseded",
+            superseded_at: now,
+            metadata: workbook.metadata.merge(
+              "superseded_by_workbook_id" => newer_processed.id,
+              "superseded_by_version_number" => newer_processed.version_number
+            )
+          )
+        else
+          @bas_job.tdk_workbooks.processed
+            .where("version_number < ?", workbook.version_number)
+            .update_all(status: "superseded", superseded_at: now, updated_at: now)
+          workbook.assign_attributes(status: "processed", superseded_at: nil)
+        end
+
         workbook.save!
-        attach_upload(workbook)
       end
 
       workbook
@@ -1033,6 +1495,20 @@ module BasTdk
         "exception_class" => exception.class.name,
         "exception_message" => exception.message.to_s
       ) if exception.present?
+      workbook.save!
+      attach_upload(workbook)
+      workbook
+    end
+
+    def persist_needs_mapping(workbook, messages: [ COLUMN_MAPPING_REQUIRED_MESSAGE ])
+      workbook.assign_attributes(
+        status: "needs_mapping",
+        row_count: 0,
+        row_errors: messages,
+        processing_finished_at: Time.current,
+        processed_at: nil,
+        metadata: workbook.metadata.merge(processing_metadata)
+      )
       workbook.save!
       attach_upload(workbook)
       workbook
@@ -1059,6 +1535,7 @@ module BasTdk
       metadata.merge!(@csv_parse_metadata) if @csv_parse_metadata.present?
       metadata.merge!(@pdf_parse_metadata) if @pdf_parse_metadata.present?
       metadata.merge!(@ocr_metadata) if @ocr_metadata.present?
+      metadata["column_detection"] = @column_detection_metadata if @column_detection_metadata.present?
       metadata
     end
 

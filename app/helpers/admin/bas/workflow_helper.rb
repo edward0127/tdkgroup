@@ -30,6 +30,19 @@ module Admin
 
       PDF_CONTENT_TYPES = %w[application/pdf].freeze
       TDK_WORKBOOK_OPTIONAL_DETAIL_HEADER_PATTERN = /\b(details?|narration|reference|memo|notes?)\b/.freeze
+      TDK_COLUMN_MAPPING_ROLE_OPTIONS = [
+        [ "Ignore this column", "ignore" ],
+        [ "Keep original column", "keep" ],
+        [ "Date", "date" ],
+        [ "Description", "description" ],
+        [ "Amount", "amount" ],
+        [ "Debit / withdrawal", "debit" ],
+        [ "Credit / deposit", "credit" ],
+        [ "Balance", "balance" ],
+        [ "Details", "details" ],
+        [ "Category", "category" ],
+        [ "GST", "gst" ]
+      ].freeze
 
       def bas_workflow_steps(job:, documents_count:, imported_records_count:, proposed_matches_count:, needs_review_matches_count:, open_queries_count:, approval_blockers_count:, latest_report_snapshot:)
         matching_review_count = proposed_matches_count + needs_review_matches_count
@@ -220,6 +233,8 @@ module Admin
           "is-success"
         when "failed"
           "is-danger"
+        when "needs_mapping"
+          "is-warning"
         when "queued", "processing"
           "is-working"
         when "superseded"
@@ -227,6 +242,58 @@ module Admin
         else
           "is-neutral"
         end
+      end
+
+      def tdk_column_detection(workbook)
+        detection = workbook&.metadata&.fetch("column_detection", nil)
+        detection.is_a?(Hash) ? detection : {}
+      end
+
+      def tdk_column_detection_columns(workbook)
+        Array(tdk_column_detection(workbook)["columns"]).select { |column| column.is_a?(Hash) }
+      end
+
+      def tdk_column_mapping_role_options
+        TDK_COLUMN_MAPPING_ROLE_OPTIONS
+      end
+
+      def tdk_column_mapping_suggested_role(detection, column, workbook: nil)
+        index = column["index"].to_s
+        override = workbook&.metadata&.dig("column_mapping_override", "columns")
+        confirmed = override[index] if override.is_a?(Hash)
+        suggestions = detection["suggested_mapping"]
+        suggested = suggestions[index] if suggestions.is_a?(Hash)
+        suggested = column["suggested_role"] if suggested.blank?
+        suggested = confirmed if confirmed.present?
+        allowed = TDK_COLUMN_MAPPING_ROLE_OPTIONS.map(&:last)
+
+        allowed.include?(suggested.to_s) ? suggested.to_s : "ignore"
+      end
+
+      def tdk_column_mapping_source_label(column)
+        index = Integer(column["index"], exception: false)
+        column_label = index.present? ? "Column #{tdk_spreadsheet_column_name(index)}" : "Source column"
+        source_header = column["source_header"].presence
+        fallback_label = column["label"].to_s
+        source_header ||= fallback_label.presence unless fallback_label.match?(/\AColumn\s+[A-Z]+\b/i)
+
+        source_header.present? ? "#{column_label} — #{source_header}" : column_label
+      end
+
+      def tdk_column_mapping_samples(column)
+        Array(column["samples"]).compact_blank.first(5)
+      end
+
+      def tdk_spreadsheet_column_name(zero_based_index)
+        number = zero_based_index.to_i + 1
+        label = +""
+
+        while number.positive?
+          number, remainder = (number - 1).divmod(26)
+          label.prepend((65 + remainder).chr)
+        end
+
+        label
       end
 
       def tdk_workbook_export_status_label(workbook)

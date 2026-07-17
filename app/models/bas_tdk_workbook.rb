@@ -1,5 +1,5 @@
 class BasTdkWorkbook < ApplicationRecord
-  STATUS_VALUES = %w[queued processing processed failed superseded].freeze
+  STATUS_VALUES = %w[queued processing needs_mapping processed failed superseded].freeze
   EXPORT_STATUS_VALUES = %w[not_started queued processing processed failed stale].freeze
   STALE_PROCESSING_AFTER = 30.minutes
 
@@ -38,6 +38,10 @@ class BasTdkWorkbook < ApplicationRecord
     status == "processed"
   end
 
+  def needs_mapping?
+    status == "needs_mapping"
+  end
+
   def failed?
     status == "failed"
   end
@@ -47,7 +51,7 @@ class BasTdkWorkbook < ApplicationRecord
   end
 
   def terminal_status?
-    processed? || failed? || superseded?
+    needs_mapping? || processed? || failed? || superseded?
   end
 
   def active_processed?

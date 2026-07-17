@@ -405,7 +405,7 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal "-42.42", debit_row.row_data.fetch("Amount")
     assert_equal "2961.92", credit_row.row_data.fetch("Balance")
     assert_equal "Government payments", credit_row.row_data.fetch("Category")
-    assert_equal "Synthetic credit", credit_row.row_data.fetch("Transaction Details")
+    assert_equal "Synthetic credit", credit_row.row_data.fetch("Description")
 
     get admin_bas_job_path(job)
 
@@ -709,6 +709,164 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     assert_equal active.source_filename, payload.fetch("active_source_filename")
     assert_equal admin_bas_job_path(job), payload.fetch("active_table_url")
     assert_equal prepare_download_admin_bas_job_tdk_workbook_path(job, active), payload.fetch("prepare_download_url")
+  end
+
+  test "mapping review keeps active table visible and confirmation resumes processing once" do
+    job = create_job(workflow_type: "tdk_group")
+    active = create_processed_workbook(job, version_number: 1, row_count: 1, description_prefix: "Still active")
+    workbook = create_needs_mapping_workbook(job, version_number: 2)
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select ".tdk-status-pill.is-warning", text: "Needs mapping"
+    assert_select "#tdk-column-mapping"
+    assert_select "#tdk-column-mapping form[action='#{confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook)}']"
+    assert_select "select[name='column_mapping[columns][0]'] option[value='date'][selected='selected']"
+    assert_select "select[name='column_mapping[columns][1]'] option[value='description'][selected='selected']"
+    assert_select "select[name='column_mapping[columns][2]'] option[value='debit'][selected='selected']"
+    assert_select "select[name='column_mapping[columns][3]'] option[value='credit'][selected='selected']"
+    assert_select "select[name='column_mapping[columns][4]'] option[value='balance'][selected='selected']"
+    assert_select ".tdk-column-preview-table tbody tr", count: 2
+    assert_includes response.body, "Still active 1"
+    assert_includes response.body, "remains active"
+
+    get status_admin_bas_job_tdk_workbook_path(job, workbook)
+    payload = JSON.parse(response.body)
+    assert_equal true, payload.fetch("mapping_required")
+    assert_equal admin_bas_job_path(job), payload.fetch("workflow_url")
+    assert_equal active.id, payload.fetch("active_workbook_id")
+
+    mapping_params = {
+      column_mapping: {
+        header_row_number: 1,
+        data_start_row: 2,
+        columns: {
+          "0" => "date",
+          "1" => "description",
+          "2" => "debit",
+          "3" => "credit",
+          "4" => "balance"
+        }
+      }
+    }
+
+    assert_enqueued_with(job: BasTdkWorkbookProcessingJob) do
+      patch confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook), params: mapping_params
+    end
+
+    assert_redirected_to admin_bas_job_path(job)
+    assert_equal "Column mapping confirmed. Bank statement processing has resumed.", flash[:notice]
+    workbook.reload
+    assert_equal "queued", workbook.status
+    override = workbook.metadata.fetch("column_mapping_override")
+    assert_equal 1, override.fetch("header_row_number")
+    assert_equal 2, override.fetch("data_start_row")
+    assert_equal mapping_params.dig(:column_mapping, :columns), override.fetch("columns")
+    assert_equal "tdk-workbook-admin", override.fetch("confirmed_by")
+    assert override.fetch("confirmed_at").present?
+    assert_equal active.id, job.tdk_workbooks.active_processed.first.id
+    assert_equal "bas_tdk_workbook_column_mapping_confirmed", BasAuditEvent.recent.first.event_type
+
+    clear_enqueued_jobs
+    assert_no_enqueued_jobs only: BasTdkWorkbookProcessingJob do
+      patch confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook), params: mapping_params
+    end
+    assert_equal "This upload is no longer waiting for column mapping confirmation.", flash[:alert]
+  end
+
+  test "mapping confirmation rejects invalid roles columns and worksheet rows" do
+    job = create_job(workflow_type: "tdk_group")
+    workbook = create_needs_mapping_workbook(job, version_number: 1)
+
+    assert_no_enqueued_jobs only: BasTdkWorkbookProcessingJob do
+      patch confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook), params: {
+        column_mapping: {
+          header_row_number: 8,
+          data_start_row: 1,
+          columns: {
+            "0" => "date",
+            "1" => "date",
+            "2" => "amount",
+            "3" => "debit",
+            "4" => "debit",
+            "99" => "made_up"
+          }
+        }
+      }
+    end
+
+    assert_redirected_to admin_bas_job_path(job, anchor: "tdk-column-mapping")
+    assert_equal "needs_mapping", workbook.reload.status
+    refute workbook.metadata.key?("column_mapping_override")
+    assert_includes flash[:alert], "unknown source columns"
+    assert_includes flash[:alert], "unsupported column role"
+    assert_includes flash[:alert], "exactly one Description"
+    assert_includes flash[:alert], "either one Amount column or Debit/Credit"
+    assert_includes flash[:alert], "Debit"
+    assert_includes flash[:alert], "Header row is outside"
+    assert_includes flash[:alert], "Data must start after"
+  end
+
+  test "mapping review preserves the last confirmed selections after processing returns for review" do
+    job = create_job(workflow_type: "tdk_group")
+    workbook = create_needs_mapping_workbook(job, version_number: 1)
+    workbook.update!(
+      row_errors: [ BasTdk::WorkbookProcessor::CONFIRMED_COLUMN_MAPPING_ERROR ],
+      metadata: workbook.metadata.merge(
+        "column_mapping_override" => {
+          "header_row_number" => 1,
+          "data_start_row" => 2,
+          "columns" => {
+            "0" => "date",
+            "1" => "description",
+            "2" => "amount",
+            "3" => "ignore",
+            "4" => "balance"
+          }
+        }
+      )
+    )
+
+    get admin_bas_job_path(job)
+
+    assert_response :success
+    assert_select "select[name='column_mapping[columns][2]'] option[value='amount'][selected='selected']"
+    assert_select "select[name='column_mapping[columns][3]'] option[value='ignore'][selected='selected']"
+    assert_includes response.body, BasTdk::WorkbookProcessor::CONFIRMED_COLUMN_MAPPING_ERROR
+  end
+
+  test "mapping confirmation rejects an obsolete upload" do
+    job = create_job(workflow_type: "tdk_group")
+    active = create_processed_workbook(job, version_number: 1)
+    workbook = create_needs_mapping_workbook(job, version_number: 2)
+    job.tdk_workbooks.create!(
+      status: "failed",
+      source_filename: "newer-invalid.csv",
+      version_number: 3,
+      row_errors: [ "Synthetic newer failure" ]
+    )
+
+    assert_no_enqueued_jobs only: BasTdkWorkbookProcessingJob do
+      patch confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook), params: valid_mapping_params
+    end
+
+    assert_equal "needs_mapping", workbook.reload.status
+    assert_equal active.id, job.tdk_workbooks.active_processed.first.id
+    assert_equal "A newer bank statement upload exists. Review the latest upload or upload this file again.", flash[:alert]
+  end
+
+  test "locked jobs cannot confirm a pending mapping" do
+    job = create_job(workflow_type: "tdk_group", status: "locked")
+    workbook = create_needs_mapping_workbook(job, version_number: 1)
+
+    assert_no_enqueued_jobs only: BasTdkWorkbookProcessingJob do
+      patch confirm_mapping_admin_bas_job_tdk_workbook_path(job, workbook), params: valid_mapping_params
+    end
+
+    assert_redirected_to admin_bas_job_path(job)
+    assert_equal "Locked BAS jobs cannot change TDK bank statements.", flash[:alert]
+    assert_equal "needs_mapping", workbook.reload.status
   end
 
   test "ready export is invalidated by saved row edits and prepare button returns" do
@@ -1144,11 +1302,15 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     controller_source = Rails.root.join("app/javascript/controllers/tdk_workbook_status_controller.js").read
 
     assert_includes controller_source, "shouldReloadAfterActiveWorkbookChange"
+    assert_includes controller_source, "shouldReloadAfterMappingRequired(payload)"
+    assert_includes controller_source, "payload.mapping_required"
+    assert_includes controller_source, "initialStatus !== \"needs_mapping\""
     assert_includes controller_source, "activeWorkbookChanged(payload)"
     assert_includes controller_source, "payload.active_workbook_id"
     assert_includes controller_source, "payload.active_workbook_version"
     assert_includes controller_source, "payload.active_source_filename"
     assert_includes controller_source, "reloadAfterActiveWorkbookChange(payload)"
+    assert_includes controller_source, "payload.workflow_url"
     assert_includes controller_source, "window.location.assign(this.urlWithCacheBust(payload.active_table_url || window.location.href))"
     assert_includes controller_source, "new URL(url, window.location.href)"
     assert_includes controller_source, "refreshUrl.hash = \"\""
@@ -1409,6 +1571,56 @@ class AdminBasTdkWorkbooksControllerTest < ActionDispatch::IntegrationTest
     end
 
     workbook
+  end
+
+  def create_needs_mapping_workbook(job, version_number:)
+    workbook = job.tdk_workbooks.create!(
+      status: "needs_mapping",
+      source_filename: "synthetic-needs-mapping.csv",
+      version_number: version_number,
+      processing_started_at: 1.minute.ago,
+      processing_finished_at: Time.current,
+      processed_by: "tdk-workbook-admin",
+      metadata: {
+        "column_detection" => {
+          "decision" => "needs_mapping",
+          "strategy" => "profiled_columns",
+          "header_row_number" => 1,
+          "data_start_row" => 2,
+          "max_row" => 7,
+          "reason_codes" => [ "ambiguous_amount_columns" ],
+          "columns" => [
+            { "index" => 0, "label" => "Column A", "source_header" => "Transaction Date", "suggested_role" => "date", "confidence" => 0.99, "samples" => [ "30/03/2026", "29/03/2026" ] },
+            { "index" => 1, "label" => "Column B", "source_header" => "Narrative", "suggested_role" => "description", "confidence" => 0.96, "samples" => [ "EFTPOS SAMPLE", "TRANSFER SAMPLE" ] },
+            { "index" => 2, "label" => "Column C", "source_header" => "Money out", "suggested_role" => "debit", "confidence" => 0.72, "samples" => [ "12.50" ] },
+            { "index" => 3, "label" => "Column D", "source_header" => "Money in", "suggested_role" => "credit", "confidence" => 0.71, "samples" => [ "100.00" ] },
+            { "index" => 4, "label" => "Column E", "source_header" => "Running total", "suggested_role" => "balance", "confidence" => 0.68, "samples" => [ "1000.00", "1087.50" ] }
+          ],
+          "preview_rows" => [
+            { "row_number" => 2, "values" => [ "30/03/2026", "EFTPOS SAMPLE", "12.50", "", "1000.00" ] },
+            { "row_number" => 3, "values" => [ "29/03/2026", "TRANSFER SAMPLE", "", "100.00", "1100.00" ] }
+          ]
+        }
+      }
+    )
+    workbook.source_file.attach(tdk_csv_upload("Transaction Date,Narrative,Money out,Money in,Running total\n30/03/2026,EFTPOS SAMPLE,12.50,,1000.00\n"))
+    workbook
+  end
+
+  def valid_mapping_params
+    {
+      column_mapping: {
+        header_row_number: 1,
+        data_start_row: 2,
+        columns: {
+          "0" => "date",
+          "1" => "description",
+          "2" => "debit",
+          "3" => "credit",
+          "4" => "balance"
+        }
+      }
+    }
   end
 
   def create_processed_balance_workbook(job, details_values:, version_number: 1)

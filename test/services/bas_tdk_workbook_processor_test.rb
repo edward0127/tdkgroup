@@ -100,11 +100,11 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     ], accounting_format_columns: [ 3 ]))
 
     assert workbook.processed?, workbook.processing_errors.to_sentence
-    assert_equal [ "Transaction Date", "Category", "Transaction Amount", "GST", "Details" ], workbook.processed_headers
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description" ], workbook.processed_headers
     row = workbook.rows.ordered.first
     assert_equal "Meals", row.row_data.fetch("Category")
     assert_equal "GST included", row.row_data.fetch("GST")
-    assert_equal "Synthetic lunch", row.row_data.fetch("Details")
+    assert_equal "Synthetic lunch", row.row_data.fetch("Description")
   end
 
   test "synthesises Details from extra cells with blank headers" do
@@ -191,6 +191,107 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     end
   end
 
+  test "infers reordered headerless CSV columns and running balance" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      Newest sale,1030.00,2025-01-05,10.00
+      Bank fee,1020.00,2025-01-04,-5.00
+      Customer payment,1025.00,2025-01-03,20.00
+      Supplier payment,1005.00,2025-01-02,-5.00
+      Older sale,1010.00,2025-01-01,10.00
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal "inferred_columns", workbook.metadata.fetch("csv_header_strategy")
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], workbook.processed_headers
+    assert_equal 5, workbook.row_count
+
+    first = workbook.rows.ordered.first
+    assert_equal "2025-01-05", first.row_data.fetch("Date")
+    assert_equal "10.00", first.row_data.fetch("Amount")
+    assert_equal "Newest sale", first.row_data.fetch("Description")
+    assert_equal "1030.00", first.row_data.fetch("Balance")
+    assert_equal({ "0" => "description", "1" => "balance", "2" => "date", "3" => "amount" }, workbook.metadata.fetch("csv_column_mapping"))
+  end
+
+  test "adds Balance when a headerless fourth column reconciles" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      05/01/2025,10.00,Newest sale,1030.00
+      04/01/2025,-5.00,Bank fee,1020.00
+      03/01/2025,20.00,Customer payment,1025.00
+      02/01/2025,-5.00,Supplier payment,1005.00
+      01/01/2025,10.00,Older sale,1010.00
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal "inferred_columns", workbook.metadata.fetch("csv_header_strategy")
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], workbook.processed_headers
+    assert_equal [ "1030.00", "1020.00", "1025.00", "1005.00", "1010.00" ],
+      workbook.rows.ordered.map { |row| row.row_data.fetch("Balance") }
+  end
+
+  test "ambiguous headerless debit credit CSV waits for column confirmation" do
+    active = create_active_workbook
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      2025-01-01,Opening receipt,,1000.00
+      2025-01-02,Supplier payment,10.00,
+      2025-01-03,Customer payment,,20.00
+      2025-01-04,Bank fee,5.00,
+      2025-01-05,Cash receipt,,30.00
+    CSV
+
+    assert workbook.needs_mapping?
+    assert_equal 0, workbook.row_count
+    assert_includes workbook.processing_errors, BasTdk::WorkbookProcessor::COLUMN_MAPPING_REQUIRED_MESSAGE
+    detection = workbook.metadata.fetch("column_detection")
+    assert_equal "needs_mapping", detection.fetch("decision")
+    assert_equal 4, detection.fetch("columns").size
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, bas_job.tdk_workbooks.active_processed.first.id
+  end
+
+  test "confirmed headerless debit credit mapping resumes the same workbook" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      2025-01-01,Opening receipt,,1000.00
+      2025-01-02,Supplier payment,10.00,
+      2025-01-03,Customer payment,,20.00
+      2025-01-04,Bank fee,5.00,
+      2025-01-05,Cash receipt,,30.00
+    CSV
+    assert workbook.needs_mapping?
+
+    workbook.update!(
+      status: "queued",
+      row_errors: [],
+      metadata: workbook.metadata.merge(
+        "column_mapping_override" => {
+          "header_row_number" => nil,
+          "data_start_row" => 1,
+          "columns" => {
+            "0" => "date",
+            "1" => "description",
+            "2" => "debit",
+            "3" => "credit"
+          }
+        }
+      )
+    )
+
+    workbook.source_file.open(tmpdir: Rails.root.join("tmp").to_s) do |file|
+      BasTdk::WorkbookProcessor.new(
+        bas_job: bas_job,
+        workbook: workbook,
+        source_path: file.path,
+        actor_username: "tdk-processor-test"
+      ).call
+    end
+
+    assert workbook.reload.processed?, workbook.processing_errors.to_sentence
+    assert_equal "user_override", workbook.metadata.fetch("csv_header_strategy")
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description" ], workbook.processed_headers
+    assert_equal [ "1000.00", "-10.00", "20.00", "-5.00", "30.00" ],
+      workbook.rows.ordered.map { |row| row.row_data.fetch("Amount") }
+  end
+
   test "imports headered CSV with Date Amount Description" do
     workbook = process_upload(tdk_csv_upload(<<~CSV))
       Date,Amount,Description
@@ -227,7 +328,7 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     assert_equal [ "342.30", "-42.42" ], rows.map { |row| row.row_data.fetch("Amount") }
     assert_equal [ "2961.92", "2919.50" ], rows.map { |row| row.row_data.fetch("Balance") }
     assert_equal [ "Synthetic category", "Synthetic category" ], rows.map { |row| row.row_data.fetch("Category") }
-    assert_equal [ "Synthetic government payment", "Synthetic card purchase" ], rows.map { |row| row.row_data.fetch("Transaction Details") }
+    assert_equal [ "Synthetic government payment", "Synthetic card purchase" ], rows.map { |row| row.row_data.fetch("Description") }
     assert_equal [ "123456", "123456" ], rows.map { |row| row.row_data.fetch("Account Number") }
     assert_equal [ "SYNTHETIC CREDIT", "SYNTHETIC DEBIT" ], rows.map { |row| row.row_data.fetch("Transaction Type") }
   end
@@ -250,6 +351,256 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
     assert_equal "1086.50", credit_row.row_data.fetch("Balance")
     refute_includes workbook.processed_headers, "Debit"
     refute_includes workbook.processed_headers, "Credit"
+  end
+
+  test "canonicalises narrative debit credit and balance headers while preserving extras" do
+    workbook = process_upload(tdk_xlsx_upload([
+      [ "Bank Account", "Date", "Narrative", "Debit Amount", "Credit Amount", "Balance", nil, "Serial" ],
+      [ "33005436007", Date.new(2026, 3, 30), "EFTPOS debit", 1.49, nil, 771.50, "software", "ABC-1" ],
+      [ "33005436007", Date.new(2026, 3, 29), "Deposit payment", nil, 3_000, 3_771.50, "income", "ABC-2" ]
+    ], accounting_format_columns: [ 4, 5, 6 ]))
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal "detected_header", workbook.metadata.fetch("xlsx_header_strategy")
+    assert_equal [
+      "Date", "Category", "Amount", "GST", "Description", "Balance", "Details", "Bank Account", "Serial"
+    ], workbook.processed_headers
+
+    debit_row, credit_row = workbook.rows.ordered.to_a
+    assert_equal "-1.49", debit_row.row_data.fetch("Amount")
+    assert_equal "3000.00", credit_row.row_data.fetch("Amount")
+    assert_equal "EFTPOS debit", debit_row.row_data.fetch("Description")
+    assert_equal "771.50", debit_row.row_data.fetch("Balance")
+    assert_equal "software", debit_row.row_data.fetch("Details")
+    assert_equal "33005436007", debit_row.row_data.fetch("Bank Account")
+    assert_equal "ABC-1", debit_row.row_data.fetch("Serial")
+    refute_includes workbook.processed_headers, "Debit"
+    refute_includes workbook.processed_headers, "Credit"
+    refute_includes workbook.processed_headers, "Narrative"
+  end
+
+  test "canonicalises and orders arbitrary header aliases with a direct amount" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      Running Balance,Narrative,Transaction Amount,Posting Date,Bank Account
+      966.00,Synthetic supplier payment,-33.00,01/07/2025,Everyday account
+      1086.50,Synthetic customer receipt,120.50,02/07/2025,Everyday account
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance", "Bank Account" ], workbook.processed_headers
+
+    rows = workbook.rows.ordered.to_a
+    assert_equal [ "2025-07-01", "2025-07-02" ], rows.map { |row| row.row_data.fetch("Date") }
+    assert_equal [ "-33.00", "120.50" ], rows.map { |row| row.row_data.fetch("Amount") }
+    assert_equal [ "966.00", "1086.50" ], rows.map { |row| row.row_data.fetch("Balance") }
+    assert_equal [ "Synthetic supplier payment", "Synthetic customer receipt" ], rows.map { |row| row.row_data.fetch("Description") }
+  end
+
+  test "recognises common description aliases and currency-qualified amount and balance headers" do
+    %w[Payee Merchant].each_with_index do |description_header, index|
+      workbook = process_upload(tdk_csv_upload(<<~CSV))
+        Posting Date,Transaction Amount (AUD),#{description_header},Current Balance (AUD)
+        0#{index + 1}/07/2025,-12.50,Synthetic #{description_header.downcase},987.50
+      CSV
+
+      assert workbook.processed?, "#{description_header}: #{workbook.processing_errors.to_sentence}"
+      row = workbook.rows.ordered.first
+      assert_equal "-12.50", row.row_data.fetch("Amount")
+      assert_equal "987.50", row.row_data.fetch("Balance")
+      assert_equal "Synthetic #{description_header.downcase}", row.row_data.fetch("Description")
+    end
+  end
+
+  test "recognises debit amt and DR CR split amount aliases" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      Date,Debit Amt (AUD),CR (AUD),Merchant,Running Balance (AUD)
+      01/07/2025,12.50,,Synthetic cafe,987.50
+      02/07/2025,,25.00,Synthetic receipt,1012.50
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal [ "-12.50", "25.00" ], workbook.rows.ordered.map { |row| row.row_data.fetch("Amount") }
+    assert_equal [ "987.50", "1012.50" ], workbook.rows.ordered.map { |row| row.row_data.fetch("Balance") }
+  end
+
+  test "confirmed mapping normalises two digit and slash ISO dates without dropping rows" do
+    workbook = mapping_workbook(
+      version_number: 1,
+      mapping: { "0" => "date", "1" => "amount", "2" => "description" }
+    )
+
+    process_existing_upload(workbook, tdk_csv_upload(<<~CSV))
+      05/01/25,10.00,Two digit year
+      2025/01/06,-4.50,Slash ISO date
+    CSV
+
+    assert workbook.reload.processed?, workbook.processing_errors.to_sentence
+    assert_equal 2, workbook.row_count
+    assert_equal [ "2025-01-05", "2025-01-06" ], workbook.rows.ordered.map { |row| row.row_data.fetch("Date") }
+  end
+
+  test "confirmed mapping returns to review when a transaction-like row cannot be parsed" do
+    active = create_active_workbook
+    workbook = mapping_workbook(
+      version_number: 2,
+      mapping: { "0" => "date", "1" => "amount", "2" => "description" }
+    )
+
+    process_existing_upload(workbook, tdk_csv_upload(<<~CSV))
+      05/01/25,10.00,Valid transaction
+      not-a-date,12.00,Invalid transaction
+    CSV
+
+    assert workbook.reload.needs_mapping?
+    assert_equal 0, workbook.row_count
+    assert_includes workbook.processing_errors.join(" "), BasTdk::WorkbookProcessor::MAPPED_ROW_ERROR
+    assert_includes workbook.processing_errors.join(" "), "Source rows: 2"
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, bas_job.tdk_workbooks.active_processed.first.id
+  end
+
+  test "confirmed mapping that yields no rows returns to review instead of falling back to legacy columns" do
+    active = create_active_workbook
+    workbook = mapping_workbook(
+      version_number: 2,
+      mapping: { "3" => "date", "4" => "amount", "5" => "description" }
+    )
+
+    process_existing_upload(workbook, tdk_csv_upload("2025-01-05,10.00,Would match legacy,,,\n"))
+
+    assert workbook.reload.needs_mapping?
+    assert_includes workbook.processing_errors, BasTdk::WorkbookProcessor::CONFIRMED_COLUMN_MAPPING_ERROR
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, bas_job.tdk_workbooks.active_processed.first.id
+  end
+
+  test "confirmed mapping rejects duplicate debit roles" do
+    workbook = mapping_workbook(
+      version_number: 1,
+      mapping: { "0" => "date", "1" => "description", "2" => "debit", "3" => "debit" }
+    )
+
+    process_existing_upload(workbook, tdk_csv_upload("2025-01-05,Synthetic payment,10.00,20.00\n"))
+
+    assert workbook.reload.needs_mapping?
+    assert_includes workbook.processing_errors, BasTdk::WorkbookProcessor::CONFIRMED_COLUMN_MAPPING_ERROR
+  end
+
+  test "header-only workbook fails without replacing the active processed workbook" do
+    active = create_active_workbook
+
+    workbook = process_upload(tdk_csv_upload("Date,Amount,Description\n"))
+
+    assert workbook.failed?
+    assert_equal 0, workbook.row_count
+    assert_includes workbook.processing_errors, BasTdk::WorkbookProcessor::EMPTY_TRANSACTION_ERROR
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, bas_job.tdk_workbooks.active_processed.first.id
+  end
+
+  test "recognised headers with only a footer fail without replacing the active workbook" do
+    active = create_active_workbook
+
+    workbook = process_upload(tdk_csv_upload(<<~CSV))
+      Date,Amount,Description
+      ,,Closing balance follows
+    CSV
+
+    assert workbook.failed?
+    assert_equal 0, workbook.row_count
+    assert_includes workbook.processing_errors, BasTdk::WorkbookProcessor::EMPTY_TRANSACTION_ERROR
+    assert_equal "processed", active.reload.status
+    assert_equal active.id, bas_job.tdk_workbooks.active_processed.first.id
+  end
+
+  test "an older workbook completing later cannot replace a newer processed version" do
+    original = create_active_workbook
+    older = bas_job.tdk_workbooks.create!(
+      status: "queued",
+      source_filename: "older.csv",
+      version_number: 2,
+      processed_by: "tdk-processor-test"
+    )
+    newer = bas_job.tdk_workbooks.create!(
+      status: "queued",
+      source_filename: "newer.csv",
+      version_number: 3,
+      processed_by: "tdk-processor-test"
+    )
+
+    process_existing_upload(newer, tdk_csv_upload(<<~CSV, filename: "newer.csv"))
+      Date,Amount,Description
+      03/01/2025,30.00,Newest transaction
+    CSV
+    process_existing_upload(older, tdk_csv_upload(<<~CSV, filename: "older.csv"))
+      Date,Amount,Description
+      02/01/2025,20.00,Older transaction
+    CSV
+
+    assert newer.reload.processed?
+    assert older.reload.superseded?
+    assert_equal newer.id, older.metadata.fetch("superseded_by_workbook_id")
+    assert_equal newer.version_number, older.metadata.fetch("superseded_by_version_number")
+    assert original.reload.superseded?
+    assert_equal newer.id, bas_job.tdk_workbooks.active_processed.first.id
+    assert_equal "Newest transaction", bas_job.tdk_workbooks.active_processed.first.rows.ordered.first.row_data.fetch("Description")
+  end
+
+  test "sparse far-right cells do not expand mapped or exact-header processing" do
+    requested_columns = []
+    requested_rows = []
+    cells = {
+      [ 1, 1 ] => "Date",
+      [ 1, 2 ] => "Amount",
+      [ 1, 3 ] => "Description",
+      [ 2, 1 ] => "05/01/2025",
+      [ 2, 2 ] => "10.00",
+      [ 2, 3 ] => "Synthetic transaction",
+      [ 1_048_576, 16_384 ] => "stray XFD value"
+    }
+    sheet = Object.new
+    sheet.define_singleton_method(:last_row) { 1_048_576 }
+    sheet.define_singleton_method(:last_column) { 16_384 }
+    sheet.define_singleton_method(:cells_by_row) do
+      {
+        1 => { 1 => "Date", 2 => "Amount", 3 => "Description" },
+        2 => { 1 => "05/01/2025", 2 => "10.00", 3 => "Synthetic transaction" },
+        1_048_576 => { 16_384 => "stray XFD value" }
+      }
+    end
+    sheet.define_singleton_method(:cell) do |row, column|
+      requested_rows << row
+      requested_columns << column
+      cells[[ row, column ]]
+    end
+    processor = BasTdk::WorkbookProcessor.new(
+      bas_job: bas_job,
+      actor_username: "tdk-processor-test"
+    )
+
+    mapped = processor.send(
+      :build_column_mapped_workbook,
+      sheet: sheet,
+      sheet_name: "Sparse mapped sheet",
+      header_row_number: 1,
+      data_start_row: 2,
+      mapping: { "0" => "date", "1" => "amount", "2" => "description" }
+    )
+    assert_equal 3, requested_columns.max
+    assert_equal 1, mapped.rows.size
+
+    requested_columns.clear
+    parsed = processor.send(
+      :parse_statement_sheet,
+      sheet: sheet,
+      sheet_name: "Sparse exact-header sheet",
+      metadata_prefix: "xlsx"
+    )
+    assert_operator requested_columns.max, :<=, BasTdk::WorkbookProcessor::MAX_STATEMENT_COLUMNS
+    assert_operator parsed.original_headers.size, :<=, BasTdk::WorkbookProcessor::MAX_STATEMENT_COLUMNS
+    assert_equal 1, parsed.rows.size
+    assert_operator requested_rows.uniq.size, :<, 30
+    refute_includes parsed.processed_headers, "stray XFD value"
   end
 
   test "headerless CSV can start after leading blank rows" do
@@ -1016,6 +1367,31 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
   end
 
   private
+
+  def mapping_workbook(version_number:, mapping:, data_start_row: 1, header_row_number: nil)
+    bas_job.tdk_workbooks.create!(
+      status: "queued",
+      source_filename: "confirmed-mapping.csv",
+      version_number: version_number,
+      processed_by: "tdk-processor-test",
+      metadata: {
+        "column_mapping_override" => {
+          "header_row_number" => header_row_number,
+          "data_start_row" => data_start_row,
+          "columns" => mapping
+        }
+      }
+    )
+  end
+
+  def process_existing_upload(workbook, upload)
+    BasTdk::WorkbookProcessor.new(
+      bas_job: bas_job,
+      workbook: workbook,
+      uploaded_file: upload,
+      actor_username: "tdk-processor-test"
+    ).call
+  end
 
   def process_upload(upload)
     BasTdk::WorkbookProcessor.new(

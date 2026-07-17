@@ -3,11 +3,17 @@ module Admin
     class TdkWorkbooksController < Admin::BaseController
       TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
       TDK_SORT_DIRECTIONS = %w[asc desc].freeze
+      COLUMN_MAPPING_ROLES = %w[
+        ignore keep date description amount debit credit balance details category gst
+      ].freeze
+      COLUMN_MAPPING_SINGLETON_ROLES = %w[
+        date description amount debit credit balance details category gst
+      ].freeze
 
       before_action :set_job
       before_action :ensure_tdk_group_job
-      before_action :set_workbook, only: [ :update_rows, :prepare_download, :download, :status ]
-      before_action :block_locked_job, only: [ :create, :update_rows ]
+      before_action :set_workbook, only: [ :confirm_mapping, :update_rows, :prepare_download, :download, :status ]
+      before_action :block_locked_job, only: [ :create, :confirm_mapping, :update_rows ]
 
       def create
         if uploaded_file.blank?
@@ -47,6 +53,29 @@ module Admin
         )
 
         redirect_to admin_bas_job_path(@job), notice: "Bank statement upload queued. Processing will continue in the background."
+      end
+
+      def confirm_mapping
+        confirmation = confirm_column_mapping
+        unless confirmation.fetch(:queued)
+          redirect_to admin_bas_job_path(@job, anchor: "tdk-column-mapping"), alert: confirmation.fetch(:error)
+          return
+        end
+
+        BasTdkWorkbookProcessingJob.perform_later(
+          workbook_id: @workbook.id,
+          actor_username: current_admin_identifier
+        )
+        create_audit_event(
+          @workbook,
+          "bas_tdk_workbook_column_mapping_confirmed",
+          bas_tdk_workbook_id: @workbook.id,
+          status: @workbook.status,
+          version_number: @workbook.version_number,
+          mapping: confirmation.fetch(:mapping)
+        )
+
+        redirect_to admin_bas_job_path(@job), notice: "Column mapping confirmed. Bank statement processing has resumed."
       end
 
       def update_rows
@@ -338,6 +367,8 @@ module Admin
           processing_started_at: workbook.processing_started_at&.iso8601,
           processed_at: workbook.processed_at&.iso8601,
           updated_at: workbook.updated_at&.iso8601,
+          mapping_required: workbook.needs_mapping?,
+          workflow_url: admin_bas_job_path(@job),
           active_workbook_id: active&.id,
           active_workbook_version: active&.version_number,
           active_source_filename: active&.source_filename,
@@ -348,6 +379,146 @@ module Admin
           export_error: active&.export_error,
           export_generated_at: active&.export_generated_at&.iso8601
         }
+      end
+
+      def confirm_column_mapping
+        result = nil
+
+        @job.with_lock do
+          @workbook.reload
+          result = column_mapping_confirmation_result
+          next unless result.fetch(:queued)
+
+          @workbook.update!(
+            status: "queued",
+            row_count: 0,
+            row_errors: [],
+            processing_started_at: nil,
+            processing_finished_at: nil,
+            processed_at: nil,
+            processed_by: current_admin_identifier,
+            metadata: @workbook.metadata.merge("column_mapping_override" => result.fetch(:override))
+          )
+          @workbook.reload
+        end
+
+        result
+      end
+
+      def column_mapping_confirmation_result
+        return mapping_error("This upload is no longer waiting for column mapping confirmation.") unless @workbook.needs_mapping?
+
+        latest = @job.tdk_workbooks.recent.first
+        return mapping_error("A newer bank statement upload exists. Review the latest upload or upload this file again.") unless latest&.id == @workbook.id
+
+        detection = @workbook.metadata["column_detection"]
+        return mapping_error("Column detection details are unavailable. Please upload the bank statement again.") unless detection.is_a?(Hash)
+
+        validated = validated_column_mapping(detection)
+        return mapping_error(validated.fetch(:errors).to_sentence) if validated.fetch(:errors).any?
+
+        mapping = validated.fetch(:mapping)
+        {
+          queued: true,
+          mapping: mapping,
+          override: {
+            "header_row_number" => validated.fetch(:header_row_number),
+            "data_start_row" => validated.fetch(:data_start_row),
+            "columns" => mapping,
+            "confirmed_by" => current_admin_identifier,
+            "confirmed_at" => Time.current.iso8601
+          }
+        }
+      end
+
+      def validated_column_mapping(detection)
+        submitted = column_mapping_params
+        known_indices = detection_column_indices(detection)
+        submitted_columns = submitted.fetch(:columns, {}).to_h.transform_keys(&:to_s).transform_values(&:to_s)
+        errors = []
+
+        errors << "No detected source columns are available" if known_indices.empty?
+        unknown_indices = submitted_columns.keys - known_indices
+        errors << "The submitted mapping contains unknown source columns" if unknown_indices.any?
+
+        unknown_roles = submitted_columns.values - COLUMN_MAPPING_ROLES
+        errors << "The submitted mapping contains an unsupported column role" if unknown_roles.any?
+
+        mapping = known_indices.index_with { |index| submitted_columns.fetch(index, "ignore") }
+        validate_required_mapping_roles(mapping, errors)
+        validate_singleton_mapping_roles(mapping, errors)
+
+        max_row = positive_integer(detection["max_row"])
+        header_row_number = optional_positive_integer(submitted[:header_row_number])
+        data_start_row = positive_integer(submitted[:data_start_row])
+        errors << "The detected worksheet row range is invalid" if max_row.blank?
+        errors << "Header row is outside the detected worksheet" if submitted[:header_row_number].present? && header_row_number.blank?
+        errors << "Data start row is outside the detected worksheet" if data_start_row.blank?
+
+        if max_row.present?
+          errors << "Header row is outside the detected worksheet" if header_row_number.present? && header_row_number > max_row
+          errors << "Data start row is outside the detected worksheet" if data_start_row.present? && data_start_row > max_row
+        end
+        if header_row_number.present? && data_start_row.present? && data_start_row <= header_row_number
+          errors << "Data must start after the selected header row"
+        end
+
+        {
+          errors: errors.uniq,
+          mapping: mapping,
+          header_row_number: header_row_number,
+          data_start_row: data_start_row
+        }
+      end
+
+      def validate_required_mapping_roles(mapping, errors)
+        roles = mapping.values
+        errors << "Map exactly one Date column" unless roles.count("date") == 1
+        errors << "Map exactly one Description column" unless roles.count("description") == 1
+
+        direct_amount = roles.include?("amount")
+        split_amount = roles.include?("debit") || roles.include?("credit")
+        unless direct_amount ^ split_amount
+          errors << "Map either one Amount column or Debit/Credit columns, but not both"
+        end
+      end
+
+      def validate_singleton_mapping_roles(mapping, errors)
+        duplicate_roles = COLUMN_MAPPING_SINGLETON_ROLES.select { |role| mapping.values.count(role) > 1 }
+        return if duplicate_roles.empty?
+
+        errors << "Map each of these roles only once: #{duplicate_roles.map(&:humanize).to_sentence}"
+      end
+
+      def detection_column_indices(detection)
+        Array(detection["columns"]).filter_map do |column|
+          next unless column.is_a?(Hash)
+
+          index = Integer(column["index"], exception: false)
+          index.to_s if index && index >= 0
+        end.uniq
+      end
+
+      def positive_integer(value)
+        number = Integer(value, exception: false)
+        number if number&.positive?
+      end
+
+      def optional_positive_integer(value)
+        return if value.blank?
+
+        positive_integer(value)
+      end
+
+      def column_mapping_params
+        submitted = params[:column_mapping]
+        return ActionController::Parameters.new.permit! unless submitted.respond_to?(:permit)
+
+        submitted.permit(:header_row_number, :data_start_row, columns: {})
+      end
+
+      def mapping_error(message)
+        { queued: false, error: message }
       end
 
       def create_audit_event(workbook, event_type, metadata)

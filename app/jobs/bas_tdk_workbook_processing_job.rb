@@ -21,6 +21,10 @@ class BasTdkWorkbookProcessingJob < ApplicationJob
     workbook.reload
     if workbook.processed?
       create_audit_event(workbook, "bas_tdk_workbook_processing_completed", actor_username)
+    elsif workbook.needs_mapping?
+      create_audit_event(workbook, "bas_tdk_workbook_column_mapping_required", actor_username)
+    elsif workbook.superseded?
+      create_audit_event(workbook, "bas_tdk_workbook_processing_superseded", actor_username)
     else
       create_audit_event(workbook, "bas_tdk_workbook_processing_failed", actor_username)
     end

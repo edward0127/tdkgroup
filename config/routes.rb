@@ -131,6 +131,7 @@ Rails.application.routes.draw do
         end
         resources :tdk_workbooks, only: [ :create ] do
           member do
+            patch :confirm_mapping
             patch :update_rows
             post :prepare_download
             get :download

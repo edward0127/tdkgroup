@@ -2009,6 +2009,156 @@ form.is-submitting {
   gap: 16px;
 }
 
+.tdk-column-mapping-card {
+  min-width: 0;
+  margin-top: 16px;
+  border: 1px solid #f0b45f;
+  border-radius: 8px;
+  padding: 20px;
+  background: linear-gradient(180deg, #fffdf8, #ffffff);
+  box-shadow: 0 14px 30px rgba(124, 45, 18, 0.08);
+}
+
+.tdk-column-mapping-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.tdk-column-mapping-heading .eyebrow {
+  margin-bottom: 6px;
+  color: #9a5219;
+}
+
+.tdk-column-mapping-heading .admin-muted {
+  max-width: 760px;
+  margin-top: 7px;
+  line-height: 1.55;
+}
+
+.tdk-column-mapping-active-note,
+.tdk-column-mapping-guidance,
+.tdk-column-mapping-locked {
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 11px 13px;
+  color: #7c2d12;
+  background: #fff7ed;
+  line-height: 1.5;
+}
+
+.tdk-column-mapping-guidance {
+  display: grid;
+  gap: 3px;
+  margin: 14px 0;
+}
+
+.tdk-column-mapping-guidance span {
+  color: #7b4b2a;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.tdk-column-mapping-form {
+  margin-top: 14px;
+}
+
+.tdk-column-mapping-form,
+.tdk-column-mapping-guidance,
+.tdk-column-mapping-table-wrap,
+.tdk-column-preview,
+.tdk-column-preview-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tdk-column-mapping-table-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.tdk-column-mapping-table {
+  min-width: 720px;
+}
+
+.tdk-column-mapping-table td:first-child {
+  width: 27%;
+}
+
+.tdk-column-mapping-table td:nth-child(2) {
+  width: 46%;
+}
+
+.tdk-column-mapping-table td:last-child {
+  width: 27%;
+}
+
+.tdk-column-mapping-samples {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.tdk-column-mapping-select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #c8d6e5;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: var(--ink);
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.tdk-column-mapping-select:focus {
+  border-color: #d3943c;
+  outline: 3px solid rgba(240, 180, 95, 0.22);
+}
+
+.tdk-column-preview {
+  margin-top: 18px;
+}
+
+.tdk-column-preview h3 {
+  color: var(--navy);
+  font-size: 15px;
+}
+
+.tdk-column-preview > .admin-muted {
+  margin-top: 4px;
+}
+
+.tdk-column-preview-table-wrap {
+  margin-top: 10px;
+  max-width: 100%;
+}
+
+.tdk-column-preview-table {
+  min-width: max-content;
+  font-size: 12px;
+}
+
+.tdk-column-preview-table th,
+.tdk-column-preview-table td {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+
+.tdk-column-mapping-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.tdk-column-mapping-locked {
+  margin-top: 16px;
+  font-weight: 800;
+}
+
 .tdk-workflow-panel,
 .tdk-current-workbook-card,
 .tdk-workbook-review-card {
@@ -2216,6 +2366,12 @@ form.is-submitting {
   color: #1e3a8a;
   border-color: #bfdbfe;
   background: #dbeafe;
+}
+
+.tdk-status-pill.is-warning {
+  color: #7c2d12;
+  border-color: #fdba74;
+  background: #ffedd5;
 }
 
 .tdk-status-pill.is-muted {
@@ -3220,7 +3376,8 @@ form.is-submitting {
   }
 
   .tdk-workflow-hero,
-  .tdk-workflow-header-card {
+  .tdk-workflow-header-card,
+  .tdk-column-mapping-heading {
     flex-direction: column;
   }
 
@@ -3252,7 +3409,8 @@ form.is-submitting {
   }
 
   .tdk-workbook-toolbar__meta,
-  .tdk-workbook-save-action {
+  .tdk-workbook-save-action,
+  .tdk-column-mapping-actions {
     justify-content: flex-start;
   }
 
