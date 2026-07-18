@@ -437,7 +437,14 @@ module BasTdk
 
         description = cell_text(cells, mapping["description"])
         category = cell_text(cells, mapping["category"])
-        next if description.blank? || category.blank?
+        # Keep uncoded transactions in the reference population so template
+        # category coverage measures the workbook that the client actually
+        # supplied. Dropping blank categories here would make every surviving
+        # template look 100% coded and could incorrectly auto-approve it.
+        next if description.blank?
+        if category.blank? && BasTdk::TransactionFingerprint.call(description).template_keys.empty?
+          next
+        end
 
         amount = amount_from(cells, mapping)
         next if amount.nil?

@@ -2,6 +2,21 @@ require "test_helper"
 require_relative "../support/tdk_workbook_helper"
 
 class BasTdkReferenceWorkbookReaderTest < ActiveSupport::TestCase
+  test "retains uncoded transaction rows for category coverage calculations" do
+    upload = tdk_csv_upload(<<~CSV, filename: "category-coverage.csv")
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE,Sales,40.00,
+      Fast Transfer From BOB,,50.00,
+      Footer total,,90.00,
+    CSV
+    result = reader_for(upload).call
+
+    assert result.success?, result.errors.to_sentence
+    assert_equal 2, result.rows.length
+    assert_equal "Sales", result.rows.first.category
+    assert_equal "", result.rows.second.category
+  end
+
   include TdkWorkbookHelper
 
   test "reads a real prior-quarter debit credit header shape with signed GST ratios" do

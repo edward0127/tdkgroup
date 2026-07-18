@@ -183,10 +183,10 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
   test "leaves mixed-retailer GST blank even when one historical transaction was zero" do
     job = create_job
     workbook = create_workbook(job)
-    row = create_row(workbook, description: "WOOLWORTHS MILDURA Card xx4534", amount: "-23.25")
+    row = create_row(workbook, description: "COLES MILDURA Card xx4534", amount: "-23.25")
     run = create_run(job, workbook, reference_csv: <<~CSV)
       Description,Category,Amount,GST
-      WOOLWORTHS MILDURA Card xx4534,Purchase,-12.00,0.00
+      COLES MILDURA Card xx4534,Purchase,-12.00,0.00
     CSV
 
     process(run)
@@ -199,6 +199,30 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_includes coding.warning_codes, "historical_gst_suppressed"
     assert_includes coding.warning_codes, "mixed_or_unsafe_gst"
     assert_equal "", row.reload.row_data.fetch("GST")
+  end
+
+  test "leaves user-confirmed uncertain retailers blank instead of inheriting exact history" do
+    job = create_job
+    workbook = create_workbook(job)
+    woolworths = create_row(workbook, position: 1, description: "WOOLWORTHS MILDURA Card xx4534", amount: "-23.25")
+    minton = create_row(workbook, position: 2, description: "SQ *MINTON MILDURA", amount: "-18.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      WOOLWORTHS MILDURA Card xx4534,Purchase,-12.00,0.00
+      SQ *MINTON MILDURA,Purchase,-9.00,-0.82
+    CSV
+
+    process(run)
+
+    [ woolworths, minton ].each do |row|
+      coding = run.reload.row_codings.find_by!(workbook_row: row)
+      assert_nil coding.suggested_category
+      assert_equal "unmatched", coding.category_source
+      assert coding.category_review_required
+      assert coding.gst_review_required
+      assert_includes coding.warning_codes, "historical_category_suppressed"
+      assert_equal "uncertain_retailer", coding.metadata.fetch("category_suppressed_by_rule_id")
+    end
   end
 
   test "retains consistent historical commercial-rent GST while still highlighting the merchant match" do
@@ -261,7 +285,7 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     refute coding.review_required?
   end
 
-  test "learns a repeated bank narrative template from the reference workbook" do
+  test "auto-accepts a well-supported safe bank narrative template" do
     job = create_job
     workbook = create_workbook(job)
     row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 4", amount: "54.00")
@@ -281,12 +305,100 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_equal "previous_quarter_fuzzy", coding.gst_source
     assert_equal "unknown", coding.gst_treatment
     assert_equal coding.category_confidence, coding.gst_confidence
+    refute coding.category_review_required
     refute coding.gst_review_required
-    assert coding.review_required?
-    assert_includes coding.warning_codes, "historical_template_match"
+    refute coding.review_required?
+    refute_includes coding.warning_codes, "historical_template_match"
     assert_includes coding.warning_codes, "historical_gst_blank_inherited"
     refute_includes coding.warning_codes, "gst_unclassified"
     assert_equal "template", coding.metadata.fetch("match_type")
+    assert_equal 3, coding.metadata.fetch("reference_category_support")
+    assert_equal 1.0, coding.metadata.fetch("reference_category_coverage")
+    assert_equal 0, coding.metadata.fetch("reference_category_conflict_count")
+    assert coding.metadata.fetch("safe_template_category_match")
+  end
+
+  test "keeps a safe template highlighted when nonblank category support is below the threshold" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 3", amount: "54.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice 1,Sales,40.00,
+      Fast Transfer From BOB invoice 2,Sales,50.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Sales", coding.suggested_category
+    assert coding.category_review_required
+    assert_includes coding.warning_codes, "historical_template_match"
+    refute coding.metadata.fetch("safe_template_category_match")
+  end
+
+  test "counts blank historical categories in safe template coverage" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 5", amount: "54.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice 1,Sales,40.00,
+      Fast Transfer From BOB invoice 2,Sales,50.00,
+      Fast Transfer From CAROL invoice 3,Sales,60.00,
+      Fast Transfer From DAVID invoice 4,,70.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Sales", coding.suggested_category
+    assert coding.category_review_required
+    assert_equal 3, coding.metadata.fetch("reference_category_support")
+    assert_equal 0.75, coding.metadata.fetch("reference_category_coverage")
+    refute coding.metadata.fetch("safe_template_category_match")
+  end
+
+  test "does not auto-accept a template direction outside the safe allowlist" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG refund 4", amount: "-54.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE refund 1,Refunds,-40.00,
+      Fast Transfer From BOB refund 2,Refunds,-50.00,
+      Fast Transfer From CAROL refund 3,Refunds,-60.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Refunds", coding.suggested_category
+    assert coding.category_review_required
+    assert_includes coding.warning_codes, "historical_template_match"
+    refute coding.metadata.fetch("safe_template_category_match")
+  end
+
+  test "auto-accepts safe template category while keeping conflicting GST under review" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From SONG ZHANG invoice 4", amount: "110.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice 1,Sales,110.00,10.00
+      Fast Transfer From BOB invoice 2,Sales,110.00,0.00
+      Fast Transfer From CAROL invoice 3,Sales,110.00,10.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Sales", coding.suggested_category
+    refute coding.category_review_required
+    assert coding.gst_review_required
+    assert coding.review_required?
+    assert_includes coding.warning_codes, "historical_gst_conflict"
+    assert coding.metadata.fetch("safe_template_category_match")
   end
 
   test "does not use a bank narrative template when historical categories conflict" do
@@ -419,13 +531,13 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     refute_includes coding.metadata.to_json.downcase, "kiki"
   end
 
-  test "highlights a single exact historical example instead of silently accepting it" do
+  test "auto-accepts a single exact historical example with a nonblank unconflicted category" do
     job = create_job
     workbook = create_workbook(job)
-    row = create_row(workbook, description: "KMART 1323", amount: "-80.00")
+    row = create_row(workbook, description: "LOCAL SUPPLIER 1323", amount: "-80.00")
     run = create_run(job, workbook, reference_csv: <<~CSV)
       Description,Category,Amount,GST
-      KMART 1323,Shop expense,-80.00,-7.27
+      LOCAL SUPPLIER 1323,Shop expense,-80.00,-7.27
     CSV
 
     process(run)
@@ -433,8 +545,31 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     coding = run.reload.row_codings.find_by!(workbook_row: row)
     assert_equal "previous_quarter_exact", coding.category_source
     assert_equal "Shop expense", coding.suggested_category
-    assert coding.review_required?
-    assert_includes coding.warning_codes, "single_historical_match"
+    refute coding.category_review_required
+    refute coding.gst_review_required
+    refute coding.review_required?
+    refute_includes coding.warning_codes, "single_historical_match"
+    assert_equal 100.0, coding.category_confidence
+  end
+
+  test "uses the verified KMART replacement rule instead of conflicting exact history" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "KMART 1323", amount: "-80.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      KMART 1323,Shop expense,-80.00,-7.27
+      EQUIPMENT DEPOT,Replacement,-110.00,-10.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Replacement", coding.suggested_category
+    assert_equal "rule", coding.category_source
+    assert coding.category_review_required
+    assert_includes coding.warning_codes, "historical_category_overridden"
+    assert_equal "replacement", coding.metadata.fetch("category_overridden_by_rule_id")
   end
 
   test "uses the client's historical chart name for a conservative rule" do

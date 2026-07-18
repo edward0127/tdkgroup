@@ -9,6 +9,14 @@ module BasTdk
     FUZZY_MATCH_MARGIN = 0.03
     MAX_FUZZY_CANDIDATES = 250
     MIN_TEMPLATE_SUPPORT = 2
+    MIN_SAFE_TEMPLATE_CATEGORY_SUPPORT = 3
+    MIN_SAFE_TEMPLATE_CATEGORY_COVERAGE = 1.0
+    SAFE_TEMPLATE_DIRECTIONS = {
+      "fast_transfer_from" => "credit",
+      "pos" => "credit",
+      "weekly_pay" => "debit",
+      "staff_wages" => "debit"
+    }.freeze
     STANDARD_GST_RATIO = BigDecimal("1") / 11
     STANDARD_GST_RATIO_TOLERANCE = BigDecimal("0.005")
     TIGHT_GST_RATIO_SPREAD = BigDecimal("0.0025")
@@ -22,6 +30,9 @@ module BasTdk
       :gst_consensus_status,
       :representative,
       :occurrences,
+      :category_support,
+      :category_coverage,
+      :category_conflict_count,
       :match_kind,
       :match_key,
       keyword_init: true
@@ -45,6 +56,7 @@ module BasTdk
       "office_expenses" => [ /\Aoffice\s+expenses?\z/i, /\Astationery\z/i ],
       "packaging" => [ /\Apackaging\z/i, /\Apacking\s+supplies?\z/i ],
       "equipment" => [ /\Areplacements?\z/i, /\Aequipment(?:\s*(?:&|and)\s*assets?)?\z/i, /\Aassets?\z/i ],
+      "replacement" => [ /\Areplacements?\z/i, /\Aequipment(?:\s*(?:&|and)\s*assets?)?\z/i, /\Aassets?\z/i ],
       "meals_entertainment" => [ /\Ameals?(?:\s*(?:&|and)\s*entertainment)?\z/i, /\Astaff\s+amen(?:it|tit)(?:y|ies)\z/i ],
       "staff_amenities" => [ /\Astaff\s+amen(?:it|tit)(?:y|ies)\z/i ],
       "rent_property" => [ /\A(?:rent|rental)(?:\s+(?:expense|exp|property))?\z/i, /\Aproperty\s+(?:rent|expense)\z/i ],
@@ -57,7 +69,10 @@ module BasTdk
       staff_amenities
       international
       water_supply
+      uncertain_retailer
     ].freeze
+    CATEGORY_HISTORY_SUPPRESSION_RULE_IDS = %w[uncertain_retailer].freeze
+    CATEGORY_HISTORY_OVERRIDE_RULE_IDS = %w[replacement].freeze
 
     Proposal = Struct.new(
       :category,
@@ -238,12 +253,14 @@ module BasTdk
 
     def reference_profile(candidates, normalized_description:, direction:, match_kind:, match_key:)
       category_groups = candidates.group_by { |row| normalized_category(row.category) }.reject { |category, _| category.blank? }
-      return unless category_groups.one?
+      category_conflict_count = category_groups.values.sum(&:length) - category_groups.values.map(&:length).max.to_i
+      return unless category_groups.one? && category_conflict_count.zero?
 
       category_rows = category_groups.values.first
       category = category_rows.map { |row| row.category.to_s.strip }.tally.max_by { |label, count| [ count, label ] }.first
-      gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(candidates)
-      representative = candidates.min_by(&:source_row_number)
+      gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(category_rows)
+      representative = category_rows.min_by(&:source_row_number)
+      category_support = category_rows.length
 
       ReferenceProfile.new(
         normalized_description: normalized_description,
@@ -254,6 +271,9 @@ module BasTdk
         gst_consensus_status: gst_consensus_status,
         representative: representative,
         occurrences: candidates.length,
+        category_support: category_support,
+        category_coverage: category_support.fdiv(candidates.length),
+        category_conflict_count: category_conflict_count,
         match_kind: match_kind,
         match_key: match_key
       )
@@ -314,7 +334,8 @@ module BasTdk
           amount,
           exact: true,
           similarity: 1.0,
-          description: description
+          description: description,
+          category_vocabulary: reference_indexes.category_vocabulary
         )
       end
 
@@ -325,7 +346,8 @@ module BasTdk
           amount,
           exact: false,
           similarity: similarity,
-          description: description
+          description: description,
+          category_vocabulary: reference_indexes.category_vocabulary
         )
       end
 
@@ -348,7 +370,8 @@ module BasTdk
           amount,
           exact: false,
           similarity: evidence_confidence(combined_evidence),
-          description: description
+          description: description,
+          category_vocabulary: reference_indexes.category_vocabulary
         )
       end
 
@@ -542,36 +565,39 @@ module BasTdk
 
     def previous_quarter_proposal(profile, amount, exact:, similarity:)
       source = exact ? "previous_quarter_exact" : "previous_quarter_fuzzy"
+      safe_template_category_match = safe_template_category_evidence?(profile)
+      category_review_required = !(exact || safe_template_category_match)
       gst_amount = if amount && profile.gst_ratio
         normalized_zero((amount * profile.gst_ratio).round(2))
       end
       gst_blank_inherited = profile.gst_consensus_status == "missing"
       warnings = []
-      warnings << history_warning_code(profile, exact: exact) if history_warning_code(profile, exact: exact)
+      warning_code = history_warning_code(profile, exact: exact, safe_template_category_match: safe_template_category_match)
+      warnings << warning_code if warning_code
       if gst_blank_inherited
         warnings << "historical_gst_blank_inherited"
       elsif profile.gst_ratio.nil?
         warnings << (profile.gst_consensus_status == "conflict" ? "historical_gst_conflict" : "historical_gst_missing")
       end
-      review_required = !exact || profile.occurrences == 1
-      confidence = exact ? (review_required ? 92.0 : 100.0) : (similarity * 100).round(2)
+      confidence = exact ? 100.0 : (similarity * 100).round(2)
       gst_source = if gst_amount.present? || gst_blank_inherited
         source
       else
         "unmatched"
       end
       gst_confidence = gst_amount.present? || gst_blank_inherited ? confidence : 0.0
-      gst_review_required = gst_blank_inherited ? false : (review_required || gst_amount.nil?)
-      explanation = if exact && profile.gst_ratio && !review_required
+      gst_review_required = gst_blank_inherited ? false : (category_review_required || gst_amount.nil?)
+      explanation = if exact && profile.gst_ratio
         "Matched the same normalized description and transaction direction in the reference workbook. Historical category and GST treatment were consistent."
-      elsif exact && profile.gst_ratio
-        "Matched one same-direction historical transaction. The values were copied, but a single prior example is highlighted for review."
       elsif exact && gst_blank_inherited
         "Matched the same normalized description and transaction direction with a consistent historical category."
       elsif exact
         "Matched the same normalized description and transaction direction with a consistent historical category. Historical GST was missing or conflicted, so GST was left for review."
+      elsif safe_template_category_match
+        coverage = (profile.category_coverage.to_f * 100).round(1)
+        "Matched a safe same-direction bank-description template with #{profile.category_support} coded reference examples, #{coverage}% Category coverage and no Category conflicts."
       elsif profile.match_kind == "template"
-        "Matched a same-direction bank-description template used consistently in the reference workbook (#{profile.occurrences} examples). Review the history-derived suggestion before relying on it."
+        "Matched a same-direction bank-description template, but its support, Category coverage or safety classification requires review."
       elsif profile.match_kind == "merchant"
         "Matched a strong merchant identity used consistently in the reference workbook (#{profile.occurrences} #{'example'.pluralize(profile.occurrences)}). Review this cross-description suggestion before relying on it."
       else
@@ -589,7 +615,7 @@ module BasTdk
         gst_source: gst_source,
         category_confidence: confidence,
         gst_confidence: gst_confidence,
-        category_review_required: review_required,
+        category_review_required: category_review_required,
         gst_review_required: gst_review_required,
         warning_codes: warnings,
         explanation: explanation,
@@ -599,6 +625,10 @@ module BasTdk
           "match_type" => exact ? "exact" : (profile.match_kind.in?(%w[template merchant]) ? profile.match_kind : "fuzzy"),
           "match_similarity" => similarity.round(6),
           "reference_occurrences" => profile.occurrences,
+          "reference_category_support" => profile.category_support,
+          "reference_category_coverage" => profile.category_coverage&.round(6),
+          "reference_category_conflict_count" => profile.category_conflict_count,
+          "safe_template_category_match" => safe_template_category_match,
           "gst_consensus_status" => profile.gst_consensus_status
         }.merge(persisted_match_key_metadata(profile.match_key))
       )
@@ -615,11 +645,11 @@ module BasTdk
       }
     end
 
-    def previous_quarter_proposal_with_taxable_fallback(profile, amount, exact:, similarity:, description:)
+    def previous_quarter_proposal_with_taxable_fallback(profile, amount, exact:, similarity:, description:, category_vocabulary:)
       proposal = previous_quarter_proposal(profile, amount, exact: exact, similarity: similarity)
-      return proposal if profile.gst_consensus_status == "missing"
-
       rule = BasTdk::CodingRuleEngine.new(description: description, amount: amount).call
+      apply_category_history_rule!(proposal, rule, category_vocabulary)
+
       if rule.rule_id.in?(GST_HISTORY_SUPPRESSION_RULE_IDS)
         proposal.gst_amount = nil
         proposal.gst_treatment = "needs_review"
@@ -631,6 +661,7 @@ module BasTdk
         proposal.metadata = proposal.metadata.to_h.merge("gst_suppressed_by_rule_id" => rule.rule_id)
         return proposal
       end
+      return proposal if profile.gst_consensus_status == "missing"
 
       return proposal if proposal.gst_amount.present?
 
@@ -647,15 +678,51 @@ module BasTdk
       proposal
     end
 
-    def history_warning_code(profile, exact:)
-      return "single_historical_match" if exact && profile.occurrences == 1
+    def apply_category_history_rule!(proposal, rule, category_vocabulary)
+      if rule.rule_id.in?(CATEGORY_HISTORY_SUPPRESSION_RULE_IDS)
+        proposal.category = nil
+        proposal.category_source = "unmatched"
+        proposal.category_confidence = 0.0
+        proposal.category_review_required = true
+        proposal.warning_codes = (proposal.warning_codes.to_a + rule.warning_codes.to_a + [ "historical_category_suppressed" ]).uniq
+        proposal.explanation = "#{rule.explanation} The historical Category was intentionally not inherited."
+        proposal.metadata = proposal.metadata.to_h.merge("category_suppressed_by_rule_id" => rule.rule_id)
+      elsif rule.rule_id.in?(CATEGORY_HISTORY_OVERRIDE_RULE_IDS)
+        category = category_for_rule(rule, category_vocabulary)
+        proposal.category = category
+        proposal.category_source = "rule"
+        proposal.category_confidence = rule.category_confidence
+        proposal.category_review_required = true
+        proposal.warning_codes = (proposal.warning_codes.to_a + rule.warning_codes.to_a + [ "historical_category_overridden" ]).uniq
+        proposal.explanation = "#{rule.explanation} The verified merchant rule replaced the conflicting historical Category with #{category}; review the change."
+        proposal.metadata = proposal.metadata.to_h.merge(
+          "category_overridden_by_rule_id" => rule.rule_id,
+          "rule_default_category" => rule.category,
+          "category_vocabulary_remapped" => category != rule.category
+        )
+      end
+
+      proposal
+    end
+
+    def history_warning_code(profile, exact:, safe_template_category_match:)
       return if exact
+      return if safe_template_category_match
 
       case profile.match_kind
       when "template" then "historical_template_match"
       when "merchant" then "historical_merchant_match"
       else "fuzzy_previous_quarter_match"
       end
+    end
+
+    def safe_template_category_evidence?(profile)
+      return false unless profile.match_kind == "template"
+      return false unless SAFE_TEMPLATE_DIRECTIONS[profile.match_key] == profile.direction
+      return false if profile.category_support.to_i < MIN_SAFE_TEMPLATE_CATEGORY_SUPPORT
+      return false if profile.category_coverage.to_f < MIN_SAFE_TEMPLATE_CATEGORY_COVERAGE
+
+      profile.category_conflict_count.to_i.zero?
     end
 
     def reference_snapshot(profile)

@@ -2,7 +2,7 @@ require "bigdecimal"
 
 module BasTdk
   class CodingRuleEngine
-    RULESET_VERSION = "ato-conservative-2026-07-v2".freeze
+    RULESET_VERSION = "ato-conservative-2026-07-v3".freeze
     TAXABLE_CAVEAT = "Confirm a valid tax invoice, supplier GST registration and business-use percentage before accepting the GST amount.".freeze
     TAXABLE_MERCHANT_FEE_PATTERN = /\b(?:merchant (?:card|service) fees?|card processing fees?)\b/i
 
@@ -31,6 +31,7 @@ module BasTdk
     ].freeze
 
     TAXABLE_EXPENSE_RULES = [
+      [ "replacement", /\bkmart\b/i, "Replacement" ],
       [ "software", /\b(?:software|subscription|microsoft|adobe|xero|myob|quickbooks|saas|web hosting|domain renewal)\b/i, "Software & subscriptions" ],
       [ "printing_stationery", /\b(?:menu printing|commercial printing)\b/i, "Stationery" ],
       [ "office_expenses", /\b(?:officeworks|stationery|office supplies|printer ink|toner|printing|print shop)\b/i, "Office expenses" ],
@@ -43,6 +44,10 @@ module BasTdk
       [ "advertising", /\b(?:advertising|facebook ads|meta ads|google ads|marketing campaign)\b/i, "Advertising & marketing" ],
       [ "freight", /\b(?:courier|postage|post shop|freight|australia post|fedex|dhl)\b/i, "Postage & freight" ],
       [ "utilities", /\b(?:electricity|energy bill|gas bill)\b/i, "Utilities" ]
+    ].freeze
+
+    UNCERTAIN_CATEGORY_RULES = [
+      [ "uncertain_retailer", /(?:\bwoolworths\b|\bsq\W+minton\b)/i, "The transaction description does not identify what was purchased, and prior coding is not reliable enough to assign a Category automatically." ]
     ].freeze
 
     UNSAFE_GST_RULES = [
@@ -61,7 +66,7 @@ module BasTdk
     end
 
     def call
-      taxable_merchant_fee_suggestion || no_gst_suggestion || unsafe_gst_suggestion || taxable_expense_suggestion || unmatched_suggestion
+      taxable_merchant_fee_suggestion || no_gst_suggestion || uncertain_category_suggestion || unsafe_gst_suggestion || taxable_expense_suggestion || unmatched_suggestion
     end
 
     private
@@ -110,6 +115,23 @@ module BasTdk
         category_confidence: 72.0,
         gst_confidence: 0.0,
         warning_codes: [ "rule_suggestion_requires_review", "mixed_or_unsafe_gst", rule_id ],
+        explanation: explanation,
+        rule_id: rule_id
+      )
+    end
+
+    def uncertain_category_suggestion
+      match = UNCERTAIN_CATEGORY_RULES.find { |_id, pattern, _explanation| @description.match?(pattern) }
+      return unless match
+
+      rule_id, _pattern, explanation = match
+      suggestion(
+        category: nil,
+        gst_amount: nil,
+        gst_treatment: "needs_review",
+        category_confidence: 0.0,
+        gst_confidence: 0.0,
+        warning_codes: [ "category_unclassified", "mixed_or_unsafe_gst", rule_id ],
         explanation: explanation,
         rule_id: rule_id
       )
