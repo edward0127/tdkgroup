@@ -21,7 +21,7 @@ module AdminAuthentication
   def authenticate_admin!
     return if admin_signed_in?
 
-    session[:admin_return_to] = request.fullpath if request.get?
+    session[:admin_return_to] = request.fullpath if request.get? || request.head?
     redirect_to admin_login_path, alert: "Please sign in to continue."
   end
 
