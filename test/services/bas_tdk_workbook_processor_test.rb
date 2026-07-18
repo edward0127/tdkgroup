@@ -243,6 +243,34 @@ class BasTdkWorkbookProcessorTest < ActiveSupport::TestCase
       workbook.rows.ordered.map { |row| row.row_data.fetch("Balance") }
   end
 
+  test "adds Balance when headerless running balances also resemble Excel serial dates" do
+    workbook = process_upload(tdk_csv_upload(<<~CSV, filename: "2026(4-6).csv"))
+      27/06/2026,54,Fast Transfer From SONG ZHANG bill,32956.99
+      26/06/2026,76,Fast Transfer From MEIYING YU Betty,32902.99
+      23/06/2026,-115.41,EG GROUP DONCASTER Card purchase,32826.99
+      21/06/2026,27,Fast Transfer From WEIRONG HE wine fee,32942.40
+      20/06/2026,125,Fast Transfer From DECAI YANG,32915.40
+      20/06/2026,139.5,Fast Transfer From QIANGQIANG CHEN,32790.40
+      19/06/2026,45,Fast Transfer From JUAN YANG,32650.90
+      18/06/2026,-63.56,EG GROUP DONCASTER Card purchase,32605.90
+      17/06/2026,75,Fast Transfer From OJ SUNNY PTY LTD,32669.46
+      15/06/2026,37.5,Fast Transfer From WENJIE HE dinner,32594.46
+      15/06/2026,refund -37.5,Transfer To Xianjie lin CommBank App,32556.96
+      15/06/2026,60,Fast Transfer From ZHAO LIU,32594.46
+    CSV
+
+    assert workbook.processed?, workbook.processing_errors.to_sentence
+    assert_equal "inferred_columns", workbook.metadata.fetch("csv_header_strategy")
+    assert_equal({ "0" => "date", "1" => "amount", "2" => "description", "3" => "balance" }, workbook.metadata.fetch("csv_column_mapping"))
+    assert_equal [ "Date", "Category", "Amount", "GST", "Description", "Balance" ], workbook.processed_headers
+    assert_equal [
+      "32956.99", "32902.99", "32826.99", "32942.40", "32915.40", "32790.40",
+      "32650.90", "32605.90", "32669.46", "32594.46", "32556.96", "32594.46"
+    ],
+      workbook.rows.ordered.map { |row| row.row_data.fetch("Balance") }
+    assert_equal "-37.50", workbook.rows.ordered.find { |row| row.source_row_number == 11 }.row_data.fetch("Amount")
+  end
+
   test "ambiguous headerless debit credit CSV waits for column confirmation" do
     active = create_active_workbook
     workbook = process_upload(tdk_csv_upload(<<~CSV))

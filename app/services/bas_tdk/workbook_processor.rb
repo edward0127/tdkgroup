@@ -907,7 +907,7 @@ module BasTdk
     end
 
     def normalized_mapped_amount(value)
-      decimal = BasTdk::WorkbookValues.parse_amount(value)
+      decimal = headerless_amount_decimal(value)
       return "" if decimal.blank?
 
       BasTdk::WorkbookValues.fixed_decimal(decimal.round(2), 2)

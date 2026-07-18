@@ -221,7 +221,13 @@ module BasTdk
     end
 
     def ranked_date_candidates(profiles)
-      profiles.select { |profile| profile.date_score.positive? }.sort_by { |profile| -profile.date_score }
+      candidates = profiles.select { |profile| profile.date_score.positive? }
+      explicit_date_candidates = candidates
+        .reject { |profile| serial_only_date_profile?(profile) }
+        .select { |profile| profile.date_score >= DATE_SCORE_MINIMUM }
+      candidates = explicit_date_candidates if explicit_date_candidates.any?
+
+      candidates.sort_by { |profile| -profile.date_score }
     end
 
     def ranked_description_candidates(profiles)
