@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER="${SERVER:-root@amituofo.com.au}"
-REMOTE_DIR="${REMOTE_DIR:-/var/tdkgroup}"
-IMAGE="${IMAGE:-ghcr.io/edward0127/tdkgroup}"
-PLATFORM="${PLATFORM:-linux/amd64}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3014/up}"
-PUSH_GIT="${PUSH_GIT:-true}"
-SKIP_REMOTE="${SKIP_REMOTE:-false}"
-SSH_KEY="${SSH_KEY:-}"
+PUSH_GIT_MODE="auto"
 AUTO_COMMIT_MESSAGE=""
+WAIT_FOR_ACTIONS="false"
 
 usage() {
   cat <<'EOF'
@@ -17,20 +11,18 @@ Usage:
   ./script/deploy_production.sh [options]
 
 Options:
-  --auto-commit "message"        Stage all changes and create a commit before push/build.
-  --no-push-git                  Skip git push.
-  --skip-remote                  Build and push images, but skip SSH deploy.
-  --server user@host             SSH target (default: root@amituofo.com.au).
-  --remote-dir /path             Remote repo path (default: /var/tdkgroup).
-  --image ghcr.io/org/repo       Image repo (default: ghcr.io/edward0127/tdkgroup).
-  --platform linux/amd64         Buildx platform (default: linux/amd64).
-  --healthcheck-url URL          Remote healthcheck URL (default: http://127.0.0.1:3014/up).
-  --ssh-key /path/to/key         SSH private key path.
-  -h, --help                     Show this help.
+  --auto-commit "message"   Stage all changes and create a commit before push.
+  --push-git                Force git push.
+  --no-push-git             Do not push (useful for checking the commit only).
+  --wait                    Wait for the GitHub CI/deploy run to finish (requires gh).
+  -h, --help                Show this help.
 
 Examples:
-  ./script/deploy_production.sh --auto-commit "Deploy TDK site"
-  ./script/deploy_production.sh --no-push-git --skip-remote
+  ./script/deploy_production.sh --auto-commit "Update BAS coding"
+  ./script/deploy_production.sh --push-git --wait
+
+This command never runs Docker locally. A push to main starts GitHub-hosted tests,
+then GitHub builds the production image and deploys only if every test passes.
 EOF
 }
 
@@ -41,43 +33,17 @@ while [[ $# -gt 0 ]]; do
       AUTO_COMMIT_MESSAGE="$2"
       shift 2
       ;;
+    --push-git)
+      PUSH_GIT_MODE="true"
+      shift
+      ;;
     --no-push-git)
-      PUSH_GIT="false"
+      PUSH_GIT_MODE="false"
       shift
       ;;
-    --skip-remote)
-      SKIP_REMOTE="true"
+    --wait)
+      WAIT_FOR_ACTIONS="true"
       shift
-      ;;
-    --server)
-      [[ $# -lt 2 ]] && { echo "Missing value for --server" >&2; usage; exit 1; }
-      SERVER="$2"
-      shift 2
-      ;;
-    --remote-dir)
-      [[ $# -lt 2 ]] && { echo "Missing value for --remote-dir" >&2; usage; exit 1; }
-      REMOTE_DIR="$2"
-      shift 2
-      ;;
-    --image)
-      [[ $# -lt 2 ]] && { echo "Missing value for --image" >&2; usage; exit 1; }
-      IMAGE="$2"
-      shift 2
-      ;;
-    --platform)
-      [[ $# -lt 2 ]] && { echo "Missing value for --platform" >&2; usage; exit 1; }
-      PLATFORM="$2"
-      shift 2
-      ;;
-    --healthcheck-url)
-      [[ $# -lt 2 ]] && { echo "Missing value for --healthcheck-url" >&2; usage; exit 1; }
-      HEALTHCHECK_URL="$2"
-      shift 2
-      ;;
-    --ssh-key)
-      [[ $# -lt 2 ]] && { echo "Missing value for --ssh-key" >&2; usage; exit 1; }
-      SSH_KEY="$2"
-      shift 2
       ;;
     -h|--help)
       usage
@@ -95,15 +61,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
-for cmd in git docker ssh; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing required command: $cmd" >&2
-    exit 1
-  fi
-done
-
-if ! docker buildx version >/dev/null 2>&1; then
-  echo "Missing required docker buildx support." >&2
+if ! command -v git >/dev/null 2>&1; then
+  echo "Missing required command: git" >&2
   exit 1
 fi
 
@@ -119,60 +78,83 @@ fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   cat >&2 <<'EOF'
-Working tree is not clean.
-Commit or stash changes first, or use:
+Working tree is not clean. Commit the changes first, or use:
   ./script/deploy_production.sh --auto-commit "your message"
 EOF
   exit 1
 fi
 
-if [[ "$PUSH_GIT" == "true" ]]; then
-  echo "Pushing current branch..."
-  git push
-fi
-
-SHORT_SHA="$(git rev-parse --short HEAD)"
-if [[ -z "$SHORT_SHA" ]]; then
-  echo "Could not resolve git short SHA." >&2
+current_branch="$(git branch --show-current)"
+if [[ -z "$current_branch" ]]; then
+  echo "Unable to determine the current branch." >&2
   exit 1
 fi
 
-echo "Building and pushing images:"
-echo "  ${IMAGE}:${SHORT_SHA}"
-echo "  ${IMAGE}:latest"
-docker buildx build --platform "$PLATFORM" \
-  -t "${IMAGE}:${SHORT_SHA}" \
-  -t "${IMAGE}:latest" \
-  --push .
+has_upstream() {
+  git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1
+}
 
-if [[ "$SKIP_REMOTE" == "true" ]]; then
-  echo "Skipping remote deployment (--skip-remote)."
+ahead_commit_count() {
+  if has_upstream; then
+    git rev-list --count "@{u}..HEAD"
+  elif git show-ref --verify --quiet "refs/remotes/origin/$current_branch"; then
+    git rev-list --count "origin/$current_branch..HEAD"
+  else
+    echo "0"
+  fi
+}
+
+push_current_branch() {
+  if has_upstream; then
+    git push
+  else
+    git push -u origin "$current_branch"
+  fi
+}
+
+should_push="false"
+if [[ "$PUSH_GIT_MODE" == "true" ]]; then
+  should_push="true"
+elif [[ "$PUSH_GIT_MODE" == "auto" ]]; then
+  if [[ -n "$AUTO_COMMIT_MESSAGE" ]] || [[ "$(ahead_commit_count)" -gt 0 ]]; then
+    should_push="true"
+  fi
+fi
+
+if [[ "$should_push" == "true" ]]; then
+  echo "Pushing $current_branch to GitHub..."
+  push_current_branch
+  echo "Push complete: https://github.com/edward0127/tdkgroup/actions"
+elif [[ "$PUSH_GIT_MODE" == "auto" ]]; then
+  echo "No local commits ahead of the remote; skipping git push."
+fi
+
+if [[ "$current_branch" != "main" ]]; then
+  echo "Note: CI runs on this branch through pull requests; production deploys only from main."
   exit 0
 fi
 
-SSH_ARGS=()
-if [[ -n "$SSH_KEY" ]]; then
-  if [[ "$SSH_KEY" =~ ^[A-Za-z]:\\ ]] && command -v cygpath >/dev/null 2>&1; then
-    SSH_KEY="$(cygpath -u "$SSH_KEY")"
-  elif [[ "$SSH_KEY" =~ ^/[A-Za-z]/ ]] && command -v cygpath >/dev/null 2>&1; then
-    SSH_KEY="$(cygpath -u "$SSH_KEY")"
-  fi
-
-  if [[ ! -f "$SSH_KEY" ]]; then
-    echo "SSH key not found: $SSH_KEY" >&2
+if [[ "$WAIT_FOR_ACTIONS" == "true" ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "--wait requires the GitHub CLI (gh). The push succeeded; monitor it at:" >&2
+    echo "https://github.com/edward0127/tdkgroup/actions" >&2
     exit 1
   fi
 
-  SSH_ARGS+=(-i "$SSH_KEY")
+  head_sha="$(git rev-parse HEAD)"
+  echo "Waiting for GitHub to register the CI run for ${head_sha:0:7}..."
+  run_id=""
+  for _attempt in $(seq 1 30); do
+    run_id="$(gh run list --workflow CI --commit "$head_sha" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+    [[ -n "$run_id" ]] && break
+    sleep 2
+  done
+
+  if [[ -z "$run_id" ]]; then
+    echo "GitHub did not register the run within 60 seconds. Monitor it at:" >&2
+    echo "https://github.com/edward0127/tdkgroup/actions" >&2
+    exit 1
+  fi
+
+  gh run watch "$run_id" --exit-status
 fi
-
-SSH_OPTIONS=(-o BatchMode=yes -o PreferredAuthentications=publickey -o PasswordAuthentication=no)
-
-echo "Running remote deploy on ${SERVER}:${REMOTE_DIR}..."
-REMOTE_CMD="set -euo pipefail; cd '$REMOTE_DIR'; git pull --ff-only; HEALTHCHECK_URL='$HEALTHCHECK_URL' ./script/deploy.sh deploy"
-if ! ssh "${SSH_OPTIONS[@]}" "${SSH_ARGS[@]}" "$SERVER" "$REMOTE_CMD"; then
-  echo "Remote deployment failed. Check SSH access and server logs." >&2
-  exit 1
-fi
-
-echo "Deployment complete."

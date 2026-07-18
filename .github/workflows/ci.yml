@@ -3,116 +3,230 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ master ]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   scan_ruby:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Set up repository Ruby
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
         with:
+          ruby-version: .ruby-version
           bundler-cache: true
 
-      - name: Scan for common Rails security vulnerabilities using static analysis
+      - name: Scan Rails code
         run: bin/brakeman --no-pager
-      
-      - name: Scan for known security vulnerabilities in gems used
+
+      - name: Audit Ruby dependencies
         run: bin/bundler-audit
-      
+
   scan_js:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Set up repository Ruby
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
         with:
+          ruby-version: .ruby-version
           bundler-cache: true
 
-      - name: Scan for security vulnerabilities in JavaScript dependencies
+      - name: Audit JavaScript dependencies
         run: bin/importmap audit
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       RUBOCOP_CACHE_ROOT: tmp/rubocop
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up repository Ruby
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
         with:
+          ruby-version: .ruby-version
           bundler-cache: true
 
-      - name: Prepare RuboCop cache
-        uses: actions/cache@v4
-        env:
-          DEPENDENCIES_HASH: ${{ hashFiles('.ruby-version', '**/.rubocop.yml', '**/.rubocop_todo.yml', 'Gemfile.lock') }}
-        with:
-          path: ${{ env.RUBOCOP_CACHE_ROOT }}
-          key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
-          restore-keys: |
-            rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
-
-      - name: Lint code for consistent style
+      - name: Lint Ruby
         run: bin/rubocop -f github
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RAILS_ENV: test
 
     steps:
-      - name: Install packages
+      - name: Install SQLite client
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y sqlite3
 
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Set up repository Ruby
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
         with:
+          ruby-version: .ruby-version
           bundler-cache: true
 
-      - name: Run tests
-        env:
-          RAILS_ENV: test
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
+      - name: Run Rails tests
         run: bin/rails db:test:prepare test
 
   system-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      RAILS_ENV: test
 
     steps:
-      - name: Install packages
+      - name: Install SQLite client
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y sqlite3
 
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Set up repository Ruby
+        uses: ruby/setup-ruby@003a5c4d8d6321bd302e38f6f0ec593f77f06600 # v1.319.0
         with:
+          ruby-version: .ruby-version
           bundler-cache: true
 
-      - name: Run System Tests
-        env:
-          RAILS_ENV: test
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
+      - name: Run browser system tests
         run: bin/rails db:test:prepare test:system
 
       - name: Keep screenshots from failed system tests
-        uses: actions/upload-artifact@v4
         if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: screenshots
+          name: system-test-screenshots-${{ github.run_id }}
           path: ${{ github.workspace }}/tmp/screenshots
           if-no-files-found: ignore
+          retention-days: 3
+
+  deploy:
+    name: Build immutable image and deploy production
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs:
+      - scan_ruby
+      - scan_js
+      - lint
+      - test
+      - system-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: https://tdkgroup.tudouke.com
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: tdkgroup-production
+      cancel-in-progress: false
+    env:
+      IMAGE_NAME: ghcr.io/edward0127/tdkgroup
+      PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+      PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+      PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+      PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+      PROD_SSH_FINGERPRINT: ${{ secrets.PROD_SSH_FINGERPRINT }}
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Validate deployment scripts and secrets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n script/deploy_production.sh
+          bash -n .github/scripts/deploy-production-remote.sh
+          for name in PROD_SSH_HOST PROD_SSH_USER PROD_SSH_PORT PROD_SSH_PRIVATE_KEY PROD_SSH_FINGERPRINT; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing production environment secret: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Compute image metadata
+        id: vars
+        shell: bash
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push immutable image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=tdkgroup-production
+          cache-to: type=gha,mode=max,scope=tdkgroup-production
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.short_sha }}
+
+      - name: Deploy exact image digest on server
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          IMAGE_REF: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          APP_REVISION: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+        with:
+          host: ${{ env.PROD_SSH_HOST }}
+          username: ${{ env.PROD_SSH_USER }}
+          port: ${{ env.PROD_SSH_PORT }}
+          key: ${{ env.PROD_SSH_PRIVATE_KEY }}
+          fingerprint: ${{ env.PROD_SSH_FINGERPRINT }}
+          envs: IMAGE_REF,APP_REVISION,GH_RUN_ID
+          command_timeout: 20m
+          script: |
+            set -Eeuo pipefail
+            cd /var/tdkgroup
+            git fetch origin main
+            git cat-file -e "${APP_REVISION}^{commit}"
+            RUNNER="$(mktemp /tmp/tdkgroup-deploy.XXXXXXXX.sh)"
+            trap 'rm -f "$RUNNER"' EXIT
+            git show "${APP_REVISION}:.github/scripts/deploy-production-remote.sh" > "$RUNNER"
+            bash -n "$RUNNER"
+            bash "$RUNNER"
+
+      - name: Verify public health endpoint
+        shell: bash
+        run: |
+          curl --fail --silent --show-error \
+            --retry 12 --retry-delay 5 --retry-all-errors \
+            https://tdkgroup.tudouke.com/up > /dev/null

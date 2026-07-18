@@ -1,6 +1,8 @@
 services:
   web:
-    image: ghcr.io/edward0127/tdkgroup:latest
+    # Production passes the exact ghcr.io/...@sha256: digest built by GitHub.
+    # Fail closed when it is absent so a manual command cannot silently deploy :latest.
+    image: ${TDKGROUP_IMAGE:?TDKGROUP_IMAGE must be an immutable ghcr.io/edward0127/tdkgroup@sha256 digest}
     container_name: tdkgroup_site
     restart: unless-stopped
     security_opt:
@@ -8,7 +10,9 @@ services:
     ports:
       - "127.0.0.1:3014:80"
     env_file:
-      - .env.prod
+      - ${TDKGROUP_ENV_FILE:-.env.prod}
+    environment:
+      APP_REVISION: ${APP_REVISION:-}
     volumes:
       - tdkgroup_data:/data
       - tdkgroup_storage:/rails/storage

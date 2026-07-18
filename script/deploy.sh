@@ -24,6 +24,8 @@ Usage:
   ./script/deploy.sh down        # stop stack without removing volumes
 
 Environment overrides:
+  TDKGROUP_IMAGE=ghcr.io/edward0127/tdkgroup@sha256:<digest> (required)
+  TDKGROUP_ENV_FILE=/var/tdkgroup/.env.prod
   COMPOSE_FILE=docker-compose.yml
   APP_SERVICE=web
   CONTAINER_NAME=tdkgroup_site
