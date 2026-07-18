@@ -357,6 +357,8 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_equal 3, coding.metadata.fetch("reference_category_support")
     assert_equal 0.75, coding.metadata.fetch("reference_category_coverage")
     refute coding.metadata.fetch("safe_template_category_match")
+    refute coding.gst_review_required
+    assert_equal "missing", coding.metadata.fetch("gst_consensus_status")
   end
 
   test "does not auto-accept a template direction outside the safe allowlist" do
@@ -550,6 +552,31 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     refute coding.review_required?
     refute_includes coding.warning_codes, "single_historical_match"
     assert_equal 100.0, coding.category_confidence
+    assert coding.metadata.fetch("safe_exact_category_match")
+  end
+
+  test "keeps exact history under review when matching Category coverage is incomplete" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Fast Transfer From ALICE invoice", amount: "110.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Fast Transfer From ALICE invoice,Sales,110.00,10.00
+      Fast Transfer From ALICE invoice,,110.00,0.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Sales", coding.suggested_category
+    assert coding.category_review_required
+    assert coding.gst_review_required
+    assert_nil coding.suggested_gst_amount
+    assert_equal 0.5, coding.metadata.fetch("reference_category_coverage")
+    assert_equal "conflict", coding.metadata.fetch("gst_consensus_status")
+    refute coding.metadata.fetch("safe_exact_category_match")
+    assert_includes coding.warning_codes, "historical_category_coverage_incomplete"
+    assert_includes coding.warning_codes, "historical_gst_conflict"
   end
 
   test "uses the verified KMART replacement rule instead of conflicting exact history" do
@@ -570,6 +597,25 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert coding.category_review_required
     assert_includes coding.warning_codes, "historical_category_overridden"
     assert_equal "replacement", coding.metadata.fetch("category_overridden_by_rule_id")
+  end
+
+  test "uses the verified KMART replacement rule for a positive refund" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "KMART 1323", amount: "80.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      KMART 1323,Shop expense,80.00,7.27
+      EQUIPMENT DEPOT,Replacement,-110.00,-10.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Replacement", coding.suggested_category
+    assert_equal "rule", coding.category_source
+    assert coding.category_review_required
+    assert_equal BigDecimal("7.27"), coding.suggested_gst_amount
   end
 
   test "uses the client's historical chart name for a conservative rule" do

@@ -74,11 +74,15 @@ class BasTdkCodingRuleEngineTest < ActiveSupport::TestCase
 
   test "uses the verified KMART replacement rule" do
     suggestion = rule("KMART 1323", -110)
+    refund = rule("KMART refund", 110)
 
     assert_equal "Replacement", suggestion.category
     assert_equal BigDecimal("-10"), suggestion.gst_amount
     assert_equal "replacement", suggestion.rule_id
     assert suggestion.category_review_required
+    assert_equal "Replacement", refund.category
+    assert_equal BigDecimal("10"), refund.gst_amount
+    assert_equal "replacement", refund.rule_id
   end
 
   test "does not infer no GST for generic transaction fees or one-eleventh GST for water" do

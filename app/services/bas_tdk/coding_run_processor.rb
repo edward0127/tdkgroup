@@ -258,7 +258,7 @@ module BasTdk
 
       category_rows = category_groups.values.first
       category = category_rows.map { |row| row.category.to_s.strip }.tally.max_by { |label, count| [ count, label ] }.first
-      gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(category_rows)
+      gst_ratio, gst_treatment, gst_consensus_status = gst_consensus(candidates)
       representative = category_rows.min_by(&:source_row_number)
       category_support = category_rows.length
 
@@ -565,21 +565,27 @@ module BasTdk
 
     def previous_quarter_proposal(profile, amount, exact:, similarity:)
       source = exact ? "previous_quarter_exact" : "previous_quarter_fuzzy"
+      safe_exact_category_match = exact && safe_exact_category_evidence?(profile)
       safe_template_category_match = safe_template_category_evidence?(profile)
-      category_review_required = !(exact || safe_template_category_match)
+      category_review_required = !(safe_exact_category_match || safe_template_category_match)
       gst_amount = if amount && profile.gst_ratio
         normalized_zero((amount * profile.gst_ratio).round(2))
       end
       gst_blank_inherited = profile.gst_consensus_status == "missing"
       warnings = []
-      warning_code = history_warning_code(profile, exact: exact, safe_template_category_match: safe_template_category_match)
+      warning_code = history_warning_code(
+        profile,
+        exact: exact,
+        safe_exact_category_match: safe_exact_category_match,
+        safe_template_category_match: safe_template_category_match
+      )
       warnings << warning_code if warning_code
       if gst_blank_inherited
         warnings << "historical_gst_blank_inherited"
       elsif profile.gst_ratio.nil?
         warnings << (profile.gst_consensus_status == "conflict" ? "historical_gst_conflict" : "historical_gst_missing")
       end
-      confidence = exact ? 100.0 : (similarity * 100).round(2)
+      confidence = exact ? (safe_exact_category_match ? 100.0 : 92.0) : (similarity * 100).round(2)
       gst_source = if gst_amount.present? || gst_blank_inherited
         source
       else
@@ -587,7 +593,9 @@ module BasTdk
       end
       gst_confidence = gst_amount.present? || gst_blank_inherited ? confidence : 0.0
       gst_review_required = gst_blank_inherited ? false : (category_review_required || gst_amount.nil?)
-      explanation = if exact && profile.gst_ratio
+      explanation = if exact && !safe_exact_category_match
+        "Matched the same normalized description and transaction direction, but some matching historical rows had a blank Category, so the Category remains highlighted for review."
+      elsif exact && profile.gst_ratio
         "Matched the same normalized description and transaction direction in the reference workbook. Historical category and GST treatment were consistent."
       elsif exact && gst_blank_inherited
         "Matched the same normalized description and transaction direction with a consistent historical category."
@@ -628,6 +636,7 @@ module BasTdk
           "reference_category_support" => profile.category_support,
           "reference_category_coverage" => profile.category_coverage&.round(6),
           "reference_category_conflict_count" => profile.category_conflict_count,
+          "safe_exact_category_match" => safe_exact_category_match,
           "safe_template_category_match" => safe_template_category_match,
           "gst_consensus_status" => profile.gst_consensus_status
         }.merge(persisted_match_key_metadata(profile.match_key))
@@ -705,7 +714,8 @@ module BasTdk
       proposal
     end
 
-    def history_warning_code(profile, exact:, safe_template_category_match:)
+    def history_warning_code(profile, exact:, safe_exact_category_match:, safe_template_category_match:)
+      return "historical_category_coverage_incomplete" if exact && !safe_exact_category_match
       return if exact
       return if safe_template_category_match
 
@@ -714,6 +724,12 @@ module BasTdk
       when "merchant" then "historical_merchant_match"
       else "fuzzy_previous_quarter_match"
       end
+    end
+
+    def safe_exact_category_evidence?(profile)
+      profile.category_support.to_i.positive? &&
+        profile.category_coverage.to_f >= 1.0 &&
+        profile.category_conflict_count.to_i.zero?
     end
 
     def safe_template_category_evidence?(profile)

@@ -2,7 +2,7 @@ require "bigdecimal"
 
 module BasTdk
   class CodingRuleEngine
-    RULESET_VERSION = "ato-conservative-2026-07-v3".freeze
+    RULESET_VERSION = "ato-conservative-2026-07-v4".freeze
     TAXABLE_CAVEAT = "Confirm a valid tax invoice, supplier GST registration and business-use percentage before accepting the GST amount.".freeze
     TAXABLE_MERCHANT_FEE_PATTERN = /\b(?:merchant (?:card|service) fees?|card processing fees?)\b/i
 
@@ -31,7 +31,6 @@ module BasTdk
     ].freeze
 
     TAXABLE_EXPENSE_RULES = [
-      [ "replacement", /\bkmart\b/i, "Replacement" ],
       [ "software", /\b(?:software|subscription|microsoft|adobe|xero|myob|quickbooks|saas|web hosting|domain renewal)\b/i, "Software & subscriptions" ],
       [ "printing_stationery", /\b(?:menu printing|commercial printing)\b/i, "Stationery" ],
       [ "office_expenses", /\b(?:officeworks|stationery|office supplies|printer ink|toner|printing|print shop)\b/i, "Office expenses" ],
@@ -50,6 +49,10 @@ module BasTdk
       [ "uncertain_retailer", /(?:\bwoolworths\b|\bsq\W+minton\b)/i, "The transaction description does not identify what was purchased, and prior coding is not reliable enough to assign a Category automatically." ]
     ].freeze
 
+    VERIFIED_CATEGORY_RULES = [
+      [ "replacement", /\bkmart\b/i, "Replacement" ]
+    ].freeze
+
     UNSAFE_GST_RULES = [
       [ "mixed_retailer", /\b(?:supermarket|grocer(?:y|ies)?|groc|woolworths|coles|aldi|costco|pharmacy|chemist|department store)\b/i, "General expenses", "This supplier can sell both taxable and GST-free items; use the tax invoice GST amount." ],
       [ "insurance_registration", /\b(?:insurance|registration|rego|vic roads|vicroads|service nsw|transport accident)\b/i, "Insurance & registration", "Insurance and registration payments can contain GST, stamp duty and government-fee components." ],
@@ -66,7 +69,7 @@ module BasTdk
     end
 
     def call
-      taxable_merchant_fee_suggestion || no_gst_suggestion || uncertain_category_suggestion || unsafe_gst_suggestion || taxable_expense_suggestion || unmatched_suggestion
+      taxable_merchant_fee_suggestion || no_gst_suggestion || uncertain_category_suggestion || verified_category_suggestion || unsafe_gst_suggestion || taxable_expense_suggestion || unmatched_suggestion
     end
 
     private
@@ -133,6 +136,25 @@ module BasTdk
         gst_confidence: 0.0,
         warning_codes: [ "category_unclassified", "mixed_or_unsafe_gst", rule_id ],
         explanation: explanation,
+        rule_id: rule_id
+      )
+    end
+
+    def verified_category_suggestion
+      return unless @amount&.nonzero?
+
+      match = VERIFIED_CATEGORY_RULES.find { |_id, pattern, _category| @description.match?(pattern) }
+      return unless match
+
+      rule_id, _pattern, category = match
+      suggestion(
+        category: category,
+        gst_amount: (@amount / 11).round(2),
+        gst_treatment: "taxable",
+        category_confidence: 85.0,
+        gst_confidence: 65.0,
+        warning_codes: [ "rule_suggestion_requires_review", "tax_invoice_required", rule_id ],
+        explanation: "This merchant was verified against the client's coding corrections. #{TAXABLE_CAVEAT}",
         rule_id: rule_id
       )
     end
