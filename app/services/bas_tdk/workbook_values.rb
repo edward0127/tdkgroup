@@ -75,7 +75,7 @@ module BasTdk
 
       if numeric_text?(text)
         serial = BigDecimal(text).to_i
-        return EXCEL_DATE_EPOCH + serial if serial >= EXCEL_SERIAL_DATE_MIN && serial < EXCEL_SERIAL_DATE_MAX
+        EXCEL_DATE_EPOCH + serial if serial >= EXCEL_SERIAL_DATE_MIN && serial < EXCEL_SERIAL_DATE_MAX
       end
     rescue ArgumentError
       nil

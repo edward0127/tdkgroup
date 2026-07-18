@@ -1554,10 +1554,10 @@ module BasTdk
         line.merge(
           raw: raw[0...match.begin(0)].to_s.rstrip,
           original_raw: if original_match.present? && original_match.begin(0).positive?
-            original_raw[0...original_match.begin(0)].to_s.rstrip
-          else
-            original_raw
-          end
+                          original_raw[0...original_match.begin(0)].to_s.rstrip
+                        else
+                          original_raw
+                        end
         ),
         true
       ]
