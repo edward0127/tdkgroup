@@ -7,6 +7,7 @@ module Admin
       TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
       TDK_SORT_DIRECTIONS = %w[asc desc].freeze
       TDK_CODING_FILTERS = %w[all needs_review prior_match rules manual unclassified].freeze
+      TDK_CODING_SORTS = %w[date description amount category gst source review].freeze
 
       def index
         @jobs = BasJob.includes(:bas_client, :report_snapshots).order(period_end: :desc, id: :desc)
@@ -213,6 +214,8 @@ module Admin
       def prepare_tdk_coding_rows
         @tdk_coding_filter = TDK_CODING_FILTERS.include?(params[:coding_filter].to_s) ? params[:coding_filter].to_s : "all"
         @tdk_coding_per_page = coding_rows_per_page
+        @tdk_coding_sort = tdk_coding_sort_param
+        @tdk_coding_direction = tdk_coding_sort_direction
         base_scope = if @active_tdk_coding_run.present?
           @active_tdk_coding_run.row_codings.joins(:workbook_row)
         else
@@ -223,22 +226,22 @@ module Admin
           filter_tdk_codings(base_scope, filter).count
         end
         filtered_scope = filter_tdk_codings(base_scope, @tdk_coding_filter)
+        sorted_codings = tdk_sorted_codings(filtered_scope.includes(:workbook_row).to_a)
         @tdk_coding_total_rows = @tdk_coding_filter_counts.fetch(@tdk_coding_filter)
         @tdk_coding_total_pages = [ (@tdk_coding_total_rows.to_f / @tdk_coding_per_page).ceil, 1 ].max
         @tdk_coding_page = params.fetch(:coding_page, 1).to_i.clamp(1, @tdk_coding_total_pages)
         @tdk_coding_row_start = @tdk_coding_total_rows.positive? ? ((@tdk_coding_page - 1) * @tdk_coding_per_page) + 1 : 0
         @tdk_coding_row_end = [ @tdk_coding_page * @tdk_coding_per_page, @tdk_coding_total_rows ].min
-        @tdk_row_codings = filtered_scope
-          .order("bas_tdk_workbook_rows.position ASC", "bas_tdk_row_codings.id ASC")
-          .offset((@tdk_coding_page - 1) * @tdk_coding_per_page)
-          .limit(@tdk_coding_per_page)
-          .includes(:workbook_row)
-          .to_a
+        offset = (@tdk_coding_page - 1) * @tdk_coding_per_page
+        @tdk_row_codings = sorted_codings.slice(offset, @tdk_coding_per_page) || []
       end
 
       def prepare_empty_tdk_coding_rows
         @tdk_coding_filter = "all"
         @tdk_coding_per_page = coding_rows_per_page
+        @tdk_coding_sort = "source_row"
+        @tdk_coding_sort_param_valid = false
+        @tdk_coding_direction = "asc"
         @tdk_coding_filter_counts = TDK_CODING_FILTERS.index_with { 0 }
         @tdk_coding_total_rows = 0
         @tdk_coding_total_pages = 1
@@ -251,6 +254,104 @@ module Admin
       def coding_rows_per_page
         requested = params[:coding_per_page].to_i
         TDK_ROWS_PER_PAGE_OPTIONS.include?(requested) ? requested : 25
+      end
+
+      def tdk_coding_sort_param
+        requested = params[:coding_sort].to_s
+        @tdk_coding_sort_param_valid = TDK_CODING_SORTS.include?(requested)
+        return requested if @tdk_coding_sort_param_valid
+
+        "source_row"
+      end
+
+      def tdk_coding_sort_direction
+        return "asc" unless @tdk_coding_sort_param_valid
+
+        requested = params[:coding_direction].to_s.downcase
+        return requested if TDK_SORT_DIRECTIONS.include?(requested)
+
+        "asc"
+      end
+
+      def tdk_sorted_codings(codings)
+        codings.sort { |left, right| compare_tdk_codings(left, right) }
+      end
+
+      def compare_tdk_codings(left, right)
+        left_value = tdk_coding_sort_value(left)
+        right_value = tdk_coding_sort_value(right)
+
+        blank_result = blank_sort_comparison(left_value, right_value)
+        return blank_result unless blank_result.zero?
+        return tdk_coding_source_order_comparison(left, right) if left_value.nil? && right_value.nil?
+
+        result = left_value.fetch(:value) <=> right_value.fetch(:value)
+        result ||= 0
+        return tdk_coding_source_order_comparison(left, right) if result.zero?
+
+        @tdk_coding_direction == "desc" ? -result : result
+      end
+
+      def tdk_coding_source_order_comparison(left, right)
+        left_row = left.workbook_row
+        right_row = right.workbook_row
+
+        (left_row.source_row_number.to_i <=> right_row.source_row_number.to_i).nonzero? ||
+          (left_row.position.to_i <=> right_row.position.to_i).nonzero? ||
+          (left.id.to_i <=> right.id.to_i)
+      end
+
+      def tdk_coding_sort_value(coding)
+        row_data = coding.workbook_row.row_data
+
+        case @tdk_coding_sort
+        when "source_row"
+          { value: coding.workbook_row.source_row_number.to_i }
+        when "date"
+          tdk_coding_date_sort_value(row_data["Date"])
+        when "description"
+          tdk_coding_text_sort_value(row_data["Description"])
+        when "amount"
+          tdk_coding_amount_sort_value(row_data["Amount"])
+        when "category"
+          tdk_coding_text_sort_value(coding.suggested_category.presence || row_data["Category"])
+        when "gst"
+          gst_value = coding.suggested_gst_amount
+          gst_value = row_data["GST"] if gst_value.nil?
+          tdk_coding_amount_sort_value(gst_value)
+        when "source"
+          { value: [ coding.category_source.to_s.downcase, coding.gst_source.to_s.downcase ] }
+        when "review"
+          review_rank = if coding.review_required?
+            2
+          elsif coding.reviewed?
+            0
+          else
+            1
+          end
+          { value: [ review_rank, coding.review_status.to_s.downcase ] }
+        end
+      end
+
+      def tdk_coding_date_sort_value(value)
+        return if value.to_s.blank?
+
+        date = BasTdk::WorkbookValues.parse_date(value)
+        date.present? ? { value: date } : nil
+      end
+
+      def tdk_coding_amount_sort_value(value)
+        return if value.to_s.blank?
+
+        amount = BasTdk::WorkbookValues.parse_amount(value)
+        amount.nil? ? nil : { value: amount }
+      end
+
+      def tdk_coding_text_sort_value(value)
+        return if value.to_s.blank?
+
+        text = BasTdk::WorkbookValues.clean_excel_decimal_noise(value).to_s.strip
+        text.present? ? { value: text.downcase } : nil
       end
 
       def filter_tdk_codings(codings, filter)

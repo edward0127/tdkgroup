@@ -50,11 +50,11 @@
       <% if @tdk_step_two_available && @tdk_step != "coding" %>
         <%= link_to admin_bas_job_path(@job, tdk_step: "coding"), class: "tdk-stepper__link" do %>
           <strong>Category &amp; GST coding</strong>
-          <p>Apply prior-quarter matches and explainable rules, then review flagged items.</p>
+          <p>Compare last quarter and suggest this quarter's Category and GST.</p>
         <% end %>
       <% else %>
         <strong>Category &amp; GST coding</strong>
-        <p>Apply prior-quarter matches and explainable rules, then review flagged items.</p>
+        <p>Compare last quarter and suggest this quarter's Category and GST.</p>
       <% end %>
     </div>
   <% end %>

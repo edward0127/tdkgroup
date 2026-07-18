@@ -2,7 +2,7 @@
   <div class="admin-panel-heading tdk-coding-step__heading">
     <div>
       <h2>Step 2 — Category &amp; GST coding review</h2>
-      <p class="admin-muted">Use the previous quarter as coding history, then review every rule-based or uncertain suggestion before preparing BAS figures.</p>
+      <p class="admin-muted">Upload last quarter's coded file, then review the suggested Category and GST values.</p>
     </div>
     <%= link_to "Back to bank statement", admin_bas_job_path(@job, tdk_step: "statement"), class: "btn-secondary" %>
   </div>
@@ -16,29 +16,30 @@
       data-tdk-coding-status-rendered-active-run-version-value="<%= @active_tdk_coding_run&.version_number %>"
       data-tdk-coding-status-poll-interval-value="3000"
     <% end %>>
-    <section class="tdk-workflow-panel tdk-coding-reference-card">
+    <section class="tdk-workflow-panel tdk-coding-reference-card tdk-coding-reference-card--prominent">
       <div class="admin-panel-heading">
         <div>
-          <h2>Prior-quarter coding source</h2>
-          <p class="admin-muted">Upload the client’s previous-quarter XLSX or CSV containing Description, Category, GST and Amount (or Debit/Credit).</p>
+          <p class="eyebrow">Upload first</p>
+          <h2>Upload prior-quarter coding</h2>
+          <p class="admin-muted">Use last quarter's coded XLSX or CSV to create Category and GST suggestions.</p>
         </div>
       </div>
 
-      <p class="tdk-coding-reference-note">This file is used only as matching history. It will not replace the current bank statement.</p>
+      <p class="tdk-coding-reference-note">Matching history only — your current statement stays unchanged.</p>
       <%= form_with url: admin_bas_job_tdk_coding_runs_path(@job),
             scope: :tdk_coding_run,
             class: "tdk-coding-reference-form",
             multipart: true,
             data: bas_submit_guard_data("Uploading reference") do |form| %>
         <div class="admin-field">
-          <%= form.label :reference_file, "Previous-quarter Excel or CSV file" %>
+          <%= form.label :reference_file, "Prior-quarter coded file" %>
           <%= form.file_field :reference_file,
                 accept: ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/csv,application/vnd.ms-excel",
                 required: true,
                 disabled: @job.locked? %>
-          <small class="admin-muted">XLSX or CSV, maximum 25 MB.</small>
+          <small class="admin-muted">XLSX or CSV · up to 25 MB.</small>
         </div>
-        <%= form.submit @latest_tdk_coding_run.present? ? "Replace reference & re-run" : "Upload & generate suggestions",
+        <%= form.submit @latest_tdk_coding_run.present? ? "Replace file & re-run" : "Upload & create suggestions",
               class: "btn-primary",
               disabled: @job.locked?,
               data: { submit_guard_loading_text: "Uploading reference" } %>

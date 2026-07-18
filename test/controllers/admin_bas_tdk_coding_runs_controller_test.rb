@@ -34,8 +34,9 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".tdk-stepper__step[aria-current='step'] strong", "Category & GST coding"
     assert_select "h2", "Step 2 — Category & GST coding review"
     assert_select "a[href='#{admin_bas_job_path(job, tdk_step: "statement")}']", text: "Back to bank statement"
+    assert_select ".tdk-coding-reference-card--prominent", count: 1
     assert_select "form[action='#{admin_bas_job_tdk_coding_runs_path(job)}'] input[type='file'][name='tdk_coding_run[reference_file]']"
-    assert_select ".tdk-coding-reference-note", text: /will not replace the current bank statement/
+    assert_select ".tdk-coding-reference-note", text: /current statement stays unchanged/
     assert_includes response.body, workbook.source_filename
   end
 
@@ -341,6 +342,8 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".tdk-coding-source-badge.is-history", text: /Prior-quarter exact match/
     assert_select ".tdk-coding-source-badge.is-rule", text: /Rule suggestion/
     assert_select ".tdk-coding-source-badge.is-manual", text: /Manual/
+    assert_select ".tdk-coding-reference-evidence", count: 0
+    assert_select ".tdk-coding-provenance p", text: "Matched reference file row 9"
     assert_select "input.tdk-coding-field--warning[name='codings[#{rule.id}][category]']"
     assert_select ".tdk-coding-field-warning", text: "Category needs review"
     assert_includes response.body, "92% confidence"
@@ -348,6 +351,18 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     assert_select "input[type='checkbox'][name='codings[#{history.id}][reviewed]'][checked]", count: 0
     assert_select "input[type='checkbox'][name='codings[#{rule.id}][reviewed]'][checked]", count: 0
     assert_select "input[type='checkbox'][name='codings[#{manual.id}][reviewed]'][checked]", count: 1
+    assert_select "#tdk-coding-review[data-controller~='tdk-resizable-table']"
+    assert_select "#tdk-coding-review[data-tdk-resizable-table-storage-key-value^='tdk-coding-column-widths:#{run.id}:']"
+    assert_select "[data-tdk-resizable-table-target='topScroll'][data-action*='scrollTableFromTop']", count: 1
+    assert_select "[data-tdk-resizable-table-target='tableWrap'][data-action*='scrollTopFromTable']", count: 1
+    assert_select "table[data-tdk-resizable-table-target='table']", count: 1
+    assert_select "col[data-tdk-resizable-table-target='column']", count: 7
+    assert_select "[data-tdk-resizable-table-target='handle'][role='separator']", count: 7
+    assert_select "thead a.tdk-workbook-sort-link", count: 7
+    assert_select "button[data-action='click->tdk-resizable-table#resetWidths']", count: 1
+    assert_select ".tdk-workbook-pagination-group", count: 2
+    assert_select "#tdk_coding_page_select_top, #tdk_coding_page_select_bottom", count: 2
+    assert_select "#tdk_coding_per_page_select_top, #tdk_coding_per_page_select_bottom", count: 2
 
     get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "needs_review", coding_per_page: 10)
     assert_equal [ rule.workbook_row.source_row_number ], coding_source_rows(response.body)
@@ -357,6 +372,83 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
 
     get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "manual", coding_per_page: 10)
     assert_equal [ manual.workbook_row.source_row_number ], coding_source_rows(response.body)
+  end
+
+  test "coding review sorts typed values before pagination and keeps blanks last" do
+    job = create_job
+    workbook = create_workbook(job, row_count: 12)
+    run = create_run(job, workbook, row_count: 12, suggestion_count: 12, warning_count: 12)
+
+    workbook.rows.ordered.each_with_index do |row, index|
+      row.update!(row_data: row.row_data.merge("Amount" => (12 - index).to_s))
+      create_coding(run, row, suggested_category: "Category #{index + 1}")
+    end
+
+    get admin_bas_job_path(
+      job,
+      tdk_step: "coding",
+      coding_sort: "amount",
+      coding_direction: "asc",
+      coding_per_page: 10,
+      coding_page: 1
+    )
+
+    assert_response :success
+    assert_equal (4..13).to_a.reverse, coding_source_rows(response.body)
+    assert_select "thead a[aria-label='Sort by Amount'][href*='coding_direction=desc']", count: 1
+    assert_select ".tdk-workbook-pagination-group", count: 2
+
+    get admin_bas_job_path(
+      job,
+      tdk_step: "coding",
+      coding_sort: "amount",
+      coding_direction: "asc",
+      coding_per_page: 10,
+      coding_page: 2
+    )
+
+    assert_equal [ 3, 2 ], coding_source_rows(response.body)
+
+    blank_row = workbook.rows.ordered.last
+    blank_row.update!(row_data: blank_row.row_data.merge("Amount" => ""))
+    get admin_bas_job_path(job, tdk_step: "coding", coding_sort: "amount", coding_direction: "desc", coding_per_page: 25)
+
+    assert_equal blank_row.source_row_number, coding_source_rows(response.body).last
+  end
+
+  test "coding review presents inherited blank GST as neutral prior-quarter evidence" do
+    job = create_job
+    workbook = create_workbook(job, row_count: 1)
+    run = create_run(job, workbook, warning_count: 1)
+    coding = create_coding(
+      run,
+      workbook.rows.first,
+      suggested_category: "Sales",
+      suggested_gst_amount: nil,
+      gst_treatment: "unknown",
+      category_source: "previous_quarter_fuzzy",
+      gst_source: "previous_quarter_fuzzy",
+      category_confidence: 94,
+      gst_confidence: 94,
+      category_review_required: true,
+      gst_review_required: false,
+      review_status: "needs_review",
+      warning_codes: [ "historical_template_match", "historical_gst_blank_inherited" ],
+      reference_source_row_number: 232,
+      reference_snapshot: { "description" => "POS 22248700 02 FEB" },
+      metadata: { "match_type" => "template", "reference_occurrences" => 73 }
+    )
+
+    get admin_bas_job_path(job, tdk_step: "coding")
+
+    assert_response :success
+    assert_select "input[name='codings[#{coding.id}][gst]'][value='']", count: 1
+    assert_select ".tdk-coding-source-badge.is-neutral", text: /GST: Prior-quarter blank/
+    assert_select ".tdk-coding-field-warning", text: "GST needs review", count: 0
+    assert_select ".tdk-coding-reference-evidence", text: "Representative reference file row 232 (73 template examples)"
+    assert_select ".tdk-coding-reference-example", text: /POS 22248700 02 FEB/
+    assert_select ".tdk-coding-information-codes", text: "Prior-quarter GST was blank"
+    assert_select ".tdk-coding-warning-codes", text: /Historical gst blank inherited/, count: 0
   end
 
   test "unflagged proposals stay unreviewed until the admin checks Reviewed" do

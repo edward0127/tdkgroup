@@ -1,11 +1,20 @@
 <% coding_form_id = dom_id(run, :coding_review_form) %>
-<section id="tdk-coding-review" class="bas-panel-block tdk-workbook-review-card tdk-coding-review-card">
+<% coding_columns = tdk_coding_table_columns %>
+<section id="tdk-coding-review"
+  class="bas-panel-block tdk-workbook-review-card tdk-coding-review-card"
+  data-controller="anchor-scroll tdk-resizable-table"
+  data-tdk-resizable-table-storage-key-value="<%= tdk_coding_column_width_storage_key(run) %>">
   <div class="tdk-coding-review-heading">
     <div>
       <h2>Category &amp; GST suggestions</h2>
       <p class="admin-muted"><%= tdk_coding_row_range_label %></p>
     </div>
     <div class="tdk-coding-review-heading__actions">
+      <%= render "tdk_coding_pagination",
+            location: :top,
+            id_suffix: "top",
+            aria_label: "Category and GST coding top pagination" %>
+      <button type="button" class="btn-secondary tdk-workbook-reset-widths-button" data-action="click->tdk-resizable-table#resetWidths">Reset column widths</button>
       <button type="submit" form="<%= coding_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving review">Save reviewed rows</button>
     </div>
   </div>
@@ -17,7 +26,7 @@
     <div class="is-reviewed"><span>Reviewed</span><strong><%= run.reviewed_count %></strong></div>
   </div>
 
-  <p class="tdk-coding-review-notice">Rule-based and uncertain values are working-paper suggestions, not final tax advice. Review the highlighted fields before continuing.</p>
+  <p class="tdk-coding-review-notice">Review highlighted suggestions before continuing. They are not final tax advice.</p>
 
   <nav class="tdk-coding-filters" aria-label="Filter Category and GST suggestions">
     <% tdk_coding_filter_options.each do |label, filter| %>
@@ -29,6 +38,16 @@
     <% end %>
   </nav>
 
+  <% if @tdk_row_codings.any? %>
+    <div class="tdk-workbook-table-scrollbar-top"
+         data-tdk-resizable-table-target="topScroll"
+         data-action="scroll->tdk-resizable-table#scrollTableFromTop"
+         hidden>
+      <div class="tdk-workbook-table-scrollbar-top__inner"
+           data-tdk-resizable-table-target="topScrollInner"></div>
+    </div>
+  <% end %>
+
   <%= form_with url: update_rows_admin_bas_job_tdk_coding_run_path(@job, run),
         method: :patch,
         id: coding_form_id,
@@ -37,12 +56,47 @@
     <%= hidden_field_tag :coding_filter, @tdk_coding_filter %>
     <%= hidden_field_tag :coding_page, @tdk_coding_page %>
     <%= hidden_field_tag :coding_per_page, @tdk_coding_per_page %>
+    <%= hidden_field_tag :coding_sort, @tdk_coding_sort if @tdk_coding_sort.present? %>
+    <%= hidden_field_tag :coding_direction, @tdk_coding_direction if @tdk_coding_direction.present? %>
 
     <% if @tdk_row_codings.any? %>
-      <div class="tdk-workbook-table-wrap tdk-coding-table-wrap">
-        <table class="admin-table tdk-coding-table">
+      <div class="tdk-workbook-table-wrap tdk-coding-table-wrap"
+           data-tdk-resizable-table-target="tableWrap"
+           data-action="scroll->tdk-resizable-table#scrollTopFromTable">
+        <table class="admin-table tdk-coding-table" data-tdk-resizable-table-target="table">
+          <colgroup>
+            <% coding_columns.each do |column| %>
+              <%= tag.col class: column.fetch(:class_name),
+                    data: {
+                      tdk_resizable_table_target: "column",
+                      column_key: column.fetch(:key),
+                      default_width: column.fetch(:default_width),
+                      min_width: column.fetch(:min_width)
+                    } %>
+            <% end %>
+          </colgroup>
           <thead>
-            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>GST</th><th>Suggestion source &amp; warning</th><th>Review</th></tr>
+            <tr>
+              <% coding_columns.each do |column| %>
+                <%= tag.th class: column.fetch(:class_name), data: { column_key: column.fetch(:key) } do %>
+                  <%= link_to admin_bas_job_path(@job, tdk_coding_sort_link_params(column)),
+                        class: "tdk-workbook-sort-link",
+                        title: "Sort by #{column.fetch(:label)}",
+                        aria: { label: "Sort by #{column.fetch(:label)}" } do %>
+                    <span><%= column.fetch(:label) %></span>
+                    <span class="tdk-workbook-sort-indicator"><%= tdk_coding_sort_indicator(column) %></span>
+                  <% end %>
+                  <%= tag.span class: "tdk-workbook-column-resize-handle",
+                        data: {
+                          tdk_resizable_table_target: "handle",
+                          column_key: column.fetch(:key),
+                          action: "pointerdown->tdk-resizable-table#startResize click->tdk-resizable-table#handleClick"
+                        },
+                        aria: { label: "Resize #{column.fetch(:label)} column" },
+                        role: "separator" %>
+                <% end %>
+              <% end %>
+            </tr>
           </thead>
           <tbody>
             <% @tdk_row_codings.each do |coding| %>
@@ -67,11 +121,17 @@
                   <% if coding.gst_review_required %><span class="tdk-coding-field-warning">GST needs review</span><% end %>
                 </td>
                 <td class="tdk-coding-provenance">
-                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.category_source) %>">Category: <%= tdk_coding_source_label(coding.category_source) %></span><small><%= tdk_coding_confidence_label(coding.category_confidence) %></small></div>
-                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.gst_source) %>">GST: <%= tdk_coding_source_label(coding.gst_source) %></span><small><%= tdk_coding_confidence_label(coding.gst_confidence) %></small></div>
-                  <% if coding.reference_source_row_number.present? %><p>Matched reference row <%= coding.reference_source_row_number %></p><% end %>
+                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.category_source, coding: coding, field: :category) %>">Category: <%= tdk_coding_source_label(coding.category_source, coding: coding, field: :category) %></span><small><%= tdk_coding_confidence_label(coding.category_confidence) %></small></div>
+                  <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.gst_source, coding: coding, field: :gst) %>">GST: <%= tdk_coding_source_label(coding.gst_source, coding: coding, field: :gst) %></span><small><%= tdk_coding_confidence_label(coding.gst_confidence) %></small></div>
+                  <% if (evidence_label = tdk_coding_reference_evidence_label(coding)).present? %>
+                    <p class="tdk-coding-reference-evidence"><%= evidence_label %></p>
+                    <% if (reference_example = tdk_coding_reference_example(coding)).present? %><p class="tdk-coding-reference-example">Representative example: <q><%= reference_example %></q></p><% end %>
+                  <% elsif coding.reference_source_row_number.present? %>
+                    <p>Matched reference file row <%= coding.reference_source_row_number %></p>
+                  <% end %>
                   <% if coding.explanation.present? %><p><%= coding.explanation %></p><% end %>
-                  <% if Array(coding.warning_codes).any? %><p class="tdk-coding-warning-codes"><%= Array(coding.warning_codes).map(&:humanize).join(" · ") %></p><% end %>
+                  <% if tdk_coding_information_codes(coding).any? %><p class="tdk-coding-information-codes"><%= tdk_coding_information_codes(coding).join(" · ") %></p><% end %>
+                  <% if tdk_coding_warning_codes(coding).any? %><p class="tdk-coding-warning-codes"><%= tdk_coding_warning_codes(coding).map(&:humanize).join(" · ") %></p><% end %>
                 </td>
                 <td class="tdk-coding-review-control">
                   <%= hidden_field_tag "codings[#{coding.id}][reviewed]", "0" %>
@@ -90,13 +150,10 @@
 
   <div class="tdk-coding-review-footer">
     <div class="admin-muted"><%= tdk_coding_row_range_label %></div>
-    <div class="tdk-workbook-pagination" aria-label="Coding review pagination">
-      <% previous_page = [ @tdk_coding_page - 1, 1 ].max %>
-      <% next_page = [ @tdk_coding_page + 1, @tdk_coding_total_pages ].min %>
-      <% if @tdk_coding_page > 1 %><%= link_to "‹", admin_bas_job_path(@job, tdk_coding_page_link_params(previous_page)), class: "tdk-page-button", aria: { label: "Previous coding page" } %><% else %><span class="tdk-page-button is-disabled" aria-disabled="true">‹</span><% end %>
-      <span class="tdk-page-status">Page <%= @tdk_coding_page %> of <%= @tdk_coding_total_pages %></span>
-      <% if @tdk_coding_page < @tdk_coding_total_pages %><%= link_to "›", admin_bas_job_path(@job, tdk_coding_page_link_params(next_page)), class: "tdk-page-button", aria: { label: "Next coding page" } %><% else %><span class="tdk-page-button is-disabled" aria-disabled="true">›</span><% end %>
-    </div>
+    <%= render "tdk_coding_pagination",
+          location: :bottom,
+          id_suffix: "bottom",
+          aria_label: "Category and GST coding bottom pagination" %>
     <div class="tdk-workbook-save-action"><button type="submit" form="<%= coding_form_id %>" class="btn-primary" data-submit-guard-loading-text="Saving review">Save reviewed rows</button></div>
   </div>
 </section>

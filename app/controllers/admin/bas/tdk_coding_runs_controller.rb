@@ -14,6 +14,8 @@ module Admin
       MAPPING_ROLES = %w[ignore description category amount debit credit gst].freeze
       SINGLETON_MAPPING_ROLES = MAPPING_ROLES - [ "ignore" ]
       CODING_FILTERS = %w[all needs_review prior_match rules manual unclassified].freeze
+      CODING_SORTS = Admin::Bas::JobsController::TDK_CODING_SORTS
+      CODING_SORT_DIRECTIONS = Admin::Bas::JobsController::TDK_SORT_DIRECTIONS
       ROW_UPDATE_FIELDS = %w[category gst reviewed].freeze
 
       before_action :set_job
@@ -481,6 +483,8 @@ module Admin
           coding_filter: CODING_FILTERS.include?(params[:coding_filter].to_s) ? params[:coding_filter] : nil,
           coding_page: positive_integer_param(:coding_page),
           coding_per_page: allowed_per_page_param,
+          coding_sort: allowed_coding_sort_param,
+          coding_direction: allowed_coding_direction_param,
           anchor: "tdk-coding-review"
         }.compact
       end
@@ -493,6 +497,18 @@ module Admin
       def allowed_per_page_param
         value = params[:coding_per_page].to_i
         value if Admin::Bas::JobsController::TDK_ROWS_PER_PAGE_OPTIONS.include?(value)
+      end
+
+      def allowed_coding_sort_param
+        value = params[:coding_sort].to_s
+        value if CODING_SORTS.include?(value)
+      end
+
+      def allowed_coding_direction_param
+        return if allowed_coding_sort_param.blank?
+
+        value = params[:coding_direction].to_s.downcase
+        CODING_SORT_DIRECTIONS.include?(value) ? value : "asc"
       end
 
       def coding_workflow_path(extra = {})

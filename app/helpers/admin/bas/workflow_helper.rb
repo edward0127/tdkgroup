@@ -60,6 +60,15 @@ module Admin
         [ "Manual", "manual" ],
         [ "Unclassified", "unclassified" ]
       ].freeze
+      TDK_CODING_TABLE_COLUMNS = [
+        { key: "date", label: "Date", class_name: "tdk-coding-col--date", default_width: 120, min_width: 105 },
+        { key: "description", label: "Description", class_name: "tdk-coding-col--description", default_width: 240, min_width: 180 },
+        { key: "amount", label: "Amount", class_name: "tdk-coding-col--amount", default_width: 120, min_width: 105 },
+        { key: "category", label: "Category", class_name: "tdk-coding-col--category", default_width: 190, min_width: 150 },
+        { key: "gst", label: "GST", class_name: "tdk-coding-col--gst", default_width: 130, min_width: 110 },
+        { key: "source", label: "Source", class_name: "tdk-coding-col--source", default_width: 360, min_width: 240 },
+        { key: "review", label: "Review", class_name: "tdk-coding-col--review", default_width: 120, min_width: 105 }
+      ].map(&:freeze).freeze
 
       def bas_workflow_steps(job:, documents_count:, imported_records_count:, proposed_matches_count:, needs_review_matches_count:, open_queries_count:, approval_blockers_count:, latest_report_snapshot:)
         matching_review_count = proposed_matches_count + needs_review_matches_count
@@ -355,6 +364,8 @@ module Admin
           coding_filter: filter == "all" ? nil : filter,
           coding_page: 1,
           coding_per_page: @tdk_coding_per_page,
+          coding_sort: @tdk_coding_sort,
+          coding_direction: @tdk_coding_direction,
           anchor: "tdk-coding-review"
         }.compact
       end
@@ -365,16 +376,61 @@ module Admin
           coding_filter: @tdk_coding_filter == "all" ? nil : @tdk_coding_filter,
           coding_page: page,
           coding_per_page: @tdk_coding_per_page,
+          coding_sort: @tdk_coding_sort,
+          coding_direction: @tdk_coding_direction,
           anchor: "tdk-coding-review"
         }.compact
       end
 
-      def tdk_coding_source_label(source)
+      def tdk_coding_table_columns
+        TDK_CODING_TABLE_COLUMNS
+      end
+
+      def tdk_coding_column_width_storage_key(run)
+        signature = Digest::SHA256.hexdigest(TDK_CODING_TABLE_COLUMNS.map { |column| column.fetch(:key) }.join("|")).first(16)
+        "tdk-coding-column-widths:#{run&.id || "new"}:#{signature}"
+      end
+
+      def tdk_coding_sort_direction_for(column)
+        key = column.fetch(:key)
+        return "desc" if @tdk_coding_sort == key && @tdk_coding_direction == "asc"
+
+        "asc"
+      end
+
+      def tdk_coding_sort_link_params(column)
+        {
+          tdk_step: "coding",
+          coding_filter: @tdk_coding_filter == "all" ? nil : @tdk_coding_filter,
+          coding_page: 1,
+          coding_per_page: @tdk_coding_per_page,
+          coding_sort: column.fetch(:key),
+          coding_direction: tdk_coding_sort_direction_for(column),
+          anchor: "tdk-coding-review"
+        }.compact
+      end
+
+      def tdk_coding_sort_indicator(column)
+        return "&#8597;".html_safe unless @tdk_coding_sort == column.fetch(:key)
+
+        @tdk_coding_direction == "desc" ? "&darr;".html_safe : "&uarr;".html_safe
+      end
+
+      def tdk_coding_source_label(source, coding: nil, field: nil)
+        return "Prior-quarter blank" if field.to_s == "gst" && tdk_coding_prior_quarter_blank?(coding)
+
         case source.to_s
         when "previous_quarter_exact"
           "Prior-quarter exact match"
         when "previous_quarter_fuzzy"
-          "Prior-quarter similar match"
+          case tdk_coding_match_type(coding)
+          when "template"
+            "Prior-quarter template match"
+          when "merchant"
+            "Prior-quarter merchant match"
+          else
+            "Prior-quarter similar match"
+          end
         when "rule"
           "Rule suggestion"
         when "manual"
@@ -384,7 +440,9 @@ module Admin
         end
       end
 
-      def tdk_coding_source_class(source)
+      def tdk_coding_source_class(source, coding: nil, field: nil)
+        return "is-neutral" if field.to_s == "gst" && tdk_coding_prior_quarter_blank?(coding)
+
         case source.to_s
         when "previous_quarter_exact", "previous_quarter_fuzzy"
           "is-history"
@@ -395,6 +453,47 @@ module Admin
         else
           "is-unclassified"
         end
+      end
+
+      def tdk_coding_match_type(coding)
+        coding&.metadata.to_h["match_type"].to_s
+      end
+
+      def tdk_coding_prior_quarter_blank?(coding)
+        return false if coding.blank?
+        return false unless coding.gst_source.to_s.start_with?("previous_quarter_")
+
+        Array(coding.warning_codes).include?("historical_gst_blank_inherited")
+      end
+
+      def tdk_coding_warning_codes(coding)
+        Array(coding.warning_codes).reject { |code| code == "historical_gst_blank_inherited" }
+      end
+
+      def tdk_coding_information_codes(coding)
+        return [] unless tdk_coding_prior_quarter_blank?(coding)
+
+        [ "Prior-quarter GST was blank" ]
+      end
+
+      def tdk_coding_reference_evidence_label(coding)
+        match_type = tdk_coding_match_type(coding)
+        return unless match_type.in?(%w[template merchant])
+
+        row_number = coding.reference_source_row_number
+        occurrences = coding.metadata.to_h["reference_occurrences"].to_i
+        evidence_count = if occurrences.positive?
+          "#{occurrences} #{match_type} #{"example".pluralize(occurrences)}"
+        else
+          "#{match_type} match"
+        end
+        return "Representative reference file row #{row_number} (#{evidence_count})" if row_number.present?
+
+        "Reference file evidence (#{evidence_count})"
+      end
+
+      def tdk_coding_reference_example(coding)
+        coding.reference_snapshot.to_h["description"].to_s.strip.presence
       end
 
       def tdk_coding_field_classes(coding, field)

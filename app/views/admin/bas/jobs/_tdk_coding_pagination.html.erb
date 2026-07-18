@@ -1,0 +1,77 @@
+<% location = local_assigns.fetch(:location, :bottom).to_s %>
+<% id_suffix = local_assigns.fetch(:id_suffix, location) %>
+<% aria_label = local_assigns.fetch(:aria_label, "Category and GST coding pagination") %>
+<% page_select_id = "tdk_coding_page_select_#{id_suffix}" %>
+<% per_page_select_id = "tdk_coding_per_page_select_#{id_suffix}" %>
+<% current_page = @tdk_coding_page.to_i.clamp(1, [ @tdk_coding_total_pages.to_i, 1 ].max) %>
+<% total_pages = [ @tdk_coding_total_pages.to_i, 1 ].max %>
+
+<div class="tdk-workbook-pagination-group tdk-workbook-pagination-group--<%= location %>">
+  <nav class="tdk-workbook-pagination" aria-label="<%= aria_label %>">
+    <% first_disabled = current_page <= 1 %>
+    <% last_disabled = current_page >= total_pages %>
+
+    <% if first_disabled %>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="First coding page">&laquo;</span>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Previous coding page">&lsaquo;</span>
+    <% else %>
+      <%= link_to "&laquo;".html_safe,
+            admin_bas_job_path(@job, tdk_coding_page_link_params(1)),
+            class: "tdk-page-button",
+            aria: { label: "First coding page" } %>
+      <%= link_to "&lsaquo;".html_safe,
+            admin_bas_job_path(@job, tdk_coding_page_link_params(current_page - 1)),
+            class: "tdk-page-button",
+            aria: { label: "Previous coding page" } %>
+    <% end %>
+
+    <span class="tdk-page-status">Page <%= current_page %> of <%= total_pages %></span>
+
+    <% if last_disabled %>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Next coding page">&rsaquo;</span>
+      <span class="tdk-page-button is-disabled" aria-disabled="true" aria-label="Last coding page">&raquo;</span>
+    <% else %>
+      <%= link_to "&rsaquo;".html_safe,
+            admin_bas_job_path(@job, tdk_coding_page_link_params(current_page + 1)),
+            class: "tdk-page-button",
+            aria: { label: "Next coding page" } %>
+      <%= link_to "&raquo;".html_safe,
+            admin_bas_job_path(@job, tdk_coding_page_link_params(total_pages)),
+            class: "tdk-page-button",
+            aria: { label: "Last coding page" } %>
+    <% end %>
+  </nav>
+
+  <div class="tdk-workbook-page-selectors">
+    <%= form_with url: admin_bas_job_path(@job, anchor: "tdk-coding-review"),
+          method: :get,
+          class: "tdk-workbook-page-form" do %>
+      <%= hidden_field_tag :tdk_step, "coding" %>
+      <%= hidden_field_tag :coding_filter, @tdk_coding_filter unless @tdk_coding_filter == "all" %>
+      <%= hidden_field_tag :coding_sort, @tdk_coding_sort if @tdk_coding_sort.present? %>
+      <%= hidden_field_tag :coding_direction, @tdk_coding_direction if @tdk_coding_direction.present? %>
+      <%= hidden_field_tag :coding_per_page, @tdk_coding_per_page %>
+      <%= label_tag page_select_id, "Page" %>
+      <%= select_tag :coding_page,
+            options_for_select((1..total_pages).map { |page| [ page, page ] }, current_page),
+            id: page_select_id,
+            onchange: "this.form.requestSubmit()" %>
+      <span>of <%= total_pages %></span>
+    <% end %>
+
+    <%= form_with url: admin_bas_job_path(@job, anchor: "tdk-coding-review"),
+          method: :get,
+          class: "tdk-workbook-page-form" do %>
+      <%= hidden_field_tag :tdk_step, "coding" %>
+      <%= hidden_field_tag :coding_filter, @tdk_coding_filter unless @tdk_coding_filter == "all" %>
+      <%= hidden_field_tag :coding_page, 1 %>
+      <%= hidden_field_tag :coding_sort, @tdk_coding_sort if @tdk_coding_sort.present? %>
+      <%= hidden_field_tag :coding_direction, @tdk_coding_direction if @tdk_coding_direction.present? %>
+      <%= label_tag per_page_select_id, "Rows per page" %>
+      <%= select_tag :coding_per_page,
+            options_for_select(@tdk_per_page_options, @tdk_coding_per_page),
+            id: per_page_select_id,
+            onchange: "this.form.requestSubmit()" %>
+    <% end %>
+  </div>
+</div>

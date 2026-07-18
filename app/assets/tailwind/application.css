@@ -2081,6 +2081,24 @@ form.is-submitting {
   margin-top: 14px;
 }
 
+.tdk-coding-reference-card--prominent {
+  border: 2px solid #5fb8d7;
+  background: linear-gradient(155deg, #f0f9fd 0%, #ffffff 62%);
+  box-shadow: 0 14px 30px rgba(15, 58, 84, 0.1);
+}
+
+.tdk-coding-reference-card--prominent .eyebrow {
+  margin-bottom: 5px;
+  color: #176b8c;
+}
+
+.tdk-coding-reference-card--prominent input[type="file"] {
+  border: 1px dashed #70b9d5;
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .tdk-coding-reference-form .admin-field,
 .tdk-coding-reference-form input[type="file"] {
   width: 100%;
@@ -2137,6 +2155,8 @@ form.is-submitting {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -2242,18 +2262,18 @@ form.is-submitting {
 
 .tdk-coding-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 0;
   table-layout: fixed;
   font-size: 13px;
 }
 
-.tdk-coding-table th:nth-child(1) { width: 105px; }
-.tdk-coding-table th:nth-child(2) { width: 220px; }
-.tdk-coding-table th:nth-child(3) { width: 105px; text-align: right; }
-.tdk-coding-table th:nth-child(4) { width: 180px; }
-.tdk-coding-table th:nth-child(5) { width: 120px; }
-.tdk-coding-table th:nth-child(6) { width: 330px; }
-.tdk-coding-table th:nth-child(7) { width: 110px; }
+.tdk-coding-table th {
+  position: relative;
+}
+
+.tdk-coding-table th.tdk-coding-col--amount {
+  text-align: right;
+}
 
 .tdk-coding-table td {
   vertical-align: top;
@@ -2361,6 +2381,26 @@ form.is-submitting {
   border-color: #fecaca;
   color: #991b1b;
   background: #fee2e2;
+}
+
+.tdk-coding-source-badge.is-neutral {
+  border-color: #bae6fd;
+  color: #0c4a6e;
+  background: #f0f9ff;
+}
+
+.tdk-coding-reference-evidence {
+  color: #166534 !important;
+  font-weight: 850;
+}
+
+.tdk-coding-reference-example q {
+  color: var(--ink-2);
+}
+
+.tdk-coding-information-codes {
+  color: #0c4a6e !important;
+  font-weight: 850;
 }
 
 .tdk-coding-warning-codes {
@@ -3120,8 +3160,18 @@ form.is-submitting {
   border-left-color: #6aa8c7;
 }
 
+.tdk-coding-table.is-resizing .tdk-workbook-column-resize-handle::after {
+  border-left-color: #6aa8c7;
+}
+
 .tdk-workbook-table.is-resizing,
 .tdk-workbook-table.is-resizing * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.tdk-coding-table.is-resizing,
+.tdk-coding-table.is-resizing * {
   cursor: col-resize;
   user-select: none;
 }

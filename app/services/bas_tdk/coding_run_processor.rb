@@ -545,38 +545,54 @@ module BasTdk
       gst_amount = if amount && profile.gst_ratio
         normalized_zero((amount * profile.gst_ratio).round(2))
       end
+      gst_blank_inherited = profile.gst_consensus_status == "missing"
       warnings = []
       warnings << history_warning_code(profile, exact: exact) if history_warning_code(profile, exact: exact)
-      if profile.gst_ratio.nil?
+      if gst_blank_inherited
+        warnings << "historical_gst_blank_inherited"
+      elsif profile.gst_ratio.nil?
         warnings << (profile.gst_consensus_status == "conflict" ? "historical_gst_conflict" : "historical_gst_missing")
       end
       review_required = !exact || profile.occurrences == 1
       confidence = exact ? (review_required ? 92.0 : 100.0) : (similarity * 100).round(2)
+      gst_source = if gst_amount.present? || gst_blank_inherited
+        source
+      else
+        "unmatched"
+      end
+      gst_confidence = gst_amount.present? || gst_blank_inherited ? confidence : 0.0
+      gst_review_required = gst_blank_inherited ? false : (review_required || gst_amount.nil?)
+      explanation = if exact && profile.gst_ratio && !review_required
+        "Matched the same normalized description and transaction direction in the reference workbook. Historical category and GST treatment were consistent."
+      elsif exact && profile.gst_ratio
+        "Matched one same-direction historical transaction. The values were copied, but a single prior example is highlighted for review."
+      elsif exact && gst_blank_inherited
+        "Matched the same normalized description and transaction direction with a consistent historical category."
+      elsif exact
+        "Matched the same normalized description and transaction direction with a consistent historical category. Historical GST was missing or conflicted, so GST was left for review."
+      elsif profile.match_kind == "template"
+        "Matched a same-direction bank-description template used consistently in the reference workbook (#{profile.occurrences} examples). Review the history-derived suggestion before relying on it."
+      elsif profile.match_kind == "merchant"
+        "Matched a strong merchant identity used consistently in the reference workbook (#{profile.occurrences} #{'example'.pluralize(profile.occurrences)}). Review this cross-description suggestion before relying on it."
+      else
+        "High-similarity previous-quarter match (#{(similarity * 100).round(1)}%). Review both fields before relying on it."
+      end
+      if gst_blank_inherited
+        explanation = "#{explanation} Historical GST was consistently blank, so the blank GST was inherited without treating it as zero."
+      end
 
       Proposal.new(
         category: profile.category,
         gst_amount: gst_amount,
-        gst_treatment: profile.gst_ratio.nil? ? "needs_review" : profile.gst_treatment,
+        gst_treatment: gst_blank_inherited ? "unknown" : (profile.gst_ratio.nil? ? "needs_review" : profile.gst_treatment),
         category_source: source,
-        gst_source: gst_amount.nil? ? "unmatched" : source,
+        gst_source: gst_source,
         category_confidence: confidence,
-        gst_confidence: gst_amount.nil? ? 0.0 : confidence,
+        gst_confidence: gst_confidence,
         category_review_required: review_required,
-        gst_review_required: review_required || gst_amount.nil?,
+        gst_review_required: gst_review_required,
         warning_codes: warnings,
-        explanation: if exact && profile.gst_ratio && !review_required
-                       "Matched the same normalized description and transaction direction in the reference workbook. Historical category and GST treatment were consistent."
-                     elsif exact && profile.gst_ratio
-                       "Matched one same-direction historical transaction. The values were copied, but a single prior example is highlighted for review."
-                     elsif exact
-                       "Matched the same normalized description and transaction direction with a consistent historical category. Historical GST was missing or conflicted, so GST was left for review."
-                     elsif profile.match_kind == "template"
-                       "Matched a same-direction bank-description template used consistently in the reference workbook (#{profile.occurrences} examples). Review the history-derived suggestion before relying on it."
-                     elsif profile.match_kind == "merchant"
-                       "Matched a strong merchant identity used consistently in the reference workbook (#{profile.occurrences} #{'example'.pluralize(profile.occurrences)}). Review this cross-description suggestion before relying on it."
-                     else
-                       "High-similarity previous-quarter match (#{(similarity * 100).round(1)}%). Review both fields before relying on it."
-                     end,
+        explanation: explanation,
         reference_source_row_number: profile.representative.source_row_number,
         reference_snapshot: reference_snapshot(profile),
         metadata: {
@@ -601,6 +617,8 @@ module BasTdk
 
     def previous_quarter_proposal_with_taxable_fallback(profile, amount, exact:, similarity:, description:)
       proposal = previous_quarter_proposal(profile, amount, exact: exact, similarity: similarity)
+      return proposal if profile.gst_consensus_status == "missing"
+
       rule = BasTdk::CodingRuleEngine.new(description: description, amount: amount).call
       if rule.rule_id.in?(GST_HISTORY_SUPPRESSION_RULE_IDS)
         proposal.gst_amount = nil
@@ -814,7 +832,7 @@ module BasTdk
       warnings.delete("category_unclassified") if category_manual && category.present?
       warnings.delete("gst_unclassified") if gst_manual && gst_amount.present?
       warnings << "category_unclassified" if category.blank?
-      warnings << "gst_unclassified" if gst_amount.nil?
+      warnings << "gst_unclassified" if gst_amount.nil? && gst_source == "unmatched"
       review_required = category_review_required || gst_review_required
       row_changed = row_data != row.row_data.to_h
       row.update!(row_data: row_data) if row_changed

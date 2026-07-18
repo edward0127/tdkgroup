@@ -105,10 +105,35 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     refute coding.category_review_required
     assert coding.gst_review_required
     assert_includes coding.warning_codes, "historical_gst_conflict"
+    assert_includes coding.warning_codes, "gst_unclassified"
     assert_equal 1, run.warning_count
   end
 
-  test "supplements missing historical GST only from a taxable expense rule" do
+  test "keeps incomplete historical GST unmatched and highlighted" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Partly Coded Supplier", amount: "-220.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Partly Coded Supplier,Supplies,-110.00,-10.00
+      Partly Coded Supplier,Supplies,-55.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "previous_quarter_exact", coding.category_source
+    assert_equal "unmatched", coding.gst_source
+    assert_nil coding.suggested_gst_amount
+    assert_equal "needs_review", coding.gst_treatment
+    assert coding.gst_review_required
+    assert_equal "incomplete", coding.metadata.fetch("gst_consensus_status")
+    assert_includes coding.warning_codes, "historical_gst_missing"
+    assert_includes coding.warning_codes, "gst_unclassified"
+    refute_includes coding.warning_codes, "historical_gst_blank_inherited"
+  end
+
+  test "inherits consistently blank historical GST without taxable rule fallback" do
     job = create_job
     workbook = create_workbook(job)
     row = create_row(workbook, description: "Australia Post parcel", amount: "-11.50")
@@ -122,10 +147,17 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     coding = run.reload.row_codings.find_by!(workbook_row: row)
     assert_equal "previous_quarter_exact", coding.category_source
     assert_equal "Postage", coding.suggested_category
-    assert_equal "rule", coding.gst_source
-    assert_equal BigDecimal("-1.05"), coding.suggested_gst_amount
-    assert_includes coding.warning_codes, "gst_rule_fallback"
-    assert coding.review_required?
+    assert_equal "previous_quarter_exact", coding.gst_source
+    assert_nil coding.suggested_gst_amount
+    assert_equal "unknown", coding.gst_treatment
+    assert_equal coding.category_confidence, coding.gst_confidence
+    refute coding.gst_review_required
+    assert_includes coding.warning_codes, "historical_gst_blank_inherited"
+    refute_includes coding.warning_codes, "historical_gst_missing"
+    refute_includes coding.warning_codes, "gst_rule_fallback"
+    refute_includes coding.warning_codes, "gst_unclassified"
+    assert_includes coding.explanation, "blank GST was inherited without treating it as zero"
+    assert_equal "", row.reload.row_data.fetch("GST")
   end
 
   test "mixed zero-GST treatments are a conflict rather than a silent no-GST consensus" do
@@ -223,6 +255,7 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     coding = run.reload.row_codings.find_by!(workbook_row: row)
     assert_equal "previous_quarter_exact", coding.category_source
     assert_equal "Bank charge", coding.suggested_category
+    assert_equal "previous_quarter_exact", coding.gst_source
     assert_equal BigDecimal("0"), coding.suggested_gst_amount
     assert_equal "0.00", row.reload.row_data.fetch("GST")
     refute coding.review_required?
@@ -245,8 +278,14 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert_equal "previous_quarter_fuzzy", coding.category_source
     assert_equal "Sales", coding.suggested_category
     assert_nil coding.suggested_gst_amount
+    assert_equal "previous_quarter_fuzzy", coding.gst_source
+    assert_equal "unknown", coding.gst_treatment
+    assert_equal coding.category_confidence, coding.gst_confidence
+    refute coding.gst_review_required
     assert coding.review_required?
     assert_includes coding.warning_codes, "historical_template_match"
+    assert_includes coding.warning_codes, "historical_gst_blank_inherited"
+    refute_includes coding.warning_codes, "gst_unclassified"
     assert_equal "template", coding.metadata.fetch("match_type")
   end
 
