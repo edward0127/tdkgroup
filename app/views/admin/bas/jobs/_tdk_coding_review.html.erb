@@ -28,7 +28,54 @@
     <div class="is-reviewed"><span>Reviewed</span><strong><%= run.reviewed_count %></strong></div>
   </div>
 
-  <p class="tdk-coding-review-notice">Review highlighted suggestions before continuing. They are not final tax advice.</p>
+  <% review_total = tdk_coding_review_report_value(:total_review_rows, @tdk_coding_filter_counts.fetch("needs_review", 0)).to_i %>
+  <section class="tdk-coding-review-report" aria-labelledby="tdk-coding-review-report-title">
+    <div class="tdk-coding-review-report__intro">
+      <div>
+        <span class="tdk-coding-review-report__eyebrow">Review report</span>
+        <h3 id="tdk-coding-review-report-title">Why <%= review_total %> <%= "row".pluralize(review_total) %> need confirmation</h3>
+      </div>
+      <div>
+        <p>A highlight means the available prior-quarter evidence or GST support is not strong enough for automatic acceptance. It does <strong>not</strong> mean the suggestion is known to differ from a verified current-quarter answer—no such answer is uploaded in this workflow.</p>
+        <nav class="tdk-coding-review-report__filter-links" aria-label="Open field review filters">
+          <%= link_to admin_bas_job_path(@job, tdk_coding_filter_link_params("category_review")) do %>
+            Open Category review <strong><%= tdk_coding_review_field_count(:category) %></strong>
+          <% end %>
+          <%= link_to admin_bas_job_path(@job, tdk_coding_filter_link_params("gst_review")) do %>
+            Open GST review <strong><%= tdk_coding_review_field_count(:gst) %></strong>
+          <% end %>
+        </nav>
+      </div>
+    </div>
+
+    <div class="tdk-coding-review-report__field-split" aria-label="Review fields">
+      <div class="tdk-coding-review-report__field-stat">
+        <span>Category only</span><strong><%= tdk_coding_review_combination_count(:category_only) %></strong>
+      </div>
+      <div class="tdk-coding-review-report__field-stat">
+        <span>GST only</span><strong><%= tdk_coding_review_combination_count(:gst_only) %></strong>
+      </div>
+      <div class="tdk-coding-review-report__field-stat">
+        <span>Both fields</span><strong><%= tdk_coding_review_combination_count(:both) %></strong>
+      </div>
+    </div>
+
+    <% if tdk_coding_review_reason_groups.any? %>
+      <div class="tdk-coding-review-report__reasons" aria-label="Reasons rows need review">
+        <% tdk_coding_review_reason_groups.each do |group| %>
+          <article class="tdk-coding-review-report__reason">
+            <div>
+              <strong><%= tdk_coding_review_reason_group_title(group) %></strong>
+              <span><%= report_value(group, :count, 0).to_i %> <%= "row".pluralize(report_value(group, :count, 0).to_i) %></span>
+            </div>
+            <p><%= tdk_coding_review_reason_group_description(group) %></p>
+          </article>
+        <% end %>
+      </div>
+    <% end %>
+
+    <p class="tdk-coding-review-notice"><strong>What to do:</strong> check each highlighted field against the transaction and any current invoice, edit it if needed, then mark the row Reviewed. Suggestions are not final tax advice.</p>
+  </section>
 
   <nav class="tdk-coding-filters" aria-label="Filter Category and GST suggestions">
     <% tdk_coding_filter_options.each do |label, filter| %>
@@ -103,6 +150,8 @@
           <tbody>
             <% @tdk_row_codings.each do |coding| %>
               <% row = coding.workbook_row %>
+              <% category_reason_id = "tdk-coding-category-reason-#{coding.id}" if coding.category_review_required? %>
+              <% gst_reason_id = "tdk-coding-gst-reason-#{coding.id}" if coding.gst_review_required? %>
               <%= tag.tr class: ("tdk-coding-row--needs-review" if coding.review_required?), data: { source_row_number: row.source_row_number } do %>
                 <td class="tdk-coding-readonly"><%= tdk_workbook_display_value(row.row_data["Date"]) %></td>
                 <td class="tdk-coding-description"><%= tdk_workbook_display_value(row.row_data["Description"]) %></td>
@@ -110,8 +159,11 @@
                 <td>
                   <%= text_field_tag "codings[#{coding.id}][category]", tdk_coding_category_value(coding),
                         class: tdk_coding_field_classes(coding, :category),
-                        aria: { label: "Category for source row #{row.source_row_number || row.position}" } %>
-                  <% if coding.category_review_required %><span class="tdk-coding-field-warning">Category needs review</span><% end %>
+                        aria: { label: "Category for source row #{row.source_row_number || row.position}", describedby: category_reason_id }.compact %>
+                  <% if coding.category_review_required %>
+                    <span class="tdk-coding-field-warning">Category needs review</span>
+                    <span id="<%= category_reason_id %>" class="tdk-coding-field-reason"><strong>Why:</strong> <%= tdk_coding_field_review_reason(coding, :category) %></span>
+                  <% end %>
                 </td>
                 <td>
                   <%= text_field_tag "codings[#{coding.id}][gst]", tdk_coding_gst_value(coding),
@@ -119,10 +171,14 @@
                         inputmode: "decimal",
                         pattern: tdk_workbook_amount_input_pattern,
                         title: tdk_workbook_amount_input_title,
-                        aria: { label: "GST for source row #{row.source_row_number || row.position}" } %>
-                  <% if coding.gst_review_required %><span class="tdk-coding-field-warning">GST needs review</span><% end %>
+                        aria: { label: "GST for source row #{row.source_row_number || row.position}", describedby: gst_reason_id }.compact %>
+                  <% if coding.gst_review_required %>
+                    <span class="tdk-coding-field-warning">GST needs review</span>
+                    <span id="<%= gst_reason_id %>" class="tdk-coding-field-reason"><strong>Why:</strong> <%= tdk_coding_field_review_reason(coding, :gst) %></span>
+                  <% end %>
                 </td>
                 <td class="tdk-coding-provenance">
+                  <strong class="tdk-coding-provenance__label">Evidence used</strong>
                   <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.category_source, coding: coding, field: :category) %>">Category: <%= tdk_coding_source_label(coding.category_source, coding: coding, field: :category) %></span><small><%= tdk_coding_confidence_label(coding.category_confidence) %></small></div>
                   <div><span class="tdk-coding-source-badge <%= tdk_coding_source_class(coding.gst_source, coding: coding, field: :gst) %>">GST: <%= tdk_coding_source_label(coding.gst_source, coding: coding, field: :gst) %></span><small><%= tdk_coding_confidence_label(coding.gst_confidence) %></small></div>
                   <% if (evidence_label = tdk_coding_reference_evidence_label(coding)).present? %>
@@ -133,7 +189,8 @@
                   <% end %>
                   <% if coding.explanation.present? %><p><%= coding.explanation %></p><% end %>
                   <% if tdk_coding_information_codes(coding).any? %><p class="tdk-coding-information-codes"><%= tdk_coding_information_codes(coding).join(" · ") %></p><% end %>
-                  <% if tdk_coding_warning_codes(coding).any? %><p class="tdk-coding-warning-codes"><%= tdk_coding_warning_codes(coding).map(&:humanize).join(" · ") %></p><% end %>
+                  <% if coding.review_required? && tdk_coding_warning_labels(coding).any? %><p class="tdk-coding-review-signals"><strong>Review signals:</strong> <span class="tdk-coding-warning-codes"><%= tdk_coding_warning_labels(coding).join(" · ") %></span></p><% end %>
+                  <% if coding.review_required? %><p class="tdk-coding-next-action"><strong>Next action:</strong> <%= tdk_coding_review_next_action(coding) %></p><% end %>
                 </td>
                 <td class="tdk-coding-review-control">
                   <%= hidden_field_tag "codings[#{coding.id}][reviewed]", "0" %>

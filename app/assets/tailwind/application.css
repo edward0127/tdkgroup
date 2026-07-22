@@ -2213,6 +2213,151 @@ form.is-submitting {
   background: #fff7ed;
 }
 
+.tdk-coding-review-report {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  border: 1px solid #bfd9e8;
+  border-radius: 10px;
+  padding: 14px;
+  background: linear-gradient(135deg, #f7fcff 0%, #ffffff 68%);
+}
+
+.tdk-coding-review-report__intro {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.7fr) minmax(320px, 1.3fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.tdk-coding-review-report__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--tdk-accent-ink);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tdk-coding-review-report__intro h3 {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.tdk-coding-review-report__intro p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.tdk-coding-review-report__filter-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.tdk-coding-review-report__filter-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #b8d8e8;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--tdk-accent-ink);
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.tdk-coding-review-report__filter-links a:hover,
+.tdk-coding-review-report__filter-links a:focus-visible {
+  border-color: #5fb8d7;
+  outline: 2px solid rgba(24, 166, 220, 0.18);
+}
+
+.tdk-coding-review-report__field-split {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tdk-coding-review-report__field-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  border: 1px solid #d5e4ee;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: var(--navy);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.tdk-coding-review-report__field-stat strong {
+  min-width: 28px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #9a3412;
+  background: #ffedd5;
+  text-align: center;
+  font-size: 12px;
+}
+
+.tdk-coding-review-report__reasons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tdk-coding-review-report__reason {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  border-left: 3px solid #f0b45f;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fffaf2;
+}
+
+.tdk-coding-review-report__reason > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tdk-coding-review-report__reason strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tdk-coding-review-report__reason > div span {
+  flex: 0 0 auto;
+  color: #9a3412;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.tdk-coding-review-report__reason p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tdk-coding-review-report .tdk-coding-review-notice {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .tdk-coding-filters {
   display: flex;
   flex-wrap: wrap;
@@ -2327,9 +2472,29 @@ form.is-submitting {
   font-weight: 900;
 }
 
+.tdk-coding-field-reason {
+  display: block;
+  margin-top: 3px;
+  color: #7c2d12;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tdk-coding-field-reason strong {
+  font-weight: 900;
+}
+
 .tdk-coding-provenance {
   display: grid;
   gap: 8px;
+}
+
+.tdk-coding-provenance__label {
+  color: var(--ink-2);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .tdk-coding-provenance > div {
@@ -2406,6 +2571,20 @@ form.is-submitting {
 .tdk-coding-warning-codes {
   color: #9a3412 !important;
   font-weight: 850;
+}
+
+.tdk-coding-review-signals strong {
+  color: #9a3412;
+}
+
+.tdk-coding-next-action {
+  border-top: 1px solid #dbe7ef;
+  padding-top: 7px;
+  color: var(--ink-2) !important;
+}
+
+.tdk-coding-next-action strong {
+  color: var(--navy);
 }
 
 .tdk-coding-review-control label {
@@ -3837,6 +4016,9 @@ form.is-submitting {
   .tdk-workflow-grid,
   .tdk-workbook-summary,
   .tdk-coding-summary,
+  .tdk-coding-review-report__intro,
+  .tdk-coding-review-report__field-split,
+  .tdk-coding-review-report__reasons,
   .tdk-coding-review-footer,
   .tdk-column-mapping-row-settings {
     grid-template-columns: 1fr;

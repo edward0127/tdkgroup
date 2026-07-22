@@ -68,13 +68,32 @@ module Admin
         "historical_gst_conservative_blank" => "Mixed prior-quarter GST — left blank conservatively",
         "historical_category_overridden" => "Historical category overridden"
       }.freeze
+      TDK_CODING_WARNING_CODE_LABELS = {
+        "category_unclassified" => "No reliable Category match",
+        "gst_unclassified" => "No reliable GST treatment",
+        "rule_suggestion_requires_review" => "Rule-based suggestion",
+        "tax_invoice_required" => "Current tax invoice required",
+        "mixed_or_unsafe_gst" => "Mixed or uncertain GST treatment",
+        "historical_template_match" => "Non-exact prior-quarter template match",
+        "historical_merchant_match" => "Non-exact prior-quarter merchant match",
+        "fuzzy_previous_quarter_match" => "Similar prior-quarter description match",
+        "historical_category_coverage_incomplete" => "Incomplete prior-quarter Category coverage",
+        "historical_evidence_conflict" => "Conflicting prior-quarter evidence",
+        "historical_gst_conflict" => "Conflicting prior-quarter GST history",
+        "historical_gst_missing" => "Missing prior-quarter GST history",
+        "historical_gst_suppressed" => "Prior-quarter GST not reused because treatment may vary",
+        "gst_rule_fallback" => "GST estimated by a rule",
+        "historical_category_suppressed" => "Prior-quarter Category not inherited because the merchant is uncertain",
+        "merchant_service_fee" => "Merchant-fee GST estimate",
+        "paired_validation_offset" => "Possible matching offset transaction"
+      }.freeze
       TDK_CODING_TABLE_COLUMNS = [
         { key: "date", label: "Date", class_name: "tdk-coding-col--date", default_width: 120, min_width: 105 },
         { key: "description", label: "Description", class_name: "tdk-coding-col--description", default_width: 240, min_width: 180 },
         { key: "amount", label: "Amount", class_name: "tdk-coding-col--amount", default_width: 120, min_width: 105 },
         { key: "category", label: "Category", class_name: "tdk-coding-col--category", default_width: 190, min_width: 150 },
         { key: "gst", label: "GST", class_name: "tdk-coding-col--gst", default_width: 130, min_width: 110 },
-        { key: "source", label: "Source", class_name: "tdk-coding-col--source", default_width: 360, min_width: 240 },
+        { key: "source", label: "Evidence & action", class_name: "tdk-coding-col--source", default_width: 360, min_width: 240 },
         { key: "review", label: "Review", class_name: "tdk-coding-col--review", default_width: 120, min_width: 105 }
       ].map(&:freeze).freeze
 
@@ -378,6 +397,68 @@ module Admin
         }.compact
       end
 
+      def tdk_coding_review_report
+        report = @tdk_coding_review_report
+        report.respond_to?(:to_h) ? report.to_h : {}
+      end
+
+      def tdk_coding_review_report_value(key, default = 0)
+        report_value(tdk_coding_review_report, key, default)
+      end
+
+      def tdk_coding_review_field_count(field)
+        counts = tdk_coding_review_report_value(:field_counts, {})
+        value = report_value(counts, field, nil)
+        return value.to_i unless value.nil?
+
+        @tdk_coding_filter_counts.to_h.fetch("#{field}_review", 0).to_i
+      end
+
+      def tdk_coding_review_combination_count(combination)
+        combinations = tdk_coding_review_report_value(:field_combinations, {})
+        value = report_value(combinations, combination, nil)
+        return value.to_i unless value.nil?
+
+        total = @tdk_coding_filter_counts.to_h.fetch("needs_review", 0).to_i
+        category = @tdk_coding_filter_counts.to_h.fetch("category_review", 0).to_i
+        gst = @tdk_coding_filter_counts.to_h.fetch("gst_review", 0).to_i
+        both = [ category + gst - total, 0 ].max
+        { category_only: category - both, gst_only: gst - both, both: both }.fetch(combination.to_sym, 0)
+      end
+
+      def tdk_coding_review_reason_groups
+        Array(tdk_coding_review_report_value(:reason_groups, [])).map do |group|
+          group.respond_to?(:to_h) ? group.to_h : {}
+        end.select { |group| report_value(group, :count, 0).to_i.positive? }
+      end
+
+      def tdk_coding_review_reason_group_title(group)
+        report_value(group, :title, "Other evidence requiring confirmation").to_s
+      end
+
+      def tdk_coding_review_reason_group_description(group)
+        report_value(group, :description, report_value(group, :detail, "Review the available evidence before accepting the suggestion.")).to_s
+      end
+
+      def tdk_coding_field_review_reason(coding, field)
+        report_reasons = report_value(tdk_coding_review_report_value(:field_reasons_by_coding_id, {}), coding.id, {})
+        supplied_reason = report_value(report_reasons, field, {})
+        supplied_detail = report_value(supplied_reason, :detail, nil).presence
+        return supplied_detail if supplied_detail
+
+        fallback_coding_field_review_reason(coding, field)
+      end
+
+      def tdk_coding_review_next_action(coding)
+        if coding.category_review_required? && coding.gst_review_required?
+          "Confirm the Category from the transaction or supporting document, then check GST against the current tax invoice. Edit either value if needed, then mark the row Reviewed."
+        elsif coding.category_review_required?
+          "Confirm the Category from the transaction or supporting document. Edit it if needed, then mark the row Reviewed."
+        elsif coding.gst_review_required?
+          "Check the current tax invoice or no-GST treatment. Edit GST if needed, then mark the row Reviewed."
+        end
+      end
+
       def tdk_coding_page_link_params(page)
         {
           tdk_step: "coding",
@@ -487,6 +568,12 @@ module Admin
         Array(coding.warning_codes).reject { |code| TDK_CODING_INFORMATION_CODE_LABELS.key?(code) }
       end
 
+      def tdk_coding_warning_labels(coding)
+        tdk_coding_warning_codes(coding).map do |code|
+          TDK_CODING_WARNING_CODE_LABELS.fetch(code, code.to_s.humanize)
+        end.uniq
+      end
+
       def tdk_coding_information_codes(coding)
         Array(coding.warning_codes).filter_map { |code| TDK_CODING_INFORMATION_CODE_LABELS[code] }
       end
@@ -541,6 +628,46 @@ module Admin
         return "Rows 0 of 0" if @tdk_coding_total_rows.to_i.zero?
 
         "Rows #{@tdk_coding_row_start}-#{@tdk_coding_row_end} of #{@tdk_coding_total_rows}"
+      end
+
+      def report_value(container, key, default = nil)
+        return default unless container.respond_to?(:key?)
+        return container[key] if container.key?(key)
+
+        alternate_keys = case key
+        when Symbol then [ key.to_s ]
+        when String then [ key.to_sym ]
+        else [ key.to_s ]
+        end
+        alternate_key = alternate_keys.find { |candidate| container.key?(candidate) }
+        alternate_key ? container[alternate_key] : default
+      end
+
+      def fallback_coding_field_review_reason(coding, field)
+        codes = Array(coding.warning_codes)
+        metadata = coding.metadata.to_h
+
+        if field.to_sym == :category
+          return "No reliable prior-quarter match or coding rule could assign a Category." if coding.category_source == "unmatched" || codes.include?("category_unclassified")
+          return "Prior-quarter matches point to different Categories." if codes.include?("historical_evidence_conflict")
+          return "Some matching prior-quarter rows had no Category, so the historical coverage is incomplete." if codes.include?("historical_category_coverage_incomplete")
+          return "A recurring prior-quarter template matched, but its support, coverage or safety level is below the automatic-accept threshold." if codes.include?("historical_template_match") || metadata["match_type"] == "template"
+          return "The merchant matched prior-quarter history, but this transaction description is not an exact match." if codes.include?("historical_merchant_match") || metadata["match_type"] == "merchant"
+          return "This is a similar, not exact, prior-quarter description match." if codes.include?("fuzzy_previous_quarter_match") || metadata["match_type"] == "fuzzy"
+          return "This Category comes from a coding rule rather than a confirmed prior-quarter match." if coding.category_source == "rule"
+
+          "The available Category evidence is not strong enough for automatic acceptance."
+        else
+          return "No reliable prior-quarter GST treatment or conservative rule could determine GST." if coding.gst_source == "unmatched" || codes.include?("gst_unclassified")
+          return "Matching prior-quarter rows used conflicting GST treatment." if codes.include?("historical_gst_conflict") || codes.include?("historical_evidence_conflict")
+          return "Matching prior-quarter rows did not provide enough GST history." if codes.include?("historical_gst_missing")
+          return "Prior-quarter GST was not reused because this supplier can have mixed GST treatment." if codes.include?("historical_gst_suppressed")
+          return "Prior-quarter GST was unavailable, so a rule estimated GST for review." if codes.include?("gst_rule_fallback")
+          return "This supplier or expense can include mixed GST treatment; check the current tax invoice." if codes.include?("mixed_or_unsafe_gst")
+          return "GST was estimated from a rule; check the current tax invoice before claiming it." if codes.include?("tax_invoice_required") || coding.gst_source == "rule"
+
+          "The available GST evidence is not strong enough for automatic acceptance."
+        end
       end
 
       def tdk_column_mapping_samples(column)

@@ -232,6 +232,7 @@ module Admin
         else
           BasTdkRowCoding.none.joins(:workbook_row)
         end
+        @tdk_coding_review_report = BasTdk::CodingReviewReport.new(codings: base_scope).call
 
         @tdk_coding_filter_counts = TDK_CODING_FILTERS.index_with do |filter|
           filter_tdk_codings(base_scope, filter).count
@@ -254,6 +255,7 @@ module Admin
         @tdk_coding_sort_param_valid = false
         @tdk_coding_direction = "asc"
         @tdk_coding_filter_counts = TDK_CODING_FILTERS.index_with { 0 }
+        @tdk_coding_review_report = BasTdk::CodingReviewReport.new(codings: []).call
         @tdk_coding_total_rows = 0
         @tdk_coding_total_pages = 1
         @tdk_coding_page = 1
