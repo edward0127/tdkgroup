@@ -133,6 +133,77 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     refute_includes coding.warning_codes, "historical_gst_blank_inherited"
   end
 
+  test "keeps mixed historical GST blank without review for the generic Purchase category" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Wholesale Purchase", amount: "-220.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Wholesale Purchase,Purchase,-110.00,-10.00
+      Wholesale Purchase,Purchase,-55.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Purchase", coding.suggested_category
+    assert_equal "previous_quarter_exact", coding.gst_source
+    assert_nil coding.suggested_gst_amount
+    assert_equal "unknown", coding.gst_treatment
+    refute coding.category_review_required
+    refute coding.gst_review_required
+    refute coding.review_required?
+    assert_equal "incomplete", coding.metadata.fetch("gst_consensus_status")
+    assert_equal "generic_purchase_no_claim", coding.metadata.fetch("gst_blank_policy")
+    assert_includes coding.warning_codes, "historical_gst_conservative_blank"
+    refute_includes coding.warning_codes, "historical_gst_missing"
+    refute_includes coding.warning_codes, "gst_unclassified"
+    assert_equal "", row.reload.row_data.fetch("GST")
+  end
+
+  test "Purchase no-claim policy takes precedence over mixed-retailer GST suppression" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "COLES 0594 MILDURA", amount: "-80.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      COLES 0594 MILDURA,Purchase,-40.00,0.00
+      COLES 0594 MILDURA,Purchase,-20.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Purchase", coding.suggested_category
+    assert_equal "previous_quarter_exact", coding.gst_source
+    assert_nil coding.suggested_gst_amount
+    refute coding.review_required?
+    assert_includes coding.warning_codes, "historical_gst_conservative_blank"
+    refute_includes coding.warning_codes, "historical_gst_suppressed"
+    refute_includes coding.warning_codes, "mixed_or_unsafe_gst"
+  end
+
+  test "keeps conflicting Purchase GST blank under the no-claim policy" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Mixed Purchase Supplier", amount: "-220.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Mixed Purchase Supplier,Purchase,-110.00,-10.00
+      Mixed Purchase Supplier,Purchase,-110.00,0.00
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "conflict", coding.metadata.fetch("gst_consensus_status")
+    assert_equal "previous_quarter_exact", coding.gst_source
+    assert_nil coding.suggested_gst_amount
+    refute coding.gst_review_required
+    refute_includes coding.warning_codes, "historical_gst_conflict"
+    assert_includes coding.warning_codes, "historical_gst_conservative_blank"
+  end
+
   test "inherits consistently blank historical GST without taxable rule fallback" do
     job = create_job
     workbook = create_workbook(job)
@@ -335,6 +406,30 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     assert coding.category_review_required
     assert_includes coding.warning_codes, "historical_template_match"
     refute coding.metadata.fetch("safe_template_category_match")
+  end
+
+  test "auto-accepts the allowlisted weekly-pay template with two complete Category examples" do
+    job = create_job
+    workbook = create_workbook(job)
+    row = create_row(workbook, description: "Transfer To Alice CommBank App weekly pay", amount: "-100.00")
+    run = create_run(job, workbook, reference_csv: <<~CSV)
+      Description,Category,Amount,GST
+      Transfer To Bob CommBank App weekly pay,Salary,-90.00,
+      Transfer To Carol CommBank App weekly pay,Salary,-110.00,
+    CSV
+
+    process(run)
+
+    coding = run.reload.row_codings.find_by!(workbook_row: row)
+    assert_equal "Salary", coding.suggested_category
+    assert_equal "template", coding.metadata.fetch("match_type")
+    assert_equal 2, coding.metadata.fetch("reference_category_support")
+    assert_equal 1.0, coding.metadata.fetch("reference_category_coverage")
+    assert_equal 0, coding.metadata.fetch("reference_category_conflict_count")
+    assert coding.metadata.fetch("safe_template_category_match")
+    refute coding.category_review_required
+    refute coding.gst_review_required
+    refute coding.review_required?
   end
 
   test "counts blank historical categories in safe template coverage" do
@@ -594,7 +689,8 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     coding = run.reload.row_codings.find_by!(workbook_row: row)
     assert_equal "Replacement", coding.suggested_category
     assert_equal "rule", coding.category_source
-    assert coding.category_review_required
+    refute coding.category_review_required
+    refute coding.review_required?
     assert_includes coding.warning_codes, "historical_category_overridden"
     assert_equal "replacement", coding.metadata.fetch("category_overridden_by_rule_id")
   end
@@ -614,7 +710,8 @@ class BasTdkCodingRunProcessorTest < ActiveSupport::TestCase
     coding = run.reload.row_codings.find_by!(workbook_row: row)
     assert_equal "Replacement", coding.suggested_category
     assert_equal "rule", coding.category_source
-    assert coding.category_review_required
+    refute coding.category_review_required
+    refute coding.review_required?
     assert_equal BigDecimal("7.27"), coding.suggested_gst_amount
   end
 

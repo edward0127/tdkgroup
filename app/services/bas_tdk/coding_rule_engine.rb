@@ -2,7 +2,7 @@ require "bigdecimal"
 
 module BasTdk
   class CodingRuleEngine
-    RULESET_VERSION = "ato-conservative-2026-07-v4".freeze
+    RULESET_VERSION = "ato-conservative-2026-07-v5".freeze
     TAXABLE_CAVEAT = "Confirm a valid tax invoice, supplier GST registration and business-use percentage before accepting the GST amount.".freeze
     TAXABLE_MERCHANT_FEE_PATTERN = /\b(?:merchant (?:card|service) fees?|card processing fees?)\b/i
 

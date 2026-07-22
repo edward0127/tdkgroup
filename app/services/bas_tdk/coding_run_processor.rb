@@ -11,12 +11,16 @@ module BasTdk
     MIN_TEMPLATE_SUPPORT = 2
     MIN_SAFE_TEMPLATE_CATEGORY_SUPPORT = 3
     MIN_SAFE_TEMPLATE_CATEGORY_COVERAGE = 1.0
+    SAFE_TEMPLATE_MIN_CATEGORY_SUPPORT = {
+      "weekly_pay" => 2
+    }.freeze
     SAFE_TEMPLATE_DIRECTIONS = {
       "fast_transfer_from" => "credit",
       "pos" => "credit",
       "weekly_pay" => "debit",
       "staff_wages" => "debit"
     }.freeze
+    CONSERVATIVE_BLANK_GST_CATEGORY_PATTERNS = [ /\Apurchases?\z/i ].freeze
     STANDARD_GST_RATIO = BigDecimal("1") / 11
     STANDARD_GST_RATIO_TOLERANCE = BigDecimal("0.005")
     TIGHT_GST_RATIO_SPREAD = BigDecimal("0.0025")
@@ -659,6 +663,8 @@ module BasTdk
       rule = BasTdk::CodingRuleEngine.new(description: description, amount: amount).call
       apply_category_history_rule!(proposal, rule, category_vocabulary)
 
+      return proposal if apply_conservative_blank_gst_policy!(proposal, profile, exact: exact)
+
       if rule.rule_id.in?(GST_HISTORY_SUPPRESSION_RULE_IDS)
         proposal.gst_amount = nil
         proposal.gst_treatment = "needs_review"
@@ -687,6 +693,31 @@ module BasTdk
       proposal
     end
 
+    def apply_conservative_blank_gst_policy!(proposal, profile, exact:)
+      return false unless exact
+      return false unless safe_exact_category_evidence?(profile)
+      return false unless profile.gst_consensus_status.in?(%w[incomplete conflict])
+      return false unless proposal.gst_amount.nil?
+      return false unless CONSERVATIVE_BLANK_GST_CATEGORY_PATTERNS.any? { |pattern| proposal.category.to_s.match?(pattern) }
+
+      consensus_status = profile.gst_consensus_status
+      proposal.gst_treatment = "unknown"
+      proposal.gst_source = proposal.category_source
+      proposal.gst_confidence = proposal.category_confidence
+      proposal.gst_review_required = false
+      proposal.warning_codes = (
+        proposal.warning_codes.to_a -
+          %w[historical_gst_missing historical_gst_conflict gst_unclassified] +
+          [ "historical_gst_conservative_blank" ]
+      ).uniq
+      proposal.explanation = "Matched the same normalized description and transaction direction with a consistent historical Category. Prior-quarter GST entries for the generic Purchase category were #{consensus_status}; the no-claim policy therefore leaves GST intentionally blank instead of treating it as zero or inferring a credit."
+      proposal.metadata = proposal.metadata.to_h.merge(
+        "gst_blank_policy" => "generic_purchase_no_claim",
+        "gst_blank_policy_consensus_status" => consensus_status
+      )
+      true
+    end
+
     def apply_category_history_rule!(proposal, rule, category_vocabulary)
       if rule.rule_id.in?(CATEGORY_HISTORY_SUPPRESSION_RULE_IDS)
         proposal.category = nil
@@ -701,9 +732,9 @@ module BasTdk
         proposal.category = category
         proposal.category_source = "rule"
         proposal.category_confidence = rule.category_confidence
-        proposal.category_review_required = true
+        proposal.category_review_required = false
         proposal.warning_codes = (proposal.warning_codes.to_a + rule.warning_codes.to_a + [ "historical_category_overridden" ]).uniq
-        proposal.explanation = "#{rule.explanation} The verified merchant rule replaced the conflicting historical Category with #{category}; review the change."
+        proposal.explanation = "#{rule.explanation} The verified merchant rule replaced the conflicting historical Category with #{category}."
         proposal.metadata = proposal.metadata.to_h.merge(
           "category_overridden_by_rule_id" => rule.rule_id,
           "rule_default_category" => rule.category,
@@ -735,7 +766,11 @@ module BasTdk
     def safe_template_category_evidence?(profile)
       return false unless profile.match_kind == "template"
       return false unless SAFE_TEMPLATE_DIRECTIONS[profile.match_key] == profile.direction
-      return false if profile.category_support.to_i < MIN_SAFE_TEMPLATE_CATEGORY_SUPPORT
+      minimum_support = SAFE_TEMPLATE_MIN_CATEGORY_SUPPORT.fetch(
+        profile.match_key,
+        MIN_SAFE_TEMPLATE_CATEGORY_SUPPORT
+      )
+      return false if profile.category_support.to_i < minimum_support
       return false if profile.category_coverage.to_f < MIN_SAFE_TEMPLATE_CATEGORY_COVERAGE
 
       profile.category_conflict_count.to_i.zero?

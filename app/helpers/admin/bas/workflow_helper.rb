@@ -55,11 +55,19 @@ module Admin
       TDK_CODING_FILTER_OPTIONS = [
         [ "All", "all" ],
         [ "Needs review", "needs_review" ],
+        [ "Category review", "category_review" ],
+        [ "GST review", "gst_review" ],
         [ "Prior-quarter matches", "prior_match" ],
         [ "Rules", "rules" ],
         [ "Manual", "manual" ],
-        [ "Unclassified", "unclassified" ]
+        [ "Category unclassified", "category_unclassified" ],
+        [ "GST unresolved", "gst_unresolved" ]
       ].freeze
+      TDK_CODING_INFORMATION_CODE_LABELS = {
+        "historical_gst_blank_inherited" => "Prior-quarter GST was blank",
+        "historical_gst_conservative_blank" => "Mixed prior-quarter GST — left blank conservatively",
+        "historical_category_overridden" => "Historical category overridden"
+      }.freeze
       TDK_CODING_TABLE_COLUMNS = [
         { key: "date", label: "Date", class_name: "tdk-coding-col--date", default_width: 120, min_width: 105 },
         { key: "description", label: "Description", class_name: "tdk-coding-col--description", default_width: 240, min_width: 180 },
@@ -417,6 +425,7 @@ module Admin
       end
 
       def tdk_coding_source_label(source, coding: nil, field: nil)
+        return "Prior-quarter conservative blank" if field.to_s == "gst" && tdk_coding_prior_quarter_conservative_blank?(coding)
         return "Prior-quarter blank" if field.to_s == "gst" && tdk_coding_prior_quarter_blank?(coding)
 
         case source.to_s
@@ -441,7 +450,9 @@ module Admin
       end
 
       def tdk_coding_source_class(source, coding: nil, field: nil)
-        return "is-neutral" if field.to_s == "gst" && tdk_coding_prior_quarter_blank?(coding)
+        if field.to_s == "gst" && (tdk_coding_prior_quarter_conservative_blank?(coding) || tdk_coding_prior_quarter_blank?(coding))
+          return "is-neutral"
+        end
 
         case source.to_s
         when "previous_quarter_exact", "previous_quarter_fuzzy"
@@ -466,14 +477,18 @@ module Admin
         Array(coding.warning_codes).include?("historical_gst_blank_inherited")
       end
 
+      def tdk_coding_prior_quarter_conservative_blank?(coding)
+        return false if coding.blank?
+
+        Array(coding.warning_codes).include?("historical_gst_conservative_blank")
+      end
+
       def tdk_coding_warning_codes(coding)
-        Array(coding.warning_codes).reject { |code| code == "historical_gst_blank_inherited" }
+        Array(coding.warning_codes).reject { |code| TDK_CODING_INFORMATION_CODE_LABELS.key?(code) }
       end
 
       def tdk_coding_information_codes(coding)
-        return [] unless tdk_coding_prior_quarter_blank?(coding)
-
-        [ "Prior-quarter GST was blank" ]
+        Array(coding.warning_codes).filter_map { |code| TDK_CODING_INFORMATION_CODE_LABELS[code] }
       end
 
       def tdk_coding_reference_evidence_label(coding)

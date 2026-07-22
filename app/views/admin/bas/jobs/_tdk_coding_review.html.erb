@@ -22,7 +22,9 @@
   <div class="tdk-coding-summary" aria-label="Coding review summary">
     <div><span>Total rows</span><strong><%= run.row_count %></strong></div>
     <div><span>Suggestions</span><strong><%= run.suggestion_count %></strong></div>
-    <div class="is-warning"><span>Needs review</span><strong><%= run.warning_count %></strong></div>
+    <div class="is-warning"><span>Rows needing review</span><strong><%= @tdk_coding_filter_counts.fetch("needs_review", 0) %></strong></div>
+    <div><span>Category review</span><strong><%= @tdk_coding_filter_counts.fetch("category_review", 0) %></strong></div>
+    <div><span>GST review</span><strong><%= @tdk_coding_filter_counts.fetch("gst_review", 0) %></strong></div>
     <div class="is-reviewed"><span>Reviewed</span><strong><%= run.reviewed_count %></strong></div>
   </div>
 

@@ -424,11 +424,9 @@ module Admin
           end
         end
 
-        category_value = attributes.key?(:suggested_category) ? attributes[:suggested_category] : coding.suggested_category
-        gst_value = attributes.key?(:suggested_gst_amount) ? attributes[:suggested_gst_amount] : coding.suggested_gst_amount
         if review_requested
-          attributes[:category_review_required] = false if category_value.present?
-          attributes[:gst_review_required] = false if gst_value.present?
+          attributes[:category_review_required] = false
+          attributes[:gst_review_required] = false
         elsif was_reviewed
           attributes[:category_review_required] = true
           attributes[:gst_review_required] = true

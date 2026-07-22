@@ -6,7 +6,18 @@ module Admin
       BAS_WORKSPACE_TABS = %w[overview documents matching report audit ai].freeze
       TDK_ROWS_PER_PAGE_OPTIONS = [ 10, 25, 50, 100 ].freeze
       TDK_SORT_DIRECTIONS = %w[asc desc].freeze
-      TDK_CODING_FILTERS = %w[all needs_review prior_match rules manual unclassified].freeze
+      TDK_CODING_FILTERS = %w[
+        all
+        needs_review
+        category_review
+        gst_review
+        prior_match
+        rules
+        manual
+        category_unclassified
+        gst_unresolved
+        unclassified
+      ].freeze
       TDK_CODING_SORTS = %w[date description amount category gst source review].freeze
 
       def index
@@ -358,6 +369,10 @@ module Admin
         case filter
         when "needs_review"
           codings.where(category_review_required: true).or(codings.where(gst_review_required: true))
+        when "category_review"
+          codings.where(category_review_required: true)
+        when "gst_review"
+          codings.where(gst_review_required: true)
         when "prior_match"
           sources = %w[previous_quarter_exact previous_quarter_fuzzy]
           codings.where(category_source: sources).or(codings.where(gst_source: sources))
@@ -365,6 +380,10 @@ module Admin
           codings.where(category_source: "rule").or(codings.where(gst_source: "rule"))
         when "manual"
           codings.where(category_source: "manual").or(codings.where(gst_source: "manual"))
+        when "category_unclassified"
+          codings.where(category_source: "unmatched")
+        when "gst_unresolved"
+          codings.where(gst_source: "unmatched")
         when "unclassified"
           codings.where(category_source: "unmatched").or(codings.where(gst_source: "unmatched"))
         else

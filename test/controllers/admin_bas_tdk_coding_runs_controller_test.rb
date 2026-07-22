@@ -338,7 +338,15 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select ".tdk-coding-summary .is-warning strong", "1"
+    assert_select ".tdk-coding-summary", text: /Rows needing review\s*1/
+    assert_select ".tdk-coding-summary", text: /Category review\s*1/
+    assert_select ".tdk-coding-summary", text: /GST review\s*1/
     assert_select ".tdk-coding-filter.is-active", text: /All/
+    assert_select ".tdk-coding-filter", text: /Category review\s*1/
+    assert_select ".tdk-coding-filter", text: /GST review\s*1/
+    assert_select ".tdk-coding-filter", text: /Category unclassified\s*0/
+    assert_select ".tdk-coding-filter", text: /GST unresolved\s*0/
+    assert_select ".tdk-coding-filter span", text: "Unclassified", count: 0
     assert_select ".tdk-coding-source-badge.is-history", text: /Prior-quarter exact match/
     assert_select ".tdk-coding-source-badge.is-rule", text: /Rule suggestion/
     assert_select ".tdk-coding-source-badge.is-manual", text: /Manual/
@@ -367,11 +375,90 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "needs_review", coding_per_page: 10)
     assert_equal [ rule.workbook_row.source_row_number ], coding_source_rows(response.body)
 
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "category_review", coding_per_page: 10)
+    assert_equal [ rule.workbook_row.source_row_number ], coding_source_rows(response.body)
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "gst_review", coding_per_page: 10)
+    assert_equal [ rule.workbook_row.source_row_number ], coding_source_rows(response.body)
+
     get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "prior_match", coding_per_page: 10)
     assert_equal [ history.workbook_row.source_row_number ], coding_source_rows(response.body)
 
     get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "manual", coding_per_page: 10)
     assert_equal [ manual.workbook_row.source_row_number ], coding_source_rows(response.body)
+  end
+
+  test "coding review separates field review and unresolved filters while legacy unclassified remains available" do
+    job = create_job
+    workbook = create_workbook(job, row_count: 4)
+    run = create_run(job, workbook, row_count: 4, suggestion_count: 4, warning_count: 3)
+    rows = workbook.rows.ordered.to_a
+    category_only = create_coding(
+      run,
+      rows[0],
+      suggested_category: nil,
+      suggested_gst_amount: BigDecimal("9.09"),
+      category_source: "unmatched",
+      gst_source: "previous_quarter_exact",
+      category_review_required: true,
+      gst_review_required: false
+    )
+    gst_only = create_coding(
+      run,
+      rows[1],
+      suggested_category: "Fuel",
+      suggested_gst_amount: nil,
+      category_source: "previous_quarter_exact",
+      gst_source: "unmatched",
+      category_review_required: false,
+      gst_review_required: true
+    )
+    both = create_coding(
+      run,
+      rows[2],
+      suggested_category: "Motor vehicle expenses",
+      suggested_gst_amount: BigDecimal("9.27"),
+      category_source: "rule",
+      gst_source: "rule",
+      category_review_required: true,
+      gst_review_required: true
+    )
+    create_coding(
+      run,
+      rows[3],
+      suggested_category: "Sales",
+      suggested_gst_amount: BigDecimal("9.36"),
+      category_source: "previous_quarter_exact",
+      gst_source: "previous_quarter_exact",
+      category_review_required: false,
+      gst_review_required: false,
+      review_status: "proposed"
+    )
+
+    get admin_bas_job_path(job, tdk_step: "coding")
+
+    assert_response :success
+    assert_select ".tdk-coding-summary", text: /Rows needing review\s*3/
+    assert_select ".tdk-coding-summary", text: /Category review\s*2/
+    assert_select ".tdk-coding-summary", text: /GST review\s*2/
+    assert_select ".tdk-coding-filter", text: /Category unclassified\s*1/
+    assert_select ".tdk-coding-filter", text: /GST unresolved\s*1/
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "category_review")
+    assert_equal [ category_only, both ].map { |coding| coding.workbook_row.source_row_number }, coding_source_rows(response.body)
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "gst_review")
+    assert_equal [ gst_only, both ].map { |coding| coding.workbook_row.source_row_number }, coding_source_rows(response.body)
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "category_unclassified")
+    assert_equal [ category_only.workbook_row.source_row_number ], coding_source_rows(response.body)
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "gst_unresolved")
+    assert_equal [ gst_only.workbook_row.source_row_number ], coding_source_rows(response.body)
+
+    get admin_bas_job_path(job, tdk_step: "coding", coding_filter: "unclassified")
+    assert_equal [ category_only, gst_only ].map { |coding| coding.workbook_row.source_row_number }, coding_source_rows(response.body)
+    assert_select ".tdk-coding-filter span", text: "Unclassified", count: 0
   end
 
   test "coding review sorts typed values before pagination and keeps blanks last" do
@@ -451,6 +538,37 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     assert_select ".tdk-coding-warning-codes", text: /Historical gst blank inherited/, count: 0
   end
 
+  test "coding review presents conservative blank GST and historical overrides as neutral information" do
+    job = create_job
+    workbook = create_workbook(job, row_count: 1)
+    run = create_run(job, workbook, warning_count: 1)
+    create_coding(
+      run,
+      workbook.rows.first,
+      suggested_category: "Freight",
+      suggested_gst_amount: nil,
+      category_source: "rule",
+      gst_source: "previous_quarter_fuzzy",
+      category_review_required: true,
+      gst_review_required: false,
+      warning_codes: [
+        "historical_gst_conservative_blank",
+        "historical_category_overridden",
+        "category_conflict"
+      ]
+    )
+
+    get admin_bas_job_path(job, tdk_step: "coding")
+
+    assert_response :success
+    assert_select ".tdk-coding-source-badge.is-neutral", text: /GST: Prior-quarter conservative blank/
+    assert_select ".tdk-coding-information-codes", text: /Mixed prior-quarter GST — left blank conservatively/
+    assert_select ".tdk-coding-information-codes", text: /Historical category overridden/
+    assert_select ".tdk-coding-warning-codes", text: "Category conflict"
+    assert_select ".tdk-coding-warning-codes", text: /Historical gst conservative blank/, count: 0
+    assert_select ".tdk-coding-warning-codes", text: /Historical category overridden/, count: 0
+  end
+
   test "unflagged proposals stay unreviewed until the admin checks Reviewed" do
     job = create_job
     workbook = create_workbook(job, row_count: 1)
@@ -488,6 +606,28 @@ class AdminBasTdkCodingRunsControllerTest < ActionDispatch::IntegrationTest
     assert coding.reviewed_at.present?
     assert_equal 1, run.reload.reviewed_count
     assert_equal "Saved 1 coding review rows.", flash[:notice]
+  end
+
+  test "reviewer can accept intentionally blank Category and GST values" do
+    job = create_job
+    workbook = create_workbook(job)
+    run = create_run(job, workbook, warning_count: 1, suggestion_count: 0)
+    coding = create_coding(run, workbook.rows.first)
+
+    patch update_rows_admin_bas_job_tdk_coding_run_path(job, run), params: {
+      codings: { coding.id => { category: "", gst: "", reviewed: "1" } }
+    }
+
+    coding.reload
+    assert_equal "accepted", coding.review_status
+    assert_nil coding.suggested_category
+    assert_nil coding.suggested_gst_amount
+    assert_equal "unknown", coding.gst_treatment
+    refute coding.category_review_required
+    refute coding.gst_review_required
+    assert coding.reviewed?
+    assert_equal 0, run.reload.warning_count
+    assert_equal 1, run.reviewed_count
   end
 
   test "manual coding edits update workbook provenance GST treatment and review counts atomically" do
